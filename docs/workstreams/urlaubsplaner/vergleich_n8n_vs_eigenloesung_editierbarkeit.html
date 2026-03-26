@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vergleich: n8n vs. Eigenlösung – Anwender (Admin) vs. nur Code</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      margin: 0;
+      padding: 24px;
+      max-width: 1100px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 8px; }
+    .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 24px; }
+    .panel {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .panel h2 {
+      margin: 0;
+      padding: 12px 16px;
+      font-size: 1rem;
+      background: #2c3e50;
+      color: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+      vertical-align: top;
+    }
+    th {
+      background: #37474f;
+      color: #fff;
+      font-weight: 600;
+    }
+    th:first-child { width: 26%; }
+    th:nth-child(2) { width: 37%; }
+    th:nth-child(3) { width: 37%; }
+    tr:hover td { background: #f8f9fa; }
+    .topic { font-weight: 600; color: #1a1a1a; }
+    .yes { color: #2e7d32; }
+    .code { color: #c62828; }
+    .summary {
+      background: #e8f4fd;
+      border-left: 4px solid #2196f3;
+      padding: 14px 18px;
+      margin-top: 8px;
+      margin-bottom: 24px;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    .summary strong { color: #1565c0; }
+    .source { font-size: 0.8rem; color: #888; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Vergleich: n8n vs. Eigenlösung</h1>
+  <p class="subtitle">Was ist von <strong>Anwender mit Admin-Rolle</strong> änderbar – und was nur <strong>durch Code</strong>? (Urlaubsplaner Workflow)</p>
+
+  <div class="panel">
+    <h2>n8n</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Was</th>
+          <th>Von Anwender (Admin) änderbar</th>
+          <th>Nur durch Code änderbar</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="topic">Schritte ein-/aus, Reihenfolge</td>
+          <td class="yes">Ja – im n8n-Editor: Knoten hinzufügen/löschen, Kanten umziehen.</td>
+          <td>–</td>
+        </tr>
+        <tr>
+          <td class="topic">E-Mail-Empfänger, Betreff, Text</td>
+          <td class="yes">Ja – am E-Mail-Knoten „To“, Subject, Body (inkl. Ausdrücke wie <code>{{ $json... }}</code>) bearbeiten.</td>
+          <td>–</td>
+        </tr>
+        <tr>
+          <td class="topic">Verzögerung (z. B. 5 Sek)</td>
+          <td class="yes">Ja – am Wait-Knoten Wert ändern oder weiteren Wait einfügen.</td>
+          <td>–</td>
+        </tr>
+        <tr>
+          <td class="topic">Bedingungen (IF)</td>
+          <td class="yes">Ja – IF-Knoten bearbeiten, neue Zweige anlegen.</td>
+          <td>–</td>
+        </tr>
+        <tr>
+          <td class="topic">Neue Events/Zweige</td>
+          <td class="yes">Ja – am Switch neuen Ausgang, Knoten verbinden.</td>
+          <td>–</td>
+        </tr>
+        <tr>
+          <td class="topic">Credentials (E-Mail, Graph)</td>
+          <td class="yes">Ja – in n8n Credential-Store anlegen, am Knoten zuweisen. (Kein App-Code.)</td>
+          <td>–</td>
+        </tr>
+        <tr>
+          <td class="topic">Webhook / Aufruf von DRIVE</td>
+          <td>URL/Path in n8n einsehbar/änderbar. Welche Payload DRIVE sendet und dass DRIVE n8n aufruft:</td>
+          <td class="code">Nur in DRIVE: in <code>vacation_api.py</code> (oder Config) – welcher Webhook, welches Payload-Format.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="summary">
+      <strong>Kurz n8n:</strong> Fast alles ist von Admin im n8n-Editor änderbar. Nur die Integration auf DRIVE-Seite (ob und wie DRIVE n8n aufruft, Payload-Struktur) ist Code/Config in DRIVE.
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Eigenlösung (DRIVE)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Was</th>
+          <th>Von Anwender (Admin-Rolle) änderbar</th>
+          <th>Nur durch Code änderbar</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="topic">Schritte ein-/aus</td>
+          <td class="yes">Ja – Admin-UI: Checkbox „aktiv“ pro Schritt (wenn UI gebaut).</td>
+          <td class="code">Neue Schritttypen oder neue Events = neuer Code in <code>vacation_api</code> / DB-Schema.</td>
+        </tr>
+        <tr>
+          <td class="topic">Reihenfolge der Schritte</td>
+          <td class="yes">Ja – Admin-UI: Drag-&-Drop oder Order (wenn UI gebaut).</td>
+          <td>–</td>
+        </tr>
+        <tr>
+          <td class="topic">E-Mail-Empfänger (HR, GL, …)</td>
+          <td class="yes">Ja – wenn Admin-UI/DB-Tabelle dafür existiert (z. B. „HR-E-Mails“, „Empfänger Krankheit“).</td>
+          <td class="code">Ohne UI: nur in Config/.env oder DB per SQL.</td>
+        </tr>
+        <tr>
+          <td class="topic">E-Mail-Betreff / -Text (Vorlagen)</td>
+          <td class="yes">Ja – wenn Admin-UI für Vorlagen (z. B. <code>email_templates</code>) gebaut ist.</td>
+          <td class="code">Ohne UI: Vorlagen in Code oder DB per Migration/SQL.</td>
+        </tr>
+        <tr>
+          <td class="topic">Verzögerung (z. B. 5 Sek)</td>
+          <td class="yes">Ja – wenn Konfig pro Schritt in Admin-UI (z. B. <code>delay_seconds</code>) angeboten wird.</td>
+          <td class="code">Ohne UI: in Code oder Config.</td>
+        </tr>
+        <tr>
+          <td class="topic">Bedingungen (z. B. nur wenn genehmigt)</td>
+          <td>Nur begrenzt – z. B. „Schritt nur wenn war_approved“ als Option pro Schritt (wenn umgesetzt).</td>
+          <td class="code">IF-Logik, neue Bedingungen = Code in <code>vacation_api</code>.</td>
+        </tr>
+        <tr>
+          <td class="topic">Neue Events / neue Zweige</td>
+          <td>Neue Einträge in Schritte-Tabelle nur für <strong>bereits vom Code unterstützte</strong> Events.</td>
+          <td class="code">Neue Event-Arten, neue Ablauf-Logik = Code (API, Celery, DB).</td>
+        </tr>
+        <tr>
+          <td class="topic">Credentials (E-Mail, Graph)</td>
+          <td>Nein – in der Eigenlösung typischerweise keine Credential-UI.</td>
+          <td class="code">.env, Config, ggf. Secrets-Management.</td>
+        </tr>
+        <tr>
+          <td class="topic">Diagramm</td>
+          <td>Nur anzeigen (aus Konfig generiert). Bearbeitung indirekt über Schritte-Liste.</td>
+          <td class="code">Logik „Diagramm aus Konfig erzeugen“ = Code.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="summary">
+      <strong>Kurz Eigenlösung:</strong> <strong>Anwender (Admin):</strong> Schritte an/aus, Reihenfolge, Empfänger, Vorlagen, ggf. Verzögerung – nur soweit die Admin-UI/DB das anbietet. <strong>Nur Code:</strong> Neue Schritttypen, neue Events, Bedingungen, Credentials, alles was keine UI hat.
+    </div>
+  </div>
+
+  <p class="source">Quelle: MOCKUP_URLAUBSPLANER_MERMAID_EIGENLOESUNG.md, Abschnitt 5. Workstream Urlaubsplaner.</p>
+</body>
+</html>

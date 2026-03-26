@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>n8n Mockup – DRIVE Urlaubsplaner</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1d1d1d;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 24px;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; color: #fff; }
+    .subtitle { font-size: 0.85rem; color: #888; margin-bottom: 24px; }
+    .canvas {
+      background: #252525;
+      border-radius: 8px;
+      padding: 32px;
+      overflow: auto;
+      min-height: 640px;
+      position: relative;
+    }
+    .flow {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0;
+      position: relative;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin: 8px 0;
+      position: relative;
+    }
+    .row::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, #4a9eff 15%, #4a9eff 85%, transparent 100%);
+      opacity: 0.4;
+      z-index: 0;
+    }
+    .node {
+      background: #333;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 12px 16px;
+      min-width: 200px;
+      max-width: 280px;
+      position: relative;
+      z-index: 1;
+      font-size: 0.9rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .node.webhook  { border-left: 4px solid #ff6b6b; }
+    .node.switch   { border-left: 4px solid #ffd93d; }
+    .node.wait     { border-left: 4px solid #6bcb77; }
+    .node.email    { border-left: 4px solid #4d96ff; }
+    .node.http     { border-left: 4px solid #9d4edd; }
+    .node.if       { border-left: 4px solid #f59e0b; }
+    .node.respond  { border-left: 4px solid #10b981; }
+    .node .type    { font-size: 0.7rem; text-transform: uppercase; color: #888; margin-bottom: 4px; }
+    .node .name    { font-weight: 600; color: #fff; }
+    .node .hint   { font-size: 0.75rem; color: #888; margin-top: 4px; }
+    .branch-label {
+      font-size: 0.75rem;
+      color: #4a9eff;
+      min-width: 72px;
+      text-align: right;
+    }
+    .sticky {
+      background: #2d3748;
+      border: 1px solid #4a5568;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      max-width: 420px;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #a0aec0;
+    }
+    .sticky strong { color: #e2e8f0; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 24px;
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .legend span { display: flex; align-items: center; gap: 6px; }
+    .legend .dot { width: 10px; height: 10px; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <h1>n8n Mockup – DRIVE Urlaubsplaner</h1>
+  <p class="subtitle">Visuelle Vorschau des Workflows (ohne n8n). Import: n8n_mockup_urlaubsplaner.json</p>
+
+  <div class="canvas">
+    <div class="sticky">
+      <strong>DRIVE Urlaubsplaner</strong><br>
+      DRIVE ruft den Webhook nach Buchung / Genehmigung / Ablehnung / Storno / Krankheit auf.<br>
+      Payload: <code>event</code> + <code>payload</code> (Empfänger, Texte, Buchungsdetails).
+    </div>
+
+    <div class="flow">
+      <!-- Row 0: Webhook + Switch -->
+      <div class="row">
+        <div class="node webhook">
+          <div class="type">Webhook</div>
+          <div class="name">Webhook DRIVE</div>
+          <div class="hint">POST /webhook/drive-urlaubsplaner</div>
+        </div>
+        <div class="node switch">
+          <div class="type">Switch</div>
+          <div class="name">Nach Event verzweigen</div>
+          <div class="hint">book | approval | reject | cancel | sickness</div>
+        </div>
+      </div>
+
+      <!-- Branch: book -->
+      <div class="row">
+        <span class="branch-label">book</span>
+        <div class="node wait">
+          <div class="type">Wait</div>
+          <div class="name">5 Sek warten (Bündelung)</div>
+        </div>
+        <div class="node email">
+          <div class="type">E-Mail</div>
+          <div class="name">E-Mail an Genehmiger (Antrag)</div>
+          <div class="hint">Eine Mail pro Zeitraum</div>
+        </div>
+        <div class="node respond">
+          <div class="type">Respond</div>
+          <div class="name">Antwort an DRIVE</div>
+        </div>
+      </div>
+
+      <!-- Branch: approval -->
+      <div class="row">
+        <span class="branch-label">approval</span>
+        <div class="node email">
+          <div class="type">E-Mail</div>
+          <div class="name">E-Mail an HR (Locosoft eintragen)</div>
+        </div>
+        <div class="node email">
+          <div class="type">E-Mail</div>
+          <div class="name">E-Mail an Mitarbeiter (Bestätigung)</div>
+        </div>
+        <div class="node http">
+          <div class="type">HTTP / Graph</div>
+          <div class="name">Outlook: drive@ + MA-Kalender</div>
+        </div>
+        <div class="node respond">
+          <div class="type">Respond</div>
+          <div class="name">Antwort an DRIVE</div>
+        </div>
+      </div>
+
+      <!-- Branch: reject -->
+      <div class="row">
+        <span class="branch-label">reject</span>
+        <div class="node email">
+          <div class="type">E-Mail</div>
+          <div class="name">E-Mail an MA (Ablehnung)</div>
+        </div>
+        <div class="node respond">
+          <div class="type">Respond</div>
+          <div class="name">Antwort an DRIVE</div>
+        </div>
+      </div>
+
+      <!-- Branch: cancel -->
+      <div class="row">
+        <span class="branch-label">cancel</span>
+        <div class="node email">
+          <div class="type">E-Mail</div>
+          <div class="name">E-Mail an Genehmiger (Storno)</div>
+        </div>
+        <div class="node if">
+          <div class="type">IF</div>
+          <div class="name">war genehmigt?</div>
+        </div>
+        <div class="node email">
+          <div class="type">E-Mail</div>
+          <div class="name">E-Mail an HR (Storno Locosoft)</div>
+        </div>
+        <div class="node respond">
+          <div class="type">Respond</div>
+          <div class="name">Antwort an DRIVE</div>
+        </div>
+      </div>
+
+      <!-- Branch: sickness -->
+      <div class="row">
+        <span class="branch-label">sickness</span>
+        <div class="node email">
+          <div class="type">E-Mail</div>
+          <div class="name">E-Mail HR + Teamleitung + GL (Krankheit)</div>
+        </div>
+        <div class="node respond">
+          <div class="type">Respond</div>
+          <div class="name">Antwort an DRIVE</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><span class="dot" style="background:#ff6b6b"></span> Webhook</span>
+      <span><span class="dot" style="background:#ffd93d"></span> Switch</span>
+      <span><span class="dot" style="background:#6bcb77"></span> Wait</span>
+      <span><span class="dot" style="background:#4d96ff"></span> E-Mail</span>
+      <span><span class="dot" style="background:#9d4edd"></span> HTTP/Graph</span>
+      <span><span class="dot" style="background:#f59e0b"></span> IF</span>
+      <span><span class="dot" style="background:#10b981"></span> Respond</span>
+    </div>
+  </div>
+</body>
+</html>

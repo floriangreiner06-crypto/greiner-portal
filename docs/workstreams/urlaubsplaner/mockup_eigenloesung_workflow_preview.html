@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eigenlösung – Urlaubsplaner Workflow (Mockup)</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      margin: 0;
+      padding: 24px;
+      max-width: 1200px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 6px; }
+    .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 24px; }
+    .layout { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .panel {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .panel h2 {
+      margin: 0;
+      padding: 12px 16px;
+      font-size: 1rem;
+      background: #2c3e50;
+      color: #fff;
+    }
+    .panel-content { padding: 16px; }
+    .event-block { margin-bottom: 20px; }
+    .event-block:last-child { margin-bottom: 0; }
+    .event-title {
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      margin-bottom: 4px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    .step input[type="checkbox"] { flex-shrink: 0; }
+    .step .order { width: 24px; text-align: center; color: #666; font-variant-numeric: tabular-nums; }
+    .step .label { flex: 1; }
+    .step.inactive { opacity: 0.6; }
+    .diagram-wrap {
+      background: #fff;
+      border-radius: 8px;
+      padding: 24px;
+      min-height: 400px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .diagram-wrap .mermaid { text-align: center; }
+    .hint { font-size: 0.8rem; color: #888; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Eigenlösung – Urlaubsplaner Workflow (Mockup)</h1>
+  <p class="subtitle">Konfigurierbare Schritte (links) und daraus generiertes Diagramm (rechts). Kein Backend – nur Vorschau.</p>
+
+  <div class="layout">
+    <div class="panel">
+      <h2>Workflow-Schritte (editierbar)</h2>
+      <div class="panel-content">
+        <div class="event-block">
+          <div class="event-title">📋 book – Neuer Antrag</div>
+          <div class="step" id="s-book-1">
+            <input type="checkbox" checked>
+            <span class="order">1</span>
+            <span class="label">5 Sek warten (Bündelung)</span>
+          </div>
+          <div class="step" id="s-book-2">
+            <input type="checkbox" checked>
+            <span class="order">2</span>
+            <span class="label">E-Mail an Genehmiger</span>
+          </div>
+        </div>
+        <div class="event-block">
+          <div class="event-title">✅ approval – Genehmigung</div>
+          <div class="step">
+            <input type="checkbox" checked>
+            <span class="order">1</span>
+            <span class="label">E-Mail an HR (Locosoft)</span>
+          </div>
+          <div class="step">
+            <input type="checkbox" checked>
+            <span class="order">2</span>
+            <span class="label">E-Mail an Mitarbeiter</span>
+          </div>
+          <div class="step">
+            <input type="checkbox" checked>
+            <span class="order">3</span>
+            <span class="label">Outlook: drive@ + MA-Kalender</span>
+          </div>
+        </div>
+        <div class="event-block">
+          <div class="event-title">❌ reject – Ablehnung</div>
+          <div class="step">
+            <input type="checkbox" checked>
+            <span class="order">1</span>
+            <span class="label">E-Mail an MA (Ablehnung)</span>
+          </div>
+        </div>
+        <div class="event-block">
+          <div class="event-title">🔄 cancel – Storno</div>
+          <div class="step">
+            <input type="checkbox" checked>
+            <span class="order">1</span>
+            <span class="label">E-Mail an Genehmiger</span>
+          </div>
+          <div class="step">
+            <input type="checkbox" checked>
+            <span class="order">2</span>
+            <span class="label">Wenn genehmigt: E-Mail an HR</span>
+          </div>
+        </div>
+        <div class="event-block">
+          <div class="event-title">🤒 sickness – Krankheit</div>
+          <div class="step">
+            <input type="checkbox" checked>
+            <span class="order">1</span>
+            <span class="label">E-Mail HR + Teamleitung + GL</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="diagram-wrap">
+      <h2 style="margin:0 0 16px; font-size:1rem;">Diagramm (aus Konfiguration)</h2>
+      <div class="mermaid" id="mermaid-diagram">
+flowchart TB
+    subgraph book["📋 Neuer Antrag"]
+        B1[5 Sek warten]
+        B2[E-Mail an Genehmiger]
+        B1 --> B2
+    end
+    subgraph approval["✅ Genehmigung"]
+        A1[E-Mail an HR]
+        A2[E-Mail an MA]
+        A3[Outlook drive@ + MA]
+        A1 --> A2 --> A3
+    end
+    subgraph reject["❌ Ablehnung"]
+        R1[E-Mail an MA]
+    end
+    subgraph cancel["🔄 Storno"]
+        C1[E-Mail an Genehmiger]
+        C2[Wenn genehmigt: E-Mail HR]
+        C1 --> C2
+    end
+    subgraph sickness["🤒 Krankheit"]
+        K1[E-Mail HR + TL + GL]
+    end
+      </div>
+      <p class="hint">In der echten Eigenlösung würde das Diagramm aus der DB-Konfiguration (links) generiert und hier live angezeigt. Hier: statisches Mermaid-Beispiel.</p>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'neutral',
+      flowchart: { useMaxWidth: true, htmlLabels: true }
+    });
+  </script>
+</body>
+</html>

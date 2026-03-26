@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockup V2: Liquiditätsvorschau (nach Excel-Vorlagen) – DRIVE</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body { background: #f0f2f5; font-size: 0.95rem; }
+        .stat-box {
+            background: #fff;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            border-left: 4px solid;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .stat-box.saldo { border-left-color: #0d6efd; }
+        .stat-box .stat-label { font-size: 0.7rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.02em; }
+        .stat-box .stat-value { font-size: 1.2rem; font-weight: 700; }
+        .liquid-table { font-size: 0.85rem; }
+        .liquid-table th { background: #2c3e50; color: #fff; white-space: nowrap; }
+        .liquid-table td { vertical-align: middle; }
+        .chart-placeholder {
+            height: 300px;
+            background: linear-gradient(180deg, rgba(13,110,253,0.06) 0%, rgba(13,110,253,0.02) 100%);
+            border: 1px dashed #0d6efd;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #0d6efd;
+            font-weight: 500;
+        }
+        .chart-ist-placeholder {
+            height: 260px;
+            background: linear-gradient(90deg, rgba(25,135,84,0.06) 0%, rgba(220,53,69,0.06) 50%, transparent 100%);
+            border: 1px dashed #6c757d;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6c757d;
+            font-weight: 500;
+        }
+        .hinweis-box {
+            background: #fff8e6;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+        }
+        .hinweis-box h6 { color: #856404; margin-bottom: 0.5rem; }
+        .hinweis-box ul { margin-bottom: 0; padding-left: 1.2rem; }
+        .hinweis-box li { margin-bottom: 0.35rem; }
+        .hinweis-pruefen {
+            background: #e7f3ff;
+            border: 1px solid #0d6efd;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+        }
+        .badge-daten-fehlen { background: #dc3545; font-size: 0.7rem; }
+        .badge-daten-vorhanden { background: #198754; font-size: 0.7rem; }
+        .badge-optional { background: #6c757d; font-size: 0.7rem; }
+    </style>
+</head>
+<body>
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <h1 class="h4 mb-0">Liquiditätsvorschau</h1>
+            <small class="text-muted">Saldo heute + Transaktionen (IST) + erwartete Einnahmen (Ø) + Tilgungen + Zinsen EK + Ablösung Fzge (angelehnt an Master Liqui-Plan)</small>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <label class="mb-0 small">Zeitraum:</label>
+            <select class="form-select form-select-sm" style="width: 100px;">
+                <option value="30">30 Tage</option>
+                <option value="60" selected>60 Tage</option>
+                <option value="90">90 Tage</option>
+            </select>
+            <button class="btn btn-sm btn-outline-secondary" title="Wochenansicht (wie Excel-Vorlage)">Woche</button>
+            <button class="btn btn-sm btn-outline-primary" title="Aktualisieren"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+    </div>
+
+    <!-- Hinweise: Daten fehlen / Prüfen Buchhaltung & Dispo -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="hinweis-box">
+                <h6 class="d-flex align-items-center gap-2"><i class="bi bi-info-circle"></i> Hinweise: Wo uns noch Daten fehlen</h6>
+                <ul class="small">
+                    <li><strong>Erwartete Einnahmen Fahrzeug (NW/GW Auslieferung):</strong> Geplante NW-Auslieferungen kennen wir bereits aus Locosoft: Modul <strong>Lieferforecast</strong> (<code>get_lieferforecast</code>) nutzt <code>vehicles.readmission_date</code> + Aufträge/Rechnungen und liefert pro Fahrzeug Lieferdatum und Netto – <span class="badge badge-daten-vorhanden">Daten vorhanden</span>, in der Liquiditätsvorschau noch <span class="badge badge-daten-fehlen">nicht angebunden</span>. TEK/Auslieferungen-Modul nutzen <code>dealer_vehicles</code> (IST, out_invoice_date). Für GW prüfen, ob Locosoft ein geplantes Lieferdatum analog führt. Ablösung Fzge (Einfinanzierung) siehe <code>fahrzeugfinanzierungen</code>.</li>
+                    <li><strong>Erwartete Einnahmen Werkstatt (Werk./T+Z):</strong> Geplante/offene Werkstattaufträge können wir in Locosoft erkennen: <strong>PostgreSQL</strong> (<code>orders</code> + <code>labours</code>, z. B. <code>get_offene_auftraege</code>) und <strong>SOAP</strong> (<code>listOpenWorkOrders</code> + <code>readWorkOrderDetails</code>) – <span class="badge badge-daten-vorhanden">Daten vorhanden</span>, in der Liquiditätsvorschau noch <span class="badge badge-daten-fehlen">nicht angebunden</span>. Siehe <code>docs/.../GEPLANTE_WERKSTATTAUFTRAGE_LOCOSOFT_SOAP.md</code>. <em>Falls gewünscht: Gibt es zusätzlich manuelle Planwerte bei Buchhaltung/Dispo?</em></li>
+                    <li><strong>Zinsen EK-Finanzierung (Santander/Stellantis):</strong> Daten in <code>fahrzeugfinanzierungen</code> vorhanden – <span class="badge badge-daten-vorhanden">einbaubar</span>, in der Vorschau noch nicht berücksichtigt.</li>
+                    <li><strong>Tilgungen Santander/Stellantis:</strong> Kein Tilgungsplan von den Banken – <span class="badge badge-daten-fehlen">keine Daten</span>. <em>Prüfen: Liefert Buchhaltung/Dispo Ratenpläne oder werden Abschläge manuell geplant?</em></li>
+                    <li><strong>Kreditlimits pro Standort/Bank:</strong> Wie im Master Liqui-Plan – <span class="badge badge-optional">optional</span>. <em>Prüfen: Sind Limits in DRIVE (Konten/Kreditlinien) oder extern (Buchhaltung) gepflegt?</em></li>
+                </ul>
+            </div>
+        </div>
+        <div class="col-12 mt-2">
+            <div class="hinweis-pruefen">
+                <strong><i class="bi bi-search me-1"></i> Prüfen bei Buchhaltung & Dispo:</strong> Werden Liquiditätsrelevante Daten (Absatzplan, Zahlungseingänge, Ratenpläne Santander/Stellantis, Kreditlimits) noch manuell geführt? Wenn ja, könnten wir sie in DRIVE übernehmen oder verknüpfen.
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI-Boxen -->
+    <div class="row g-2 mb-3">
+        <div class="col-md-3">
+            <div class="stat-box saldo">
+                <div class="stat-label">Start-Saldo (heute)</div>
+                <div class="stat-value">−2.321.770 €</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box">
+                <div class="stat-label">Salden-Stand</div>
+                <div class="stat-value small">09.03.2026</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box">
+                <div class="stat-label">Projektion</div>
+                <div class="stat-value small">nächste 60 Tage</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box">
+                <div class="stat-label">Kreditlimit gesamt (Hinweis)</div>
+                <div class="stat-value small text-muted">— T€ <small class="text-warning">(Datenquelle prüfen)</small></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Saldo-Verlauf (Projektion) -->
+    <div class="card mb-3">
+        <div class="card-header py-2">Saldo-Verlauf (Projektion)</div>
+        <div class="card-body">
+            <div class="chart-placeholder">
+                <span><i class="bi bi-graph-up me-2"></i>Linie: Saldo über Zeit (inkl. erwartete Einnahmen Ø, Tilgungen, optional Zinsen EK)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cashflow IST (Kategorien wie Vorlage) -->
+    <div class="card mb-3">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>Cashflow IST (letzte 12 Monate) – Kategorien angelehnt an „Liquiditätsplan Woche“</span>
+            <select class="form-select form-select-sm" style="width: 110px;">
+                <option value="6">6 Monate</option>
+                <option value="12" selected>12 Monate</option>
+                <option value="24">24 Monate</option>
+            </select>
+        </div>
+        <div class="card-body">
+            <p class="small text-muted mb-2">Einnahmen: NW/GW Auslieferung, sonstige. Ausgaben: Gehalt, Steuer, Lieferanten, Werk./T+Z, Tilgungen, Ablösung Fzge, sonstige (ohne interne Umbuchungen).</p>
+            <div class="chart-ist-placeholder">
+                <span><i class="bi bi-bar-chart me-2"></i>Balken Einnahmen (grün) / Ausgaben (rot), Linie Saldo (blau)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabelle: Erwartete Bewegungen (täglich, wie Master Liqui-Plan) -->
+    <div class="card mb-3">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <span>Erwartete Bewegungen (täglich) – angelehnt an Master Liqui-Plan</span>
+            <small class="text-muted">Erw. Einnahmen = Ø/Tag (90 Tage); Ablösung Fzge = bei geplanten Verkäufen einfinanzierter Fz</small>
+        </div>
+        <div class="card-body p-0 overflow-auto">
+            <table class="table table-sm table-striped liquid-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Datum</th>
+                        <th class="text-end">Saldo (€)</th>
+                        <th class="text-end">Einnahmen (IST)</th>
+                        <th class="text-end">Erw. Einnahmen (Ø)</th>
+                        <th class="text-end text-muted" title="Noch nicht angebunden">Erw. Fz <i class="bi bi-question-circle small"></i></th>
+                        <th class="text-end">Tilgungen</th>
+                        <th class="text-end text-muted" title="Einbaubar">Zinsen EK <i class="bi bi-question-circle small"></i></th>
+                        <th class="text-end">Ablösung Fzge</th>
+                        <th class="text-end">Ausgaben (IST)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>09.03.2026</td>
+                        <td class="text-end">−2.378.011 €</td>
+                        <td class="text-end text-success">72.808 €</td>
+                        <td class="text-end text-success">31.650 €</td>
+                        <td class="text-end text-muted">—</td>
+                        <td class="text-end text-danger">7.139 €</td>
+                        <td class="text-end text-muted">—</td>
+                        <td class="text-end">—</td>
+                        <td class="text-end text-danger">121.911 €</td>
+                    </tr>
+                    <tr>
+                        <td>10.03.2026</td>
+                        <td class="text-end">−2.381.200 €</td>
+                        <td class="text-end">—</td>
+                        <td class="text-end text-success">31.650 €</td>
+                        <td class="text-end text-muted">—</td>
+                        <td class="text-end">—</td>
+                        <td class="text-end text-muted">—</td>
+                        <td class="text-end">—</td>
+                        <td class="text-end">—</td>
+                    </tr>
+                    <tr>
+                        <td>11.03.2026</td>
+                        <td class="text-end">−2.385.100 €</td>
+                        <td class="text-end text-success">45.000 €</td>
+                        <td class="text-end text-success">31.650 €</td>
+                        <td class="text-end text-muted">—</td>
+                        <td class="text-end text-danger">3.450 €</td>
+                        <td class="text-end text-muted">—</td>
+                        <td class="text-end text-danger">18.200 €</td>
+                        <td class="text-end text-danger">88.900 €</td>
+                    </tr>
+                    <tr>
+                        <td>12.03.2026</td>
+                        <td class="text-end">−2.390.050 €</td>
+                        <td class="text-end">—</td>
+                        <td class="text-end text-success">31.650 €</td>
+                        <td class="text-end text-muted">—</td>
+                        <td class="text-end text-danger">12.200 €</td>
+                        <td class="text-end text-muted">—</td>
+                        <td class="text-end">—</td>
+                        <td class="text-end text-danger">4.950 €</td>
+                    </tr>
+                    <tr class="table-secondary">
+                        <td colspan="9" class="text-center small py-2">
+                            … und 57 weitere Tage
+                            <span class="ms-2 text-muted">| Erw. Fz / Zinsen EK: Hinweis siehe gelbe Box oben</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Optional: Wochenansicht (wie Excel „Liquiditätsplan Woche“) -->
+    <div class="card">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <span>Wochenansicht (optional) – wie Vorlage „Liquiditätsplan Woche“</span>
+            <span class="badge bg-secondary">Daten aus Tageswerten aggregiert</span>
+        </div>
+        <div class="card-body">
+            <p class="small text-muted mb-2">Pro Woche: Eingänge (NW Auslieferg., Vfwg. Zul., GW Auslief., sonstige) und Ausgänge (Gehalt, Steuer, Lieferanten, Werk./T+Z, Ablösung Fzge, sonstige) – zur Validierung gegen Excel.</p>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Woche</th>
+                            <th class="text-end">Eingänge</th>
+                            <th class="text-end">Ausgänge</th>
+                            <th class="text-end">E/A (Netto)</th>
+                            <th class="text-end">Saldo Ende</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>KW 11 (09.03.–15.03.)</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td></tr>
+                        <tr><td>KW 12</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="small text-warning mb-0"><i class="bi bi-info-circle me-1"></i> Wenn gewünscht: Prüfen mit Buchhaltung/Dispo, ob wöchentliche Soll-Werte manuell vorliegen zum Abgleich.</p>
+        </div>
+    </div>
+</div>
+</body>
+</html>

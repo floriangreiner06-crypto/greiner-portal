@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockup: Rechteverwaltung + Mitarbeiter-Konfig + Urlaubsverwaltung</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #333; background: #f1f5f9; }
+        /* Top Nav */
+        .topnav {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        .topnav .logo { font-weight: 800; font-size: 1.1rem; }
+        .topnav a { color: rgba(255,255,255,0.9); text-decoration: none; font-size: 13px; }
+        .topnav a:hover { color: white; }
+        .topnav .right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+        /* Page */
+        .page { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .rechte-header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            padding: 1.25rem 1.75rem;
+            color: white;
+            border-radius: 0.5rem;
+            margin-bottom: 0;
+        }
+        .rechte-header .subtitle { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+        .rechte-header .title { font-size: 1.35rem; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+        .rechte-header .title .ssot { margin-left: auto; font-size: 0.75rem; font-weight: 600; color: #a5b4fc; }
+        .rechte-status-bar {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-top: none;
+            border-radius: 0 0 0.5rem 0.5rem;
+            padding: 0.6rem 1.75rem;
+            font-size: 0.8rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+        .rechte-status-bar .stat-ok { color: #059669; }
+        .rechte-status-bar .stat-default { color: #6b7280; }
+        .rechte-status-bar .stat-warn { color: #dc2626; }
+        .rechte-info-banner {
+            background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+            border: 1px solid #bfdbfe;
+            border-radius: 0.6rem;
+            padding: 0.9rem 1.1rem;
+            margin: 1rem 0;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        /* Tabs */
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin: 1rem 0;
+            padding: 6px;
+            background: white;
+            border-radius: 0.5rem;
+            border: 1px solid #e5e7eb;
+        }
+        .tabs .tab {
+            padding: 8px 14px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+        }
+        .tabs .tab:hover { background: #f1f5f9; color: #334155; }
+        .tabs .tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .tabs .tab .count { font-size: 0.75rem; opacity: 0.9; margin-left: 4px; }
+        /* Content */
+        .tab-content { display: none; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb; overflow: hidden; }
+        .tab-content.active { display: block; }
+        .tab-content .toolbar { padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; display: flex; gap: 12px; align-items: center; }
+        .tab-content .toolbar input { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; width: 260px; }
+        .tab-content .toolbar .filter { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 12px 16px; background: #f8fafc; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; }
+        td { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
+        tr:hover { background: #f8fafc; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+        .badge-portal { background: #ecfdf5; color: #059669; }
+        .badge-role { background: #e0e7ff; color: #4338ca; }
+        .badge-dept { background: #fef3c7; color: #b45309; }
+        .action-btn { padding: 6px 10px; border: none; background: #f1f5f9; border-radius: 6px; cursor: pointer; color: #64748b; }
+        .action-btn:hover { background: #e2e8f0; color: #334155; }
+        .small { font-size: 0.75rem; color: #64748b; }
+        /* Urlaubsverwaltung content */
+        .uv-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; padding: 1.5rem; }
+        .uv-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1rem; }
+        .uv-card h4 { margin: 0 0 8px 0; font-size: 0.95rem; color: #334155; }
+        .uv-card p { margin: 0; font-size: 0.85rem; color: #64748b; }
+        .uv-card a { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; color: #2563eb; font-weight: 600; font-size: 0.85rem; text-decoration: none; }
+        .uv-card a:hover { text-decoration: underline; }
+        .uv-table-wrap { padding: 1rem 1.5rem; }
+    </style>
+</head>
+<body>
+    <div class="topnav">
+        <span class="logo">Greiner DRIVE</span>
+        <a href="#">Dashboard</a>
+        <a href="#">Service</a>
+        <a href="#">Verkauf</a>
+        <a href="#">Controlling</a>
+        <a href="#">Team Greiner</a>
+        <a href="#">Admin</a>
+        <a href="#">Hilfe</a>
+        <div class="right">
+            <i class="fas fa-bell"></i>
+            <span>Florian</span>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="rechte-header">
+            <div class="subtitle">Admin</div>
+            <div class="title">
+                <i class="fas fa-lock"></i> Rechteverwaltung
+                <span class="ssot">SSOT: Portal (Option A)</span>
+            </div>
+        </div>
+        <div class="rechte-status-bar">
+            <span class="stat-ok"><i class="fas fa-check-circle"></i> 57 mit Portal-Rolle</span>
+            <span class="stat-default"><i class="fas fa-circle"></i> 0 Default</span>
+            <span class="stat-warn"><i class="fas fa-times-circle"></i> 0 ohne Rolle</span>
+        </div>
+
+        <div class="rechte-info-banner">
+            <strong>So funktioniert's:</strong> Ein Ort für Rollen, Mitarbeiter-Struktur und Urlaub. Portal-Rolle bestimmt Navi & Features; hier pflegst du zusätzlich Abteilung, Genehmiger, Vertretung pro Mitarbeiter sowie Urlaubsansprüche und Sperren.
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="user"><i class="fas fa-users"></i> User & Rollen <span class="count">57</span></button>
+            <button class="tab" data-tab="rollen">Rollen-Features</button>
+            <button class="tab" data-tab="matrix">Matrix</button>
+            <button class="tab" data-tab="mitarbeiter"><i class="fas fa-user-edit"></i> Mitarbeiter-Konfig</button>
+            <button class="tab" data-tab="urlaub"><i class="fas fa-umbrella-beach"></i> Urlaubsverwaltung</button>
+        </div>
+
+        <!-- Tab: User & Rollen -->
+        <div class="tab-content active" id="content-user">
+            <div class="toolbar">
+                <input type="text" placeholder="Name oder E-Mail suchen...">
+                <select class="filter"><option>Alle User</option></select>
+                <span class="small">57 von 57 Benutzern</span>
+            </div>
+            <table>
+                <thead>
+                    <tr><th>Mitarbeiter</th><th>LDAP-Info</th><th>Portal-Rolle</th><th>Quelle</th><th>Aktion</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Aleyna Irep<br><span class="small">Letzter Login: 23.02.26, 12:28</span></td>
+                        <td>Kundenzentrale, Automobilkauffrau</td>
+                        <td><span class="badge badge-role">service</span></td>
+                        <td><span class="badge badge-portal">Portal ✓</span></td>
+                        <td><button class="action-btn"><i class="fas fa-pen"></i></button></td>
+                    </tr>
+                    <tr>
+                        <td>Andreas Dederer<br><span class="small">Letzter Login: 20.02.26, 10:44</span></td>
+                        <td>Service, zertifizierter Opel Servicetechniker</td>
+                        <td><span class="badge badge-role">werkstatt</span></td>
+                        <td><span class="badge badge-portal">Portal ✓</span></td>
+                        <td><button class="action-btn"><i class="fas fa-pen"></i></button></td>
+                    </tr>
+                    <tr>
+                        <td>Margit Loibl<br><span class="small">Letzter Login: 24.02.26, 09:15</span></td>
+                        <td>Disposition</td>
+                        <td><span class="badge badge-role">mitarbeiter</span></td>
+                        <td><span class="badge badge-portal">Portal ✓</span></td>
+                        <td><button class="action-btn"><i class="fas fa-pen"></i></button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Tab: Mitarbeiter-Konfig -->
+        <div class="tab-content" id="content-mitarbeiter">
+            <div class="toolbar">
+                <input type="text" placeholder="Mitarbeiter suchen...">
+                <select class="filter"><option>Alle Abteilungen</option></select>
+                <span class="small">72 Mitarbeiter</span>
+            </div>
+            <table>
+                <thead>
+                    <tr><th>Mitarbeiter</th><th>Abteilung</th><th>Standort</th><th>Genehmiger (Urlaub)</th><th>Vertritt</th><th>wird vertreten</th><th>Aktion</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Susanne Kerscher</td>
+                        <td><span class="badge badge-dept">Disposition</span></td>
+                        <td>Deggendorf</td>
+                        <td>Margit Loibl</td>
+                        <td>—</td>
+                        <td>Seyda Sahbaz</td>
+                        <td><button class="action-btn"><i class="fas fa-pen"></i> Bearbeiten</button></td>
+                    </tr>
+                    <tr>
+                        <td>Margit Loibl</td>
+                        <td><span class="badge badge-dept">Disposition</span></td>
+                        <td>Deggendorf</td>
+                        <td>—</td>
+                        <td>Jennifer Bielmeier</td>
+                        <td>Jennifer Bielmeier, Seyda Sahbaz</td>
+                        <td><button class="action-btn"><i class="fas fa-pen"></i> Bearbeiten</button></td>
+                    </tr>
+                    <tr>
+                        <td>Jennifer Bielmeier</td>
+                        <td><span class="badge badge-dept">Disposition</span></td>
+                        <td>Deggendorf</td>
+                        <td>—</td>
+                        <td>Margit Loibl, Seyda Sahbaz</td>
+                        <td>—</td>
+                        <td><button class="action-btn"><i class="fas fa-pen"></i> Bearbeiten</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Tab: Urlaubsverwaltung -->
+        <div class="tab-content" id="content-urlaub">
+            <div class="uv-cards">
+                <div class="uv-card">
+                    <h4><i class="fas fa-calendar-check"></i> Urlaubsansprüche</h4>
+                    <p>Ansprüche, Verbrauch und Resturlaub pro Mitarbeiter und Jahr bearbeiten.</p>
+                    <a href="#"><i class="fas fa-list"></i> Zur Mitarbeiterliste mit Ansprüchen</a>
+                </div>
+                <div class="uv-card">
+                    <h4><i class="fas fa-ban"></i> Urlaubssperren</h4>
+                    <p>Sperren für Abteilung/Standort und Jahr (z. B. Inventur, Betriebsferien).</p>
+                    <a href="#"><i class="fas fa-cog"></i> Sperren verwalten</a>
+                </div>
+                <div class="uv-card">
+                    <h4><i class="fas fa-sitemap"></i> Chef-Übersicht</h4>
+                    <p>Alle Genehmiger und Teams, offene Anträge – basierend auf der Mitarbeiter-Konfig.</p>
+                    <a href="#"><i class="fas fa-external-link-alt"></i> Chef-Übersicht öffnen</a>
+                </div>
+            </div>
+            <div class="uv-table-wrap">
+                <p class="small" style="margin-bottom: 10px;">Jahr 2026 – Auszug Ansprüche (Beispiel)</p>
+                <table>
+                    <thead>
+                        <tr><th>Mitarbeiter</th><th>Abteilung</th><th>Anspruch</th><th>Urlaub</th><th>Verfügb.</th><th>Aktion</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Susanne Kerscher</td><td>Disposition</td><td>27</td><td>6</td><td>21</td><td><button class="action-btn"><i class="fas fa-pen"></i></button></td></tr>
+                        <tr><td>Margit Loibl</td><td>Disposition</td><td>28</td><td>8</td><td>20</td><td><button class="action-btn"><i class="fas fa-pen"></i></button></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab: Rollen-Features (placeholder) -->
+        <div class="tab-content" id="content-rollen">
+            <div class="toolbar">Rollen-Features – welche Rolle hat welches Feature</div>
+            <p style="padding: 2rem; color: #64748b;">Rollen-Features Matrix (wie bisher in Rechteverwaltung).</p>
+        </div>
+
+        <!-- Tab: Matrix (placeholder) -->
+        <div class="tab-content" id="content-matrix">
+            <div class="toolbar">Matrix – Übersicht Rolle × Feature</div>
+            <p style="padding: 2rem; color: #64748b;">Matrix-Ansicht (wie bisher).</p>
+        </div>
+    </div>
+
+    <script>
+        document.querySelectorAll('.tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                var t = this.getAttribute('data-tab');
+                document.querySelectorAll('.tab').forEach(function(x) { x.classList.remove('active'); });
+                document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+                this.classList.add('active');
+                var content = document.getElementById('content-' + t);
+                if (content) content.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

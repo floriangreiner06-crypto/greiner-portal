@@ -1,0 +1,452 @@
+{
+  "programme": [
+    {
+      "quelle": "RS-V-2025-125_Aktualisierung Vertriebsprogramm Hyundai Q1.pdf",
+      "hersteller": "Hyundai",
+      "programm_bezeichnung": "Vertriebsprogramm Privat- und Gewerbekunden",
+      "von_datum": "2026-01-01",
+      "bis_datum": "2026-03-31",
+      "konditionen": [
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "INSTER Barpreisprämie (privat)",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Gewerbekundenprämien",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Leasing",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Finanzierungszins",
+              "typ": "pct",
+              "wert": 0.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Höchstalter für nicht zugelassene Lagerfahrzeuge",
+              "typ": "eur",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Mindesthaltedauer Vorführwagen",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Versehrtenrabatt (GdB >=50%)",
+              "typ": "pct",
+              "wert": 2.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Leasing/Finanzierung",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Leasing/Finanzierungsprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW n.gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Vorführwagenprämie",
+              "typ": "pct",
+              "wert": 6.5
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "INSTER",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 2.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "KONA EV (ab MJ 24)",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.5
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "IONIQ 5 FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "IONIQ 5 N",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 8.5
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "IONIQ 6",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "IONIQ 9",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 7.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "KONA ICE (ab MJ 24)",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 15.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "KONA HEV (ab MJ 24)",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 13.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "TUCSON ICE FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 18.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "TUCSON HEV FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 14.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "TUCSON PHEV FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 13.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "SANTA FE HEV",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 7.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "SANTA FE PHEV",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 6.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "NEXO",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 7.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "i10 FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 6.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "i20 FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "i-range, Bayon, i30 FL, Staria",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 13.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "BAYON FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "STARIA HEV",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 5.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Leasing",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Leasing/Finanzierungsprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Finanzierung",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Leasing/Finanzierungsprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Gewerbekundenprämien",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Grundhändlermarge",
+              "typ": "pct",
+              "wert": 8.0
+            },
+            {
+              "bezeichnung": "Kalkulierte Restmarge Small Fleet",
+              "typ": "pct",
+              "wert": 5.0
+            },
+            {
+              "bezeichnung": "Kalkulierte Restmarge Medium Fleet",
+              "typ": "pct",
+              "wert": 4.0
+            },
+            {
+              "bezeichnung": "Kalkulierte Restmarge Large Fleet",
+              "typ": "pct",
+              "wert": 3.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Gewerbekunden Small Fleet",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie INSTER",
+              "typ": "pct",
+              "wert": 5.5
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie KONA EV (ab MJ 24)",
+              "typ": "pct",
+              "wert": 13.5
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie IONIQ 5 FLE",
+              "typ": "pct",
+              "wert": 14.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie IONIQ 5 N",
+              "typ": "pct",
+              "wert": 11.5
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie IONIQ 6",
+              "typ": "pct",
+              "wert": 14.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie IONIQ 9",
+              "typ": "pct",
+              "wert": 9.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie KONA ICE (ab MJ 24)",
+              "typ": "pct",
+              "wert": 17.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie KONA HEV (ab MJ 24)",
+              "typ": "pct",
+              "wert": 15.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie TUCSON ICE FL",
+              "typ": "pct",
+              "wert": 20.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie TUCSON HEV FLS",
+              "typ": "pct",
+              "wert": 16.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie TUCSON P HEV FL",
+              "typ": "pct",
+              "wert": 17.0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "quelle": "RS-V-2025-125_Aktualisierung Vertriebsprogramm Hyundai Q1.pdf"
+}

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mockup 02 - Werkstatt und Teile Dispo</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111827;
+      --card: #1f2937;
+      --line: #2d3b53;
+      --txt: #f1f5f9;
+      --muted: #9ca3af;
+      --blue: #60a5fa;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: radial-gradient(circle at top right, #111f3a 0%, var(--bg) 45%);
+      color: var(--txt);
+    }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 18px; }
+    .title { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+    .sub { color: var(--muted); margin-bottom: 14px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 12px;
+    }
+    .panel {
+      background: rgba(17,24,39,.92);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 540px;
+    }
+    .h { color: var(--blue); font-weight: 700; margin-bottom: 8px; }
+    .job {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--blue);
+      border-radius: 9px;
+      padding: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .chip {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      margin-left: 6px;
+    }
+    .ok { color: var(--green); }
+    .warn { color: var(--amber); }
+    .err { color: var(--red); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 7px 6px;
+      text-align: left;
+    }
+    th { color: var(--muted); font-size: 12px; }
+    .step {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-left: 3px solid var(--amber);
+      background: rgba(245,158,11,.08);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .footer {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px dashed var(--line);
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Mockup 02: Werkstatt-Dispo + Teile-Dispo</div>
+    <div class="sub">Ziel: DRIVE disponiert zentral, Locosoft erhaelt alle relevanten Rueckmeldungen als Fallback.</div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="h">Werkstatt-Dispo Board</div>
+        <div class="job"><strong>#A-44012 Astra Service</strong><span class="chip">30 AW</span><br/>Mechaniker: 5112 | Slot: 08:30-11:00 | Buehne 2</div>
+        <div class="job"><strong>#A-44015 Corsa Bremsen</strong><span class="chip">18 AW</span><br/>Mechaniker: 5230 | Slot: 11:00-13:00 | Buehne 1</div>
+        <div class="job"><strong>#A-44019 Garantie Diagnose</strong><span class="chip">12 AW</span><br/>Mechaniker: 5066 | Slot: 13:30-15:00 | Diagnoseplatz</div>
+        <div class="job"><strong>#A-44021 Unfall Vorpruefung</strong><span class="chip">15 AW</span><br/>Mechaniker: offen | Slot-Vorschlag: 15:00-16:30</div>
+        <div class="step">Drag-and-Drop in DRIVE erzeugt Dispo-Event -> Write-back nach Locosoft Terminplaner.</div>
+      </section>
+
+      <section class="panel">
+        <div class="h">Teile-Disposition</div>
+        <table>
+          <thead>
+            <tr><th>Auftrag</th><th>Teil</th><th>Status</th><th>ETA</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>A-44012</td><td>Bremssatz VA</td><td class="ok">Reserviert</td><td>Heute 10:30</td></tr>
+            <tr><td>A-44015</td><td>Filterset</td><td class="warn">Bestellt</td><td>Morgen 08:00</td></tr>
+            <tr><td>A-44019</td><td>Sensor Kit</td><td class="err">Rueckstand</td><td>offen</td></tr>
+            <tr><td>A-44021</td><td>Lackmaterial</td><td class="ok">Lager</td><td>-</td></tr>
+          </tbody>
+        </table>
+        <div class="step">Teile-Status steuert automatisch Terminvorschlaege (z. B. keine Endplanung bei kritischem Rueckstand).</div>
+      </section>
+
+      <section class="panel">
+        <div class="h">Sync + Konfliktcenter</div>
+        <table>
+          <thead>
+            <tr><th>Event</th><th>Status</th><th>System</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>DISPO_ASSIGN 44012</td><td class="ok">SYNCED</td><td>Locosoft</td></tr>
+            <tr><td>PARTS_ORDER 44015</td><td class="warn">PENDING</td><td>Locosoft</td></tr>
+            <tr><td>DISPO_MOVE 44019</td><td class="err">FAILED</td><td>Locosoft</td></tr>
+            <tr><td>PARTS_STATUS 44021</td><td class="ok">SYNCED</td><td>Locosoft</td></tr>
+          </tbody>
+        </table>
+        <div class="step">Bei Fehlern: Retry mit Backoff -> falls weiter fehlerhaft, manuelle Freigabe im Sync-Center.</div>
+      </section>
+    </div>
+
+    <div class="footer">Hinweis Mockup: Werkstatt- und Teile-Dispo sind eng gekoppelt. DRIVE entscheidet, Locosoft bleibt Fallback und Referenzspeicher.</div>
+  </div>
+</body>
+</html>
+

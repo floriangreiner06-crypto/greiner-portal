@@ -1,0 +1,88 @@
+{
+  "timestamp": "2026-03-23T10:34:05",
+  "pages": {
+    "auto_bewerten": {
+      "url": "https://dashboard.motocost.com/d/eemy79vsj9jwgc/auto-bewerten",
+      "api_requests": 21,
+      "ds_query_requests": 4,
+      "ref_counts": {
+        "metricFindQuery": 2,
+        "A": 2
+      },
+      "pagination_flags": {
+        "contains_limit": false,
+        "contains_offset": false,
+        "contains_skip": false
+      },
+      "sample_api_urls": [
+        "https://dashboard.motocost.com/api/plugins/grafana-exploretraces-app/settings",
+        "https://dashboard.motocost.com/api/plugins/grafana-lokiexplore-app/settings",
+        "https://dashboard.motocost.com/api/plugins/grafana-metricsdrilldown-app/settings",
+        "https://dashboard.motocost.com/api/plugins/grafana-pyroscope-app/settings",
+        "https://dashboard.motocost.com/api/user/orgs",
+        "https://dashboard.motocost.com/api/user/preferences",
+        "https://dashboard.motocost.com/api/folders/cehrnouguadc0c?accesscontrol=true&isLegacyCall=false",
+        "https://dashboard.motocost.com/api/login/ping",
+        "https://dashboard.motocost.com/api/folders/cehrnouguadc0c?accesscontrol=true&isLegacyCall=false",
+        "https://dashboard.motocost.com/api/plugins/meln5674-mongodb-community/settings",
+        "https://dashboard.motocost.com/api/prometheus/grafana/api/v1/rules?dashboard_uid=eemy79vsj9jwgc",
+        "https://dashboard.motocost.com/api/user/stars",
+        "https://dashboard.motocost.com/api/annotations?from=1774236855657&to=1774258455657&limit=100&matchAny=false&dashboardUID=eemy79vsj9jwgc",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=b80a4f1b-b3b7-45dc-8296-6bbe69ee86cc",
+        "https://dashboard.motocost.com/api/plugins/volkovlabs-table-panel/settings",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=40cf3596-c915-4213-bb0e-690af845487d",
+        "https://dashboard.motocost.com/api/datasources",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR101",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR102",
+        "https://dashboard.motocost.com/api/login/ping"
+      ],
+      "sample_ds_bodies": [
+        "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"automotiveDe\",\"collection\":\"mobileModels\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"make\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  {\\r\\n    \\\"$group\\\": {\\r\\n      \\\"_id\\\": \\\"$make\\\"\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$project\\\": {\\r\\n      \\\"make\\\": \\\"$_id\\\",\\r\\n      \\\"_id\\\": 0\\r\\n    }\\r\\n  }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236855657\",\"to\":\"1774258455657\"}",
+        "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"automotiveDe\",\"collection\":\"mobileModels\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"n\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n    {\\r\\n    \\\"$match\\\":\\r\\n      {\\r\\n        \\\"make\\\": \\\"Opel\\\"\\r\\n      }\\r\\n  },\\r\\n  {\\r\\n    \\\"$group\\\": {\\r\\n      \\\"_id\\\": \\\"$n\\\"\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$project\\\": {\\r\\n      \\\"n\\\": \\\"$_id\\\",\\r\\n      \\\"_id\\\": 0\\r\\n    }\\r\\n  }\\r\\n]\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236855657\",\"to\":\"1774258455657\"}",
+        "{\"queries\":[{\"aggregation\":\"[\\r\\n  {\\r\\n    \\\"$addFields\\\": {\\r\\n      \\\"psWert\\\": {\\r\\n        \\\"$convert\\\": { \\\"input\\\": \\\"145\\\", \\\"to\\\": \\\"int\\\", \\\"onError\\\": null, \\\"onNull\\\": null }\\r\\n      },\\r\\n      \\\"kmWert\\\": {\\r\\n        \\\"$convert\\\": { \\\"input\\\": \\\"10\\\", \\\"to\\\": \\\"int\\\", \\\"onError\\\": null, \\\"onNull\\\": null }\\r\\n      },\\r\\n      \\\"ezMonat\\\": {\\r\\n        \\\"$cond\\\": [{ \\\"$ne\\\": [\\\"02.2026\\\", \\\"\\\"] }, { \\\"$substrBytes\\\": [\\\"02.2026\\\", 0, 2] }, null]\\r\\n      },\\r\\n      \\\"ezJahr\\\": {\\r\\n        \\\"$cond\\\": [{ \\\"$ne\\\": [\\\"02.2026\\\", \\\"\\\"] }, { \\\"$substrBytes\\\": [\\\"02.2026\\\", 3, 4] }, null]\\r\\n      }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$addFields\\\": {\\r\\n      \\\"psVon\\\": { \\\"$cond\\\": [{ \\\"$ne\\\": [\\\"$psWert\\\", null] }, { \\\"$subtract\\\": [\\\"$psWert\\\", 2] }, null] },\\r\\n      \\\"psBis\\\": { \\\"$cond\\\": [{ \\\"$ne\\\": [\\\"$psWert\\\", null] }, { \\\"$add\\\": [\\\"$psWert\\\", 2] }, null] },\\r\\n      \\\"kmVon\\\": { \\\"$cond\\\": [{ \\\"$ne\\\": [\\\"$kmWert\\\", null] }, { \\\"$subtract\\\": [\\\"$kmWert\\\", 10000] }, null] },\\r\\n      \\\"kmBis\\\": { \\\"$cond\\\": [{ \\\"$ne\\\": [\\\"$kmWert\\\", null] }, { \\\"$add\\\": [\\\"$kmWert\\\", 10000] }, null] },\\r\\n      \\\"ezDatum\\\": {\\r\\n        \\\"$cond\\\": [\\r\\n          { \\\"$and\\\": [{ \\\"$ne\\\": [\\\"$ezJahr\\\", null] }, { \\\"$ne\\\": [\\\"$ezMonat\\\", null] }] },\\r\\n          {\\r\\n            \\\"$dateFromString\\\": {\\r\\n              \\\"dateString\\\": { \\\"$concat\\\": [\\\"$ezJahr\\\", \\\"-\\\", \\\"$ezMonat\\\", \\\"-01T00:00:00Z\\\"] }\\r\\n            }\\r\\n          },\\r\\n          null\\r\\n        ]\\r\\n      }\\r\\"
+      ]
+    },
+    "auto1": {
+      "url": "https://dashboard.motocost.com/d/aehahbds97bpcb/auto1",
+      "api_requests": 23,
+      "ds_query_requests": 7,
+      "ref_counts": {
+        "A": 7
+      },
+      "pagination_flags": {
+        "contains_limit": false,
+        "contains_offset": false,
+        "contains_skip": false
+      },
+      "sample_api_urls": [
+        "https://dashboard.motocost.com/api/plugins/grafana-exploretraces-app/settings",
+        "https://dashboard.motocost.com/api/plugins/grafana-lokiexplore-app/settings",
+        "https://dashboard.motocost.com/api/plugins/grafana-metricsdrilldown-app/settings",
+        "https://dashboard.motocost.com/api/plugins/grafana-pyroscope-app/settings",
+        "https://dashboard.motocost.com/api/user/orgs",
+        "https://dashboard.motocost.com/api/user/preferences",
+        "https://dashboard.motocost.com/api/folders/cehrnouguadc0c?accesscontrol=true&isLegacyCall=false",
+        "https://dashboard.motocost.com/api/login/ping",
+        "https://dashboard.motocost.com/api/folders/cehrnouguadc0c?accesscontrol=true&isLegacyCall=false",
+        "https://dashboard.motocost.com/api/user/stars",
+        "https://dashboard.motocost.com/api/annotations?from=1743225926924&to=1743269126924&limit=100&matchAny=false&dashboardUID=aehahbds97bpcb",
+        "https://dashboard.motocost.com/api/search?limit=100&type=dash-db",
+        "https://dashboard.motocost.com/api/prometheus/grafana/api/v1/rules?dashboard_uid=aehahbds97bpcb",
+        "https://dashboard.motocost.com/api/plugins/meln5674-mongodb-community/settings",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR100",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR101",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR102",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR103",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR104",
+        "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR105"
+      ],
+      "sample_ds_bodies": [
+        "{\"queries\":[{\"aggregation\":\"[\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"active\\\": true,\\r\\n      \\\"comparisonPrices.count\\\": {\\r\\n        \\\"$gte\\\": 5\\r\\n      },\\r\\n      \\\"countryCode\\\": \\\"DE\\\",\\r\\n      \\\"km\\\": {\\r\\n        \\\"$lte\\\": 120000\\r\\n      }\\r\\n      \\r\\n    }\\r\\n  },\\r\\n\\r\\n  {\\r\\n    \\\"$lookup\\\": {\\r\\n      \\\"from\\\": \\\"auto1AltersSent\\\",\\r\\n      \\\"localField\\\": \\\"alertContent.stockNumber\\\",\\r\\n      \\\"foreignField\\\": \\\"stockNumber\\\",\\r\\n      \\\"as\\\": \\\"altersSentDocs\\\"\\r\\n    }\\r\\n  },\\r\\n\\r\\n  {\\r\\n    \\\"$addFields\\\": {\\r\\n      \\\"firstPrice\\\": {\\r\\n        \\\"$subtract\\\": [\\r\\n          {\\r\\n            \\\"$divide\\\": [\\r\\n              \\\"$searchPrice\\\",\\r\\n              100\\r\\n            ]\\r\\n          },\\r\\n          {\\r\\n            \\\"$arrayElemAt\\\": [\\r\\n              \\\"$priceHistory.price\\\",\\r\\n              0\\r\\n            ]\\r\\n          }\\r\\n        ]\\r\\n      },\\r\\n      \\\"price\\\": {\\r\\n        \\\"$divide\\\": [\\r\\n          \\\"$searchPrice\\\",\\r\\n          100\\r\\n        ]\\r\\n      },\\r\\n      \\\"ertrag\\\": {\\r\\n        \\\"$subtract\\\": [\\r\\n          \\\"$comparisonPrices.median\\\",\\r\\n          {\\r\\n            \\\"$divide\\\": [\\r\\n              \\\"$searchPrice\\\",\\r\\n              100\\r\\n            ]\\r\\n          }\\r\\n        ]\\r\\n      },\\r\\n      \\\"firstTruck\\\": {\\r\\n        \\\"$arrayElemAt\\\": [\\r\\n          \\\"$deliveryOptions.truck\\\",\\r\\n          0\\r\\n        ]\\r\\n      }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$addFields\\\": {\\r\\n      \\\"transport\\\": {\\r\\n        \\\"$cond",
+        "{\"queries\":[{\"aggregation\":\"[\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"comparisonPrices.count\\\": { \\\"$gte\\\": 5 },\\r\\n      \\\"countryCode\\\": \\\"DE\\\",\\r\\n      \\\"km\\\": { \\\"$lte\\\": 120000 },\\r\\n      \\\"active\\\": true\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$lookup\\\": {\\r\\n      \\\"from\\\": \\\"auto1AltersSent\\\",\\r\\n      \\\"localField\\\": \\\"alertContent.stockNumber\\\",\\r\\n      \\\"foreignField\\\": \\\"stockNumber\\\",\\r\\n      \\\"as\\\": \\\"altersSentDocs\\\"\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$addFields\\\": {\\r\\n      \\\"firstPrice\\\": {\\r\\n        \\\"$subtract\\\": [\\r\\n          { \\\"$divide\\\": [\\\"$searchPrice\\\", 100] },\\r\\n          { \\\"$arrayElemAt\\\": [\\\"$priceHistory.price\\\", 0] }\\r\\n        ]\\r\\n      },\\r\\n      \\\"price\\\": { \\\"$divide\\\": [\\\"$searchPrice\\\", 100] },\\r\\n      \\\"ertrag\\\": {\\r\\n        \\\"$subtract\\\": [\\r\\n          \\\"$comparisonPrices.median\\\",\\r\\n          { \\\"$divide\\\": [\\\"$searchPrice\\\", 100] }\\r\\n        ]\\r\\n      },\\r\\n      \\\"firstTruck\\\": { \\\"$arrayElemAt\\\": [\\\"$deliveryOptions.truck\\\", 0] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$addFields\\\": {\\r\\n      \\\"transport\\\": {\\r\\n        \\\"$cond\\\": {\\r\\n          \\\"if\\\": {\\r\\n            \\\"$gt\\\": [\\r\\n              { \\\"$ifNull\\\": [\\\"$firstTruck.transportCost.amount\\\", 0] },\\r\\n              0\\r\\n            ]\\r\\n          },\\r\\n          \\\"then\\\": {\\r\\n            \\\"$divide\\\": [\\r\\n              { \\\"$toDouble\\\": \\\"$firstTruck.transportCost.amount\\\" },\\r\\n              100\\r\\n            ]\\r\\n          },\\r\\n          \\\"else\\\": null\\r\\n        }\\r\\n  ",
+        "{\"queries\":[{\"aggregation\":\"[\\r\\n  {\\r\\n\\\"$match\\\":\\r\\n{\\\"active\\\": true}\\r\\n},\\r\\n  {\\r\\n    \\\"$count\\\": \\\"stockNumber\\\"\\r\\n  }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"collection\":\"auto1\",\"database\":\"wildmoser\",\"labelFields\":[\"sensorID\"],\"legendFormat\":\"\",\"queryType\":\"Table\",\"refId\":\"A\",\"schemaInference\":true,\"schemaInferenceDepth\":20,\"timestampField\":\"timestamp\",\"timestampFormat\":\"\",\"valueFieldTypes\":[\"float64\"],\"valueFields\":[\"measurement\"],\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":120000,\"maxDataPoints\":351}],\"from\":\"1743225926924\",\"to\":\"1743269126924\"}"
+      ]
+    }
+  },
+  "login_success": true,
+  "login_final_url": "https://dashboard.motocost.com/?orgId=1&from=now-6h&to=now&timezone=browser"
+}

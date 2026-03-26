@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Modalitäten & Parameter – DRIVE (Mockup)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background: #f8fafc; }
+        .card-header-modal { background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); color: white; font-weight: 600; }
+        .anbieter-card { border-left: 4px solid #0d9488; }
+        .table-modalitaeten { font-size: 0.9rem; }
+        .table-modalitaeten th { background: #f1f5f9; white-space: nowrap; }
+        .table-modalitaeten .regel-wert { max-width: 140px; }
+        .badge-typ { font-size: 0.75rem; }
+        .mockup-banner { background: #fef3c7; border-bottom: 1px solid #f59e0b; padding: 0.35rem 1rem; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <div class="mockup-banner"><i class="bi bi-palette me-1"></i> <strong>Mockup</strong> – keine Anbindung an die Datenbank. Nur zur Darstellung des geplanten Layouts.</div>
+
+    <div class="container-fluid py-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+            <div>
+                <a href="#" class="btn btn-outline-secondary btn-sm mb-2"><i class="bi bi-arrow-left me-1"></i>Konfiguration</a>
+                <h1 class="h3 mb-1">Modalitäten & Parameter</h1>
+                <p class="text-muted mb-0">Kreditrahmen, Zinsfreiheit, Zinssätze und Steuerparameter (z. B. Ziel Linienauslastung) verwalten. Werte werden in Einkaufsfinanzierung und Zinsen-Optimierung verwendet.</p>
+            </div>
+            <div>
+                <button type="button" class="btn btn-outline-primary me-2" disabled><i class="bi bi-search me-1"></i>Volltextsuche</button>
+                <button type="button" class="btn btn-primary" disabled><i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren</button>
+            </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <label class="form-label mb-0 me-2">Anbieter</label>
+                <select class="form-select form-select-sm d-inline-block w-auto">
+                    <option value="">Alle Anbieter</option>
+                    <option value="Stellantis">Stellantis</option>
+                    <option value="Santander">Santander</option>
+                    <option value="Hyundai">Hyundai Finance</option>
+                    <option value="Genobank">Genobank</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Stellantis -->
+        <div class="card shadow-sm anbieter-card mb-4">
+            <div class="card-header card-header-modal d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bank me-2"></i>Stellantis</span>
+                <span class="badge bg-light text-dark">2 Vertragsarten</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="p-3 border-bottom bg-light">
+                    <strong>EK-Finanzierung Neuwagen</strong> <span class="text-muted">(EK-NW)</span>
+                    <button type="button" class="btn btn-sm btn-outline-success float-end"><i class="bi bi-plus me-1"></i>Neuer Parameter</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 table-modalitaeten">
+                        <thead>
+                            <tr>
+                                <th>Regel-Typ</th>
+                                <th>Regel-Key</th>
+                                <th>Wert</th>
+                                <th>Einheit</th>
+                                <th>Bedingung / Hinweis</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-secondary badge-typ">zinsfreiheit_tage</span></td>
+                                <td>zinsfreiheit_tage</td>
+                                <td><input type="text" class="form-control form-control-sm regel-wert" value="90" placeholder="Wert"></td>
+                                <td>Tage</td>
+                                <td>Neuwagen</td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary">Speichern</button></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-secondary badge-typ">zinssatz_pct</span></td>
+                                <td>zinssatz_pct</td>
+                                <td><input type="text" class="form-control form-control-sm regel-wert" value="9.03" placeholder="Wert"></td>
+                                <td>Prozent</td>
+                                <td>p.a. nach Zinsfreiheit</td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary">Speichern</button></td>
+                            </tr>
+                            <tr class="table-info">
+                                <td><span class="badge bg-info badge-typ">ziel</span></td>
+                                <td>linienauslastung_ziel</td>
+                                <td><input type="text" class="form-control form-control-sm regel-wert" value="85" placeholder="Wert"></td>
+                                <td>Prozent</td>
+                                <td>Ziel Auslastung der Linie (Stellantis EK)</td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary">Speichern</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-3 border-top bg-light">
+                    <strong>EK-Finanzierung Gebrauchtwagen</strong> <span class="text-muted">(EK-GW)</span>
+                    <button type="button" class="btn btn-sm btn-outline-success float-end"><i class="bi bi-plus me-1"></i>Neuer Parameter</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 table-modalitaeten">
+                        <thead>
+                            <tr>
+                                <th>Regel-Typ</th>
+                                <th>Regel-Key</th>
+                                <th>Wert</th>
+                                <th>Einheit</th>
+                                <th>Bedingung / Hinweis</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="6" class="text-muted text-center py-2">Keine Regeln angelegt (Beispiel).</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Santander -->
+        <div class="card shadow-sm anbieter-card mb-4">
+            <div class="card-header card-header-modal d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bank me-2"></i>Santander</span>
+                <span class="badge bg-light text-dark">1 Vertragsart</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="p-3 border-bottom bg-light">
+                    <strong>EK-Finanzierung</strong> <span class="text-muted">(EK)</span>
+                    <button type="button" class="btn btn-sm btn-outline-success float-end"><i class="bi bi-plus me-1"></i>Neuer Parameter</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 table-modalitaeten">
+                        <thead>
+                            <tr>
+                                <th>Regel-Typ</th>
+                                <th>Regel-Key</th>
+                                <th>Wert</th>
+                                <th>Einheit</th>
+                                <th>Bedingung / Hinweis</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-primary badge-typ">kreditrahmen_gesamt</span></td>
+                                <td>kreditrahmen_gesamt</td>
+                                <td><input type="text" class="form-control form-control-sm regel-wert" value="1500000" placeholder="Wert"></td>
+                                <td>Euro</td>
+                                <td>Gesamtrahmen P@rtnerPlus</td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary">Speichern</button></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-primary badge-typ">kreditrahmen_mobilitaet</span></td>
+                                <td>kreditrahmen_mobilitaet</td>
+                                <td><input type="text" class="form-control form-control-sm regel-wert" value="500000" placeholder="Wert"></td>
+                                <td>Euro</td>
+                                <td>Mobilitätsfahrzeuge (max. 500k)</td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary">Speichern</button></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-secondary badge-typ">tilgung</span></td>
+                                <td>tilgung_60_tag</td>
+                                <td><input type="text" class="form-control form-control-sm regel-wert" value="10" placeholder="Wert"></td>
+                                <td>Prozent</td>
+                                <td>60. Tag</td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary">Speichern</button></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-secondary badge-typ">zinsaufschlag</span></td>
+                                <td>zinsaufschlag_1_90_tag</td>
+                                <td><input type="text" class="form-control form-control-sm regel-wert" value="2.00" placeholder="Wert"></td>
+                                <td>Prozentpunkte</td>
+                                <td>1.–90. Tag (auf Euribor)</td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary">Speichern</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hyundai / Genobank (kurz) -->
+        <div class="card shadow-sm anbieter-card mb-4">
+            <div class="card-header card-header-modal d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bank me-2"></i>Hyundai Finance / Genobank</span>
+                <span class="badge bg-light text-dark">je 1 Vertragsart</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-0">Vertragsarten vorhanden; Ausführungsbestimmungen können hier ebenfalls angezeigt und bearbeitet werden (im Mockup weggelassen).</p>
+            </div>
+        </div>
+
+        <!-- Hinweis Neuer Parameter -->
+        <div class="alert alert-light border">
+            <strong><i class="bi bi-plus-circle me-1"></i>Neuer Parameter</strong> – Mit „Neuer Parameter“ pro Vertragsart können Sie z. B. <code>linienauslastung_ziel</code> (Ziel Linienauslastung Stellantis in %) oder weitere Steuerwerte anlegen, ohne eine DB-Migration. Diese Werte werden von Einkaufsfinanzierung und Auswertungen gelesen.
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

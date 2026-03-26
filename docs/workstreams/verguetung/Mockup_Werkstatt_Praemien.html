@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prämienkonzept Werkstatt — Mockup (keine Echtdaten)</title>
+  <style>
+    body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; font-size: 12px; margin: 16px; background: #f5f5f5; }
+    .sheet { background: #fff; max-width: 100%; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 12px; }
+    h1 { font-size: 14px; color: #333; margin-bottom: 4px; }
+    .subtitle { font-size: 11px; color: #666; margin-bottom: 12px; }
+    table { border-collapse: collapse; min-width: 1400px; table-layout: fixed; }
+    th, td { border: 1px solid #ccc; padding: 4px 6px; vertical-align: middle; }
+    th { background: #e0e0e0; font-weight: 600; text-align: center; font-size: 10px; line-height: 1.2; }
+    td { font-size: 11px; }
+    td.num { text-align: right; }
+    td.center { text-align: center; }
+    .kpi-prod { background: #e8f4ea; }
+    .kpi-leist { background: #e3f2fd; }
+    .kpi-eff { background: #fff3e0; }
+    .header-prod th { background: #c8e6c9; }
+    .header-leist th { background: #bbdefb; }
+    .header-eff th { background: #ffe0b2; }
+    .summe { font-weight: 600; background: #f5f5f5; }
+    .standort { font-size: 10px; color: #666; }
+    .anmerkung { font-style: italic; color: #888; }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <h1>Prämienkonzept Werkstatt — Mockup</h1>
+    <p class="subtitle">Keine Echtdaten. Standorte: DEG = Deggendorf Opel, HYU = Deggendorf Hyundai, LAN = Landau. Nur zur Darstellung des Konzepts.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px">#</th>
+          <th style="width:100px">Mitarbeiter</th>
+          <th style="width:45px">Standort</th>
+          <th style="width:75px">Funktion</th>
+          <th style="width:52px">Anwesenheits-<br>stunden gesamt</th>
+          <th style="width:42px">Fehl-<br>stunden</th>
+          <th style="width:42px">Produktivitäts-<br>faktor</th>
+          <th style="width:52px">Verfügbare Std.<br>für produktive Arbeit</th>
+          <th style="width:48px">Produktive<br>Stunden gesamt</th>
+          <th style="width:42px">Produktive<br>extern</th>
+          <th style="width:42px">Produktive<br>intern</th>
+          <th class="kpi-prod" style="width:50px">IST-<br>Produktivität<br>je MA</th>
+          <th class="kpi-prod" style="width:48px">IST-<br>Produktivität<br>Team</th>
+          <th class="kpi-prod" style="width:58px">ZIEL-Stufen<br>Produktivität</th>
+          <th class="kpi-prod" style="width:52px">Produktivitäts-<br>prämie €</th>
+          <th style="width:48px">Abgerechnete<br>Stunden gesamt</th>
+          <th style="width:42px">Abgerechnet<br>intern</th>
+          <th style="width:42px">Abgerechnet<br>extern</th>
+          <th class="kpi-leist" style="width:50px">IST-<br>Leistungsgrad<br>je MA</th>
+          <th class="kpi-leist" style="width:48px">IST-<br>Leistungsgrad<br>Team</th>
+          <th class="kpi-leist" style="width:58px">ZIEL-Stufen<br>Leistungsgrad</th>
+          <th class="kpi-leist" style="width:52px">Leistungsgrad-<br>prämie €</th>
+          <th class="kpi-eff" style="width:50px">IST-<br>Effektivität<br>je MA</th>
+          <th class="kpi-eff" style="width:48px">IST-<br>Effektivität<br>Team</th>
+          <th class="kpi-eff" style="width:58px">ZIEL-Stufen<br>Effektivität</th>
+          <th class="kpi-eff" style="width:52px">Effektivitäts-<br>prämie €</th>
+          <th style="width:50px">Lohnumsatz<br>gesamt</th>
+          <th style="width:80px">Anmerkung</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Werkstattleiter DEG -->
+        <tr>
+          <td class="center">1</td>
+          <td>Mustermann, Max</td>
+          <td class="center standort">DEG</td>
+          <td>Werkstattleiter</td>
+          <td class="num">176</td>
+          <td class="num">8</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">—</td>
+          <td class="num">0,86</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">100 €</td>
+          <td class="num">72</td>
+          <td class="num">6</td>
+          <td class="num">66</td>
+          <td class="num">—</td>
+          <td class="num">1,05</td>
+          <td class="center">Stufe 1: 95%</td>
+          <td class="num">150 €</td>
+          <td class="num">—</td>
+          <td class="num">0,90</td>
+          <td class="center">Stufe 1: 85%</td>
+          <td class="num">100 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">—</td>
+        </tr>
+        <!-- Stellv. Werkstattl. DEG -->
+        <tr>
+          <td class="center">2</td>
+          <td>Beispiel, Eva</td>
+          <td class="center standort">DEG</td>
+          <td>Stellv. Werkstattl.</td>
+          <td class="num">168</td>
+          <td class="num">0</td>
+          <td class="num">0,7</td>
+          <td class="num">117,6</td>
+          <td class="num">108</td>
+          <td class="num">77</td>
+          <td class="num">31</td>
+          <td class="num">0,92</td>
+          <td class="num">0,86</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">100 €</td>
+          <td class="num">128</td>
+          <td class="num">39</td>
+          <td class="num">89</td>
+          <td class="num">1,18</td>
+          <td class="num">1,05</td>
+          <td class="center">Stufe 1: 95%</td>
+          <td class="num">150 €</td>
+          <td class="num">1,09</td>
+          <td class="num">0,90</td>
+          <td class="center">Stufe 1: 85%</td>
+          <td class="num">100 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">—</td>
+        </tr>
+        <!-- Mechaniker DEG -->
+        <tr>
+          <td class="center">3</td>
+          <td>Demo, Thomas</td>
+          <td class="center standort">DEG</td>
+          <td>Mechaniker</td>
+          <td class="num">160</td>
+          <td class="num">0</td>
+          <td class="num">1</td>
+          <td class="num">160</td>
+          <td class="num">135</td>
+          <td class="num">88</td>
+          <td class="num">47</td>
+          <td class="num">0,84</td>
+          <td class="num">0,86</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">100 €</td>
+          <td class="num">138</td>
+          <td class="num">50</td>
+          <td class="num">88</td>
+          <td class="num">1,02</td>
+          <td class="num">1,05</td>
+          <td class="center">Stufe 1: 95%</td>
+          <td class="num">150 €</td>
+          <td class="num">1,09</td>
+          <td class="num">0,90</td>
+          <td class="center">Stufe 1: 85%</td>
+          <td class="num">100 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">—</td>
+        </tr>
+        <tr>
+          <td class="center">4</td>
+          <td>Test, Sabine</td>
+          <td class="center standort">DEG</td>
+          <td>Mechaniker</td>
+          <td class="num">158</td>
+          <td class="num">0</td>
+          <td class="num">1</td>
+          <td class="num">158</td>
+          <td class="num">130</td>
+          <td class="num">82</td>
+          <td class="num">48</td>
+          <td class="num">0,82</td>
+          <td class="num">0,86</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">100 €</td>
+          <td class="num">133</td>
+          <td class="num">54</td>
+          <td class="num">79</td>
+          <td class="num">1,02</td>
+          <td class="num">1,05</td>
+          <td class="center">Stufe 1: 95%</td>
+          <td class="num">150 €</td>
+          <td class="num">0,86</td>
+          <td class="num">0,90</td>
+          <td class="center">Stufe 1: 85%</td>
+          <td class="num">100 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">—</td>
+        </tr>
+        <tr>
+          <td class="center">5</td>
+          <td>Muster, Klaus</td>
+          <td class="center standort">HYU</td>
+          <td>Mechaniker</td>
+          <td class="num">152</td>
+          <td class="num">8</td>
+          <td class="num">1</td>
+          <td class="num">144</td>
+          <td class="num">125</td>
+          <td class="num">101</td>
+          <td class="num">24</td>
+          <td class="num">0,87</td>
+          <td class="num">0,86</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">100 €</td>
+          <td class="num">120</td>
+          <td class="num">31</td>
+          <td class="num">89</td>
+          <td class="num">0,96</td>
+          <td class="num">1,05</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">100 €</td>
+          <td class="num">0,84</td>
+          <td class="num">0,90</td>
+          <td class="center">Stufe 1: 85%</td>
+          <td class="num">100 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">—</td>
+        </tr>
+        <!-- Langzeitkrank (Ausschluss) -->
+        <tr>
+          <td class="center">6</td>
+          <td>Platzhalter, Lara</td>
+          <td class="center standort">LAN</td>
+          <td>Mechaniker</td>
+          <td class="num">0</td>
+          <td class="num">176</td>
+          <td class="num">1</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">—</td>
+          <td class="num">0,86</td>
+          <td class="center">—</td>
+          <td class="num">0 €</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td class="num">—</td>
+          <td class="num">1,05</td>
+          <td class="center">—</td>
+          <td class="num">0 €</td>
+          <td class="num">—</td>
+          <td class="num">0,90</td>
+          <td class="center">—</td>
+          <td class="num">0 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">&gt; Langzeitkrank</td>
+        </tr>
+        <!-- Azubi 1. Jahr -->
+        <tr>
+          <td class="center">7</td>
+          <td>Azubi-Muster, Finn</td>
+          <td class="center standort">DEG</td>
+          <td>Azubi (1. Jahr)</td>
+          <td class="num">96</td>
+          <td class="num">32</td>
+          <td class="num">1</td>
+          <td class="num">64</td>
+          <td class="num">40</td>
+          <td class="num">19</td>
+          <td class="num">21</td>
+          <td class="num">0,63</td>
+          <td class="num">0,86</td>
+          <td class="center">Stufe 1: 50%</td>
+          <td class="num">75 €</td>
+          <td class="num">39</td>
+          <td class="num">21</td>
+          <td class="num">18</td>
+          <td class="num">0,98</td>
+          <td class="num">1,05</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">75 €</td>
+          <td class="num">0,62</td>
+          <td class="num">0,90</td>
+          <td class="center">Stufe 1: 70%</td>
+          <td class="num">0 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">—</td>
+        </tr>
+        <!-- Azubi 3. Jahr -->
+        <tr>
+          <td class="center">8</td>
+          <td>Azubi-Demo, Lea</td>
+          <td class="center standort">HYU</td>
+          <td>Azubi (3. Jahr)</td>
+          <td class="num">136</td>
+          <td class="num">8</td>
+          <td class="num">1</td>
+          <td class="num">128</td>
+          <td class="num">98</td>
+          <td class="num">65</td>
+          <td class="num">33</td>
+          <td class="num">0,77</td>
+          <td class="num">0,86</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">100 €</td>
+          <td class="num">96</td>
+          <td class="num">30</td>
+          <td class="num">66</td>
+          <td class="num">0,98</td>
+          <td class="num">1,05</td>
+          <td class="center">Stufe 1: 95%</td>
+          <td class="num">150 €</td>
+          <td class="num">0,76</td>
+          <td class="num">0,90</td>
+          <td class="center">Stufe 1: 85%</td>
+          <td class="num">75 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">—</td>
+        </tr>
+        <tr>
+          <td class="center">9</td>
+          <td>Kandidat, Paul</td>
+          <td class="center standort">LAN</td>
+          <td>Mechaniker</td>
+          <td class="num">160</td>
+          <td class="num">0</td>
+          <td class="num">1</td>
+          <td class="num">160</td>
+          <td class="num">142</td>
+          <td class="num">95</td>
+          <td class="num">47</td>
+          <td class="num">0,89</td>
+          <td class="num">0,86</td>
+          <td class="center">Stufe 1: 80%</td>
+          <td class="num">150 €</td>
+          <td class="num">148</td>
+          <td class="num">52</td>
+          <td class="num">96</td>
+          <td class="num">1,04</td>
+          <td class="num">1,05</td>
+          <td class="center">Stufe 1: 95%</td>
+          <td class="num">150 €</td>
+          <td class="num">1,04</td>
+          <td class="num">0,90</td>
+          <td class="center">Stufe 1: 85%</td>
+          <td class="num">150 €</td>
+          <td class="num">—</td>
+          <td class="anmerkung">—</td>
+        </tr>
+        <!-- Summenzeile -->
+        <tr class="summe">
+          <td></td>
+          <td>Prämiensumme gesamt</td>
+          <td></td>
+          <td></td>
+          <td class="num">1106</td>
+          <td class="num">232</td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td class="num">10 800 €</td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td class="num">14 400 €</td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td class="num">7 200 €</td>
+          <td></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top:16px; font-size:11px; color:#666;">
+      <strong>Hinweis:</strong> Alle Namen und Zahlen sind frei erfunden (Mockup). Standorte: DEG = Deggendorf Opel, HYU = Deggendorf Hyundai, LAN = Landau. 
+      Einheiten: Anwesenheit/Produktiv/Abgerechnet in Stunden (Dezimal) pro Beispielmonat. Das Konzept ist noch nicht im Einsatz.
+    </p>
+  </div>
+</body>
+</html>

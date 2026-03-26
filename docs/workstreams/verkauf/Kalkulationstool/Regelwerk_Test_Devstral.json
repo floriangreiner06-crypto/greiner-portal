@@ -1,0 +1,57 @@
+{
+  "quelle": "RS-V-2025-125_Aktualisierung Vertriebsprogramm Hyundai Q1.pdf",
+  "hersteller": "Hyundai",
+  "programm_bezeichnung": "Vertriebsprogramm Privat- und Gewerbekunden",
+  "von_datum": "2026-01-01",
+  "bis_datum": "2026-03-31",
+  "konditionen": [
+    {
+      "aktionstyp": "Privatkunde",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "INSTER Barpreisprämie",
+          "typ": "eur",
+          "wert": null
+        }
+      ]
+    },
+    {
+      "aktionstyp": "Gewerbekunde",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "Finanzierungszins",
+          "typ": "pct",
+          "wert": 0.0
+        }
+      ]
+    },
+    {
+      "aktionstyp": "Gewerbekunde",
+      "modell_pattern": "Medium & Large",
+      "boni": [
+        {
+          "bezeichnung": "IONIQ 5 Prämie",
+          "typ": "eur",
+          "wert": null
+        },
+        {
+          "bezeichnung": "IONIQ 6 Prämie",
+          "typ": "eur",
+          "wert": null
+        },
+        {
+          "bezeichnung": "TUCSON PHEV Prämie",
+          "typ": "eur",
+          "wert": null
+        }
+      ]
+    },
+    {
+      "aktionstyp": "Bestellverpflichtung",
+      "modell_pattern": "i20 & TUCSON",
+      "boni": []
+    }
+  ]
+}

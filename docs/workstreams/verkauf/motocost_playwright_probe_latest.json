@@ -1,0 +1,40 @@
+{
+  "login_success": true,
+  "final_url": "https://dashboard.motocost.com/?orgId=1&from=now-6h&to=now&timezone=browser",
+  "status": {
+    "api_requests": 34,
+    "ds_query_requests": 9
+  },
+  "pagination_flags": {
+    "contains_limit": false,
+    "contains_offset": false,
+    "contains_skip": false
+  },
+  "sample_api_urls": [
+    "https://dashboard.motocost.com/api/plugins/grafana-exploretraces-app/settings",
+    "https://dashboard.motocost.com/api/plugins/grafana-lokiexplore-app/settings",
+    "https://dashboard.motocost.com/api/plugins/grafana-metricsdrilldown-app/settings",
+    "https://dashboard.motocost.com/api/plugins/grafana-pyroscope-app/settings",
+    "https://dashboard.motocost.com/api/login/ping",
+    "https://dashboard.motocost.com/api/dashboards/home",
+    "https://dashboard.motocost.com/api/user/orgs",
+    "https://dashboard.motocost.com/api/user/preferences",
+    "https://dashboard.motocost.com/api/search?limit=30&starred=true",
+    "https://dashboard.motocost.com/api/search?limit=30&type=dash-db",
+    "https://dashboard.motocost.com/api/plugins/grafana-exploretraces-app/settings",
+    "https://dashboard.motocost.com/api/plugins/grafana-lokiexplore-app/settings",
+    "https://dashboard.motocost.com/api/plugins/grafana-metricsdrilldown-app/settings",
+    "https://dashboard.motocost.com/api/plugins/grafana-pyroscope-app/settings",
+    "https://dashboard.motocost.com/api/user/orgs",
+    "https://dashboard.motocost.com/api/user/preferences",
+    "https://dashboard.motocost.com/api/login/ping",
+    "https://dashboard.motocost.com/api/folders/ef00ixvt5ci68e?accesscontrol=true&isLegacyCall=false",
+    "https://dashboard.motocost.com/api/plugins/meln5674-mongodb-community/settings",
+    "https://dashboard.motocost.com/api/prometheus/grafana/api/v1/rules?dashboard_uid=ff05ge90k79j4e"
+  ],
+  "sample_ds_query_bodies": [
+    "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"platform\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$platform\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236688840\",\"to\":\"1774258288840\"}",
+    "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"salesType\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$salesType\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236688840\",\"to\":\"1774258288840\"}",
+    "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true } },\\r\\n  { \\\"$addFields\\\": { \\\"countryCanon\\\": { \\\"$trim\\\": { \\\"input\\\": { \\\"$toString\\\": \\\"$country\\\" } } } } },\\r\\n  { \\\"$match\\\": { \\\"countryCanon\\\": { \\\"$ne\\\": null } } },\\r\\n  { \\\"$match\\\": { \\\"countryCanon\\\": { \\\"$ne\\\": \\\"\\\" } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$countryCanon\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236688840\",\"to\":\"1774258288840\"}"
+  ]
+}

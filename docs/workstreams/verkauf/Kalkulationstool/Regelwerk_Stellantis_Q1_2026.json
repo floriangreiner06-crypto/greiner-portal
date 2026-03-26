@@ -1,0 +1,63 @@
+{
+  "quelle": "vp-13_2025_verkaufsprogramme_q1_2026_update5.pdf",
+  "hersteller": "Stellantis/Opel",
+  "programm_bezeichnung": "Verkaufsprogramme Q1/2026",
+  "von_datum": "2026-01-01",
+  "bis_datum": "2026-03-31",
+  "konditionen": [
+    {
+      "aktionstyp": "VFW gef.",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "Restmargen",
+          "typ": "pct",
+          "wert": 6.0
+        }
+      ]
+    },
+    {
+      "aktionstyp": "TW",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "Restmargen",
+          "typ": "pct",
+          "wert": 6.0
+        }
+      ]
+    },
+    {
+      "aktionstyp": "B2C",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "BEV PKW Finanzierung",
+          "typ": "pct",
+          "wert": 1.99
+        },
+        {
+          "bezeichnung": "BEV PKW Anzahlung",
+          "typ": "eur",
+          "wert": 3000
+        }
+      ]
+    },
+    {
+      "aktionstyp": "B2B",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "Restmargen",
+          "typ": "pct",
+          "wert": 6.0
+        }
+      ]
+    },
+    {
+      "aktionstyp": "OPEL Flat4Free",
+      "modell_pattern": null,
+      "boni": []
+    }
+  ]
+}

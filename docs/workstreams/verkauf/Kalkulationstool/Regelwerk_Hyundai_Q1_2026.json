@@ -1,0 +1,85 @@
+{
+  "quelle": "RS-V-2025-125_Aktualisierung Vertriebsprogramm Hyundai Q1.pdf",
+  "hersteller": "Hyundai",
+  "programm_bezeichnung": "Vertriebsprogramm Privat- und Gewerbekunden Q1 2026",
+  "von_datum": "2026-01-01",
+  "bis_datum": "2026-03-31",
+  "konditionen": [
+    {
+      "aktionstyp": "TW",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "INSTER Barpreisprämie (privat)",
+          "typ": "eur",
+          "wert": null
+        }
+      ]
+    },
+    {
+      "aktionstyp": "Gewerbekunden",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "Konditionen für Gewerbekundengruppen „Medium“ & „Large“",
+          "typ": "eur",
+          "wert": null
+        }
+      ]
+    },
+    {
+      "aktionstyp": "Gewerbekunden",
+      "modell_pattern": [
+        "IONIQ 5",
+        "IONIQ 6",
+        "TUCSON PHEV"
+      ],
+      "boni": [
+        {
+          "bezeichnung": "Konditionen für BEV-Modelle",
+          "typ": "eur",
+          "wert": null
+        }
+      ]
+    },
+    {
+      "aktionstyp": "Finanzierung",
+      "modell_pattern": null,
+      "boni": [
+        {
+          "bezeichnung": "Finanzierungszins (0% bei 24 Monaten)",
+          "typ": "pct",
+          "wert": 0
+        }
+      ]
+    },
+    {
+      "aktionstyp": "Leasing",
+      "modell_pattern": [
+        "TUCSON",
+        "KONA",
+        "i20"
+      ],
+      "boni": [
+        {
+          "bezeichnung": "Leasingangebote",
+          "typ": "eur",
+          "wert": null
+        }
+      ]
+    },
+    {
+      "aktionstyp": "Leasing",
+      "modell_pattern": [
+        "INSTER"
+      ],
+      "boni": [
+        {
+          "bezeichnung": "Restwertoptimierungen",
+          "typ": "eur",
+          "wert": null
+        }
+      ]
+    }
+  ]
+}

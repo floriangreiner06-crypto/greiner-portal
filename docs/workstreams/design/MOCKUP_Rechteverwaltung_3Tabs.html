@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DRIVE – Rechteverwaltung (Mockup 3 Tabs)</title>
+  <style>
+    :root {
+      --primary: #6B7FDB;
+      --primary-light: #8B9AE0;
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --text: #2d3748;
+      --text-muted: #718096;
+      --border: #e5e7eb;
+      --success: #059669;
+      --error: #dc2626;
+      --header-dark-start: #0f172a;
+      --header-dark-end: #1e293b;
+      --card-header-start: #667eea;
+      --card-header-end: #764ba2;
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+      --shadow-sm: 0 2px 4px rgba(0,0,0,0.08);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.12);
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.5; min-height: 100vh; }
+
+    /* Header */
+    .page-header {
+      background: linear-gradient(135deg, var(--header-dark-start) 0%, var(--header-dark-end) 100%);
+      color: white;
+      padding: 1.25rem 1.75rem;
+      border-radius: 0 0 8px 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .page-header .subtitle { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+    .page-header .title { font-size: 1.35rem; font-weight: 800; margin-top: 2px; }
+
+    /* Status bar */
+    .status-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.6rem 1.75rem;
+      font-size: 0.8rem;
+      display: flex; flex-wrap: wrap; gap: 1.5rem;
+    }
+    .status-bar .ok { color: var(--success); }
+    .status-bar .warn { color: var(--error); }
+    .status-bar .muted { color: var(--text-muted); }
+
+    /* Tabs */
+    .tabs {
+      background: var(--surface);
+      border-bottom: 2px solid var(--border);
+      padding: 0 1.5rem;
+      display: flex; gap: 0;
+    }
+    .tabs .tab {
+      padding: 0.75rem 1.25rem;
+      font-weight: 500;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+    .tabs .tab:hover { color: var(--text); }
+    .tabs .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .tabs .tab .badge { font-size: 0.7rem; margin-left: 6px; background: var(--border); color: var(--text); }
+
+    /* Content */
+    .content { padding: 1.5rem 1.75rem; max-width: 1400px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* Tab 1: User & Rollen */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .card-header {
+      background: linear-gradient(135deg, var(--card-header-start) 0%, var(--card-header-end) 100%);
+      color: white;
+      padding: 0.6rem 1rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .card-body { padding: 1rem; }
+    .user-list { list-style: none; }
+    .user-list li {
+      padding: 0.6rem 0.8rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .user-list li:last-child { border-bottom: none; }
+    .user-list li:hover { background: var(--bg); }
+    .role-badge { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); font-weight: 600; }
+    .role-admin { background: #dc2626; color: white; }
+    .role-verkauf { background: #059669; color: white; }
+    .role-werkstatt { background: #d97706; color: white; }
+    .role-mitarbeiter { background: #6b7280; color: white; }
+
+    /* Feature-Zugriff (Nach Rolle) mit inline Filter */
+    .role-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .role-btn {
+      padding: 0.5rem 0.9rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .role-btn:hover { border-color: var(--primary); background: #eff6ff; }
+    .role-btn.active { border-width: 2px; border-color: var(--primary); background: #eff6ff; }
+    .feature-list { font-size: 0.85rem; }
+    .feature-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .feature-row:last-child { border-bottom: none; }
+    .feature-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); }
+    .feature-row .filter-dropdown {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      margin-left: auto;
+      min-width: 140px;
+    }
+    .btn-save { background: var(--primary); color: white; border: none; padding: 0.5rem 1.25rem; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; margin-top: 1rem; }
+    .btn-save:hover { background: var(--primary-light); }
+
+    /* Tab 2: Pills */
+    .pills { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .pill {
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .pill:hover { border-color: var(--primary); color: var(--primary); }
+    .pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .pill-content { display: none; padding: 1rem; background: var(--surface); border-radius: var(--radius-lg); border: 1px solid var(--border); }
+    .pill-content.active { display: block; }
+
+    /* Tab 3: Einstellungen Pills */
+    .settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+    .settings-tile {
+      padding: 1.25rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      text-align: center;
+      transition: box-shadow 0.2s;
+    }
+    .settings-tile:hover { box-shadow: var(--shadow-md); }
+    .settings-tile .icon { font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--primary); }
+    .settings-tile .label { font-weight: 600; font-size: 0.9rem; }
+
+    .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="page-header">
+    <div>
+      <div class="subtitle">DRIVE · Admin</div>
+      <div class="title">Rechteverwaltung</div>
+    </div>
+  </header>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <span class="ok">✓ <strong>42</strong> mit Portal-Rolle</span>
+    <span class="muted">📋 <strong>1</strong> Default</span>
+    <span class="warn">⚠ <strong>2</strong> ohne Rolle</span>
+    <span class="muted" style="margin-left: auto;">SSOT: Portal (Option B)</span>
+  </div>
+
+  <!-- Tabs -->
+  <nav class="tabs">
+    <div class="tab active" data-tab="users"><span>User & Rollen</span><span class="badge">43</span></div>
+    <div class="tab" data-tab="mitarbeiter"><span>Mitarbeiter & Urlaub</span><span class="badge">—</span></div>
+    <div class="tab" data-tab="einstellungen"><span>Einstellungen</span></div>
+  </nav>
+
+  <main class="content">
+    <!-- Panel 1: User & Rollen -->
+    <section class="panel active" id="panel-users">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">User-Liste</div>
+          <div class="card-body">
+            <ul class="user-list">
+              <li><span>Max Mustermann</span><span class="role-badge role-admin">Admin</span></li>
+              <li><span>Anna Schmidt</span><span class="role-badge role-verkauf">Verkauf</span></li>
+              <li><span>Tom Weber</span><span class="role-badge role-werkstatt">Werkstatt</span></li>
+              <li><span>Lisa Müller</span><span class="role-badge role-mitarbeiter">Mitarbeiter</span></li>
+              <li><span>…</span><span class="role-badge role-mitarbeiter">Mitarbeiter</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Rollen & Feature-Zugriff (Nach Rolle)</div>
+          <div class="card-body">
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">Rolle wählen, Features an/abwählen, Filter inline. Speichern nur hier.</p>
+            <div class="role-buttons">
+              <button class="role-btn">Admin</button>
+              <button class="role-btn active">Verkauf</button>
+              <button class="role-btn">Werkstatt</button>
+              <button class="role-btn">Mitarbeiter</button>
+            </div>
+            <div class="feature-list">
+              <div class="feature-row">
+                <input type="checkbox" id="f1" checked> <label for="f1">Auftragseingang</label>
+                <select class="filter-dropdown"><option>Alle, kann filtern</option><option>Eigene, Filter auflösbar</option><option>Nur eigene</option></select>
+              </div>
+              <div class="feature-row">
+                <input type="checkbox" id="f2" checked> <label for="f2">Auslieferungen</label>
+                <select class="filter-dropdown"><option>Eigene, Filter auflösbar</option></select>
+              </div>
+              <div class="feature-row">
+                <input type="checkbox" id="f3"> <label for="f3">OPOS</label>
+                <select class="filter-dropdown"><option>Nur eigene</option></select>
+              </div>
+              <div class="feature-row">
+                <input type="checkbox" id="f4" checked> <label for="f4">Provision</label>
+              </div>
+              <div class="feature-row">
+                <input type="checkbox" id="f5"> <label for="f5">eAutoSeller</label>
+              </div>
+            </div>
+            <button class="btn-save">Speichern</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint">Vorschlag B: Nur „Nach Rolle“ bearbeitbar. „Nach Feature“ und „Matrix“ nur Übersicht (read-only). Filter inline (Vorschlag C).</p>
+    </section>
+
+    <!-- Panel 2: Mitarbeiter & Urlaub -->
+    <section class="panel" id="panel-mitarbeiter">
+      <p style="margin-bottom: 1rem; color: var(--text-muted);">Pills: Mitarbeiter-Konfiguration, Urlaubsverwaltung, Mitarbeiterverwaltung.</p>
+      <div class="pills">
+        <div class="pill active">Mitarbeiter-Konfig</div>
+        <div class="pill">Urlaubsverwaltung</div>
+        <div class="pill">Mitarbeiterverwaltung</div>
+      </div>
+      <div class="pill-content active">
+        <p>Inhalt: Stammdaten, Vertretungen, Urlaubsanspruch pro Mitarbeiter. Link zu „Alle Vertretungsregeln im Organigramm“.</p>
+      </div>
+      <div class="pill-content">
+        <p>Inhalt: Urlaubsanträge, Genehmigungen, Sperren, Massenbuchung.</p>
+      </div>
+      <div class="pill-content">
+        <p>Inhalt: Mitarbeiterverwaltung (Übersicht, Zuordnung, Locosoft-ID).</p>
+      </div>
+    </section>
+
+    <!-- Panel 3: Einstellungen -->
+    <section class="panel" id="panel-einstellungen">
+      <p style="margin-bottom: 1rem; color: var(--text-muted);">Pills: Navigation, Title-Mapping, E-Mail Reports, Architektur.</p>
+      <div class="settings-grid">
+        <div class="settings-tile"><div class="icon">🧭</div><div class="label">Navigation</div></div>
+        <div class="settings-tile"><div class="icon">📋</div><div class="label">Title-Mapping</div></div>
+        <div class="settings-tile"><div class="icon">📧</div><div class="label">E-Mail Reports</div></div>
+        <div class="settings-tile"><div class="icon">⚙️</div><div class="label">Architektur</div></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        const id = 'panel-' + tab.dataset.tab;
+        const panel = document.getElementById(id);
+        if (panel) panel.classList.add('active');
+      });
+    });
+    document.querySelectorAll('.pill').forEach((pill, i) => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.pill-content').forEach(c => c.classList.remove('active'));
+        pill.classList.add('active');
+        document.querySelectorAll('.pill-content')[i].classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

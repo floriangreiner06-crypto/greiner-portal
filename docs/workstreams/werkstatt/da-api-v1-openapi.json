@@ -1,0 +1,4797 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "DA API V1 Reference",
+    "description": "# Developer Notes\n\n## Introduction\n\nDigitales Autohaus (DA) is a multi tenant web application where each tenant can map his organizational structure to instances of the application. A tenant (labeled as _group_ in DA terms) can have multiple sites respectively facilities (labeled _center_). In order to address an instance of the application one has to provide both parameters.\n\nTo access an instance in a webbrowser the URL has to be composed in the following way:\n\n`https://werkstattplanung.net/<group>/<center>/kic`\n\nIn all calls to the DA REST-API the target instance has to be identified by passing the header parameters `group` and `center`. The main endpoint for the DA REST-API is `https://api.werkstattplanung.net/da/v1`.\n\n## API lifecycle\n\nWe have established a basic lifecycle management for our APIs. Currently we differentiate a `beta` and a `stable` branch of each major API version. The stable API will be accessible by the main endpoints (like `/da/v1` or `/da/v2`). The beta versions of the API will be accessible by special beta endpoints (like `/da/v1-beta` or `/da/v2-beta`).\n\nRoutes under the beta branch could be changing and may be not fully functional. Beta routes are meant to be an early access view for our API partners and should be used to pass feedback back to us.\n\nOnce routes are mature they will be migrated to the stable branch and are from then on supported for a longer period of time. We will do our very best to always be backwards compatible with all our changes to the API, but if there are breaking changes necessary, we will inform our partners with an adequately in advance.\n\nWhen beta routes have been marked as stable, we will support those routes as well under the beta branch and the stable branch for a limited time in which the use of the beta branch is deprecated but possible.\nAfter that the beta routes are taken offline and only the stable ones will be accessible.\n\nDetails on the different support periods will be published here shortly.\n\n## Authentification and authorization\n\nAuthorization of an external application which uses the DA REST-API will be carried out over standard OAuth2 protocol. The authorization flow used in this case is the OAuth2 _password grant_ method. For this OAuth flow the following details are required:\n\n* Client ID\n* Client name\n* Client secret\n* Username and password of a registered user in the target instance <br>\n  (**Note 1:** The user has to be unique in the context of the target instance!)\n  (**Note 2:** You have to pass the email address of the user to the API!)\n\n\nThe `grant_type` will always be `password` and the necessary scopes will be implicitly provided by the authorization endpoint.\n\nThe details for the OAuth client, e.g. client ID, name and secret will be provided by Gudat Solutions to each registered developer. These will always be the same for all instances and have to be protected by the external developer.\n\nBy receiving the client credentials an external developer is granted access to the REST-API but an individual authorization in each instance by the end customers administrator is still mandatory.\n\nAdditionally credentials of registered user in the target instance are required which will relate the user identity to each call of the REST API. It depends on the use case and the implementation of the external application which user would be appropriate. One can use a _system account_ which will be used by default for all calls to the API or individual user accounts. It is the responsibility of an external developer to resolve that in his implementation.\n\nWith this information the application has to call the authorization endpoint of the API and receive an authorization token. This token has to be passed in each subsequent call to the API as a _bearer token_ in the authorization header of the request. Each generated token holds an expiration time after which it cannot be used any more. After expiration a new token has to generated either by following the outlined process or by using a _refresh token_ which will be provided by the call to the authorization endpoint as well.\n\n## Token expiration\n\nAfter generating a token, the access token expires in 1 year, the refresh token expiration is increased by 30 days.\nWhen the token is expired the server will send the status code **401** - Unauthorized\n\n##### Recommended authentification implementation\n\nAfter getting a 401 from the server, try to refresh the token. By getting a 401 at the refresh process (this is possible if the refresh token has also expired or the set of scopes has changed) you have to generate a new access token.\n\n### Further information\n\n* [OAuth 2.0 Password Grant](https://oauth.net/2/grant-types/password/)\n* [OAuth 2.0 Refresh Token](https://oauth.net/2/grant-types/refresh-token/)\n\n\n## Current state of the API\n\nThe DA API is still evolving but the published parts for _customers_ and _vehicles_ are meant to be stable in their currently documented form. Especially details regarding the authentication and authorization flow however could be changing for a certain time. Likewise we expect changes to the developer portal itself.\n\nGudat Solutions will notify each registered developer on a short-term basis in case of a significant change.\n\n\n## Demo instance\n\nGudat Solutions provides a demo instance for implementation and integration purposes. This demo instance can be accessed by using the following parameters:\n\n* group = demo\n* center = api\n\nCurrently the instance is not accessible by a webbrowser but only by the API REST endpoint.\n\nFor testing purposes the demo instances will be seeded with demo master data (customers and vehicles) and will be reset periodically.\n\nIf you need access to the application instance from a webbrowser or an inventory of the generated demo data, please get in contact with us.\n\n\n## Getting help\n\nIn order to get help from our developer support team, you can send an email to developer@digitalesautohaus.de.\n\nPlease provide us with the following details:\n\n* Description of the expected result of the request\n* Description of the response of the request\n* Ideally an example request ([cURL](https://curl.se/) oder [Postman](https://www.postman.com/))\n*  URL of the target instance (including domain und endpoint)\n* HTTP method\n* Body payload\n* HTTP header (including bearer token)\n* Plain response\n* HTTP status code\n\n\n# Deeplink integration\n\nBeside the API there are some ways of integrating DA by deeplinks. For this kind of integration you have to know the URL of the DA target instance you want interface with.\n\nExample: `https://werkstattplanung.net/<group>/<center>/kic/<request>`\n\nWhere `group` and `center` depend on the customers instance and `request` can be replaced with one of the following options. The viewId is the ID of the view you want to open. It could be the ID of calendar, table or dashboard view. You can get the ID of the view by inspecting the URL of the view in the browser.\n\n## Deeplinks dossier and appointments\n\n### Creating a blank new dossier\n\n`https://werkstattplanung.net/<group>/<center>/kic/da/index.html#/views/<viewId>?caseId=new`\n\nThis will open the new dossier drawer for the current date. Optionally you can provide a date only as last query parameter. The date has to be in the format `YYYY-MM-DD` and will be used as current date in the view:\n\n`https://werkstattplanung.net/<group>/<center>/kic/da/index.html#/views/<viewId>?caseId=new&date=2024-03-10`\n\n### Creating a new dossier with given data\n\nYou can pass JSON payload as a query parameter to prefill the new dossier drawer:\n\n`https://werkstattplanung.net/<group>/<center>/kic/da/index.html#/views/<viewId>?caseData={<json_payload>}`\n\nFor details regarding the payload, have a look at the `service_events` API documentation.\n\n### Creating a new dossier with given customer/ vehicle\n\nYou can create a new dossier drawer and directly pass parameters for master data search:\n\n`https://werkstattplanung.net/<group>/<center>/kic/da/index.html#/views/<viewId>?searchCustomerNumber=<customer_no>`\n\n`https://werkstattplanung.net/<group>/<center>/kic/da/index.html#/views/<viewId>?searchLicensePlate=<license_plate>`\n\n`https://werkstattplanung.net/<group>/<center>/kic/da/index.html#/views/<viewId>?searchVin=<vin>`\n\n### Open an existing dossier\n\nIf you know the ID of the dossier, you can directly open the drawer filled with case details:\n\n`https://werkstattplanung.net/<group>/<center>/kic/da/index.html#/views/<viewId>?caseId=<dossierId>`\n\n## Deeplinks local wheels view\n\n### Directly opening a predefined filter view in the local wheels view\n\nIdentically to the dashboard, each predefined filter can be directly accessed by passing its name as query parameter:\n\n`https://werkstattplanung.net/<group>/<center>/kic/da/index.html#/local-wheel/search?filter=<filter_name>`\n\n## Deeplinks order\n\n### Open a dossier drawer with existing external order or import it from the Application\n\nYou can open a dossier drawer with an existing order by passing the external order reference and the application ID as query parameters or import it from the external application if it does not exist yet.:\n\n`https://werkstattplanung.net/<group>/<center>/kic/#/?externalOrderRef=<order_id>&application_id=<application_id>`\n\n# Workflows\nYou can configure Workflows and listen to DA events for example to send an Email after creating an appointment.\\\nDA > Management > Workflows\n\n## DA Webhook\n\nYou can listen to most of the events triggered in the DA and get the related Data of the event fired to a pre configured Endpoint.\\\nFor this function you have to configure a Workflow and select the action \"DA - Webhook\" (DA > Management > Workflows).\n\nThe configured endpoint (URL) will be called via HTTP POST request.\\\nThe request body contains the relevant data in JSON format.\\\nYou will get the full data every time (not only the changed attributes).\n\nBody:\n\n```\nevent: The event trigger -> created, updated, deleted, saved\nobject:\n  - type: The type of the triggered object\n  - attributes: Attributes of the triggered object\nuser\n  - id: ID of trigger user\n  - name: Name of trigger user\ndata: This additional data is configurable in the DA Webhook action\n  - dossier\n    - contact\n    - vehicle\n    - appointments\n    - orders\n    - workshop_tasks\n    - replacementVehicle\n```\nExample:\n\n```\n{\n    \"event\": \"updated\",\n    \"object\": {\n      \"type\": \"Statable\",\n      \"attributes\": {\n        \"id\": 4,\n        \"state_id\": 3,\n        \"statable_id\": 4,\n        \"statable_type\": \"App\\\\Models\\\\Dossier\",\n        \"changed_by\": 1,\n        \"created_by\": 3,\n        \"created_at\": \"2023-02-23 10:20:31\",\n        \"updated_at\": \"2023-02-23 11:48:25\",\n      }\n    },\n    \"user\": {\n      \"id\": 1,\n      \"name\": \"Gudat\"\n    },\n    \"data\": {\n      \"dossier\": {\n        \"id\": 4,\n        \"note\": \"Cockpitreinigung\",\n        \"completion_date_time\": \"2023-02-23 16:00:00\",\n        \"preorder_verified\": false,\n        \"maintenance_booklet\": 0,\n        \"vehicle_registration_orignal\": 0,\n        \"requested_call_back\": 0,\n        \"requested_care_program\": 0,\n        \"mobility_addressed\": false,\n        \"mobility_id\": 4,\n        \"mobility_driving_permit\": false,\n        \"mobility_excess\": false,\n        \"mobility_others\": null,\n        \"note_question\": null,\n        \"created_by\": 3,\n        \"created_at\": \"2023-02-16 11:30:00\",\n        \"updated_at\": \"2023-02-23 11:47:35\",\n        \"imported_at\": null,\n        \"reparation_start_date_time\": null,\n        \"reparation_end_date_time\": null,\n        \"application_id\": null,\n        \"external_ref\": null,\n        \"driver\": null,\n        \"driver_phone_number\": null,\n        \"in_open_list\": true,\n        \"divergent_billing_address\": null,\n        \"reminder\": null,\n        \"deposit_key_number\": null,\n        \"canceled_at\": null,\n        \"canceled_by\": null,\n        \"evaluated_by_customer_delta\": false,\n        \"et360_pick_up\": null,\n        \"et360_drop_off\": null,\n        \"et360_auf_achse\": false,\n        \"handled_by\": null,\n        \"changed_by\": 1,\n        \"vehicle_id\": 4,\n        \"contact_id\": 4,\n        \"parking_space\": null,\n        \"service_consultation_id\": null,\n        \"care_program_id\": null,\n        \"is_attendant\": true,\n        \"is_skipping_reception\": false,\n        \"is_vehicle_registration_present\": false,\n        \"contact\": {\n          \"id\": 4,\n          \"external_ref\": \"1672\",\n          \"account_number\": \"1672\",\n          \"salutation_id\": 1,\n          \"last_name\": \"Hohmann\",\n          \"first_name\": \"Arnulf\",\n          \"company\": null,\n          \"phone_number\": \"00331 38118\",\n          \"mobile_number\": \"+49(0) 044359944\",\n          \"email\": \"jochen.oswald@example.net\",\n          \"note\": \"Cockpitreinigung\",\n          \"street\": \"Maja-Beer-Weg 4b\",\n          \"zip_code\": \"74942\",\n          \"city\": \"Garmisch-Partenkirchen\",\n          \"send_event_reminder\": false,\n          \"dse_phone\": true,\n          \"dse_sms\": true,\n          \"dse_fax\": true,\n          \"dse_post\": false,\n          \"dse_opt_in\": false,\n          \"dse_document\": \"Non dolores omnis eos autem rerum distinctio. Voluptas possimus et eum dolorem eaque nihil fugiat.\",\n          \"dse_origin\": \"k\",\n          \"dse_submission\": \"2023-02-23\",\n          \"dse_expiry\": \"2025-02-23\",\n          \"dse_ccs_info\": \"Rerum culpa atque eum eos expedita nihil aspernatur repellat. Dolorem sint quos quis beatae.\",\n          \"dse_email\": false,\n          \"created_by\": 3,\n          \"changed_by\": 3,\n          \"application_id\": \"da\"\n        },\n        \"vehicle\": {\n          \"id\": 4,\n          \"external_ref\": \"U0XAPMPM4PPY86MPC\",\n          \"vehicle_identification_number\": \"U0XAPMPM4PPY86MPC\",\n          \"first_registration_date\": \"2003-02-23\",\n          \"license_plate\": \"HH-B 1197\",\n          \"brand\": \"Opel\",\n          \"model\": \"EL\",\n          \"model_type\": \"Panda\",\n          \"manufacturer_key_number\": \"0590\",\n          \"type_key_number\": \"328\",\n          \"mileage\": \"19614\",\n          \"general_inspection_date\": \"2023-02-23\",\n          \"created_by\": 3,\n          \"changed_by\": 3,\n          \"application_id\": \"da\"\n        },\n        \"appointments\": [\n          {\n            \"id\": 7,\n            \"start_date_time\": \"2023-03-05 08:00:00\",\n            \"end_date_time\": \"2023-03-05 08:30:00\",\n            \"dossier_id\": 4,\n            \"resource_id\": 2,\n            \"event_type_id\": null,\n            \"note\": null,\n            \"external_booking_number\": null,\n            \"external_booking_id\": null,\n            \"type\": \"finish_pickup\",\n            \"address_id\": null,\n            \"created_by\": 3,\n            \"changed_by\": 1,\n            \"created_at\": \"2023-02-23 10:20:31\",\n            \"updated_at\": \"2023-02-23 11:47:20\"\n          },\n          {\n            \"id\": 8,\n            \"start_date_time\": \"2023-02-23 11:45:00\",\n            \"end_date_time\": \"2023-02-23 12:00:00\",\n            \"dossier_id\": 4,\n            \"resource_id\": 2,\n            \"event_type_id\": 2,\n            \"note\": null,\n            \"external_booking_number\": null,\n            \"external_booking_id\": null,\n            \"type\": \"service\",\n            \"address_id\": null,\n            \"created_by\": 3,\n            \"changed_by\": 1,\n            \"created_at\": \"2023-02-23 10:20:31\",\n            \"updated_at\": \"2023-02-23 11:47:20\"\n          }\n        ],\n        \"orders\": [\n          {\n            \"id\": 4,\n            \"number\": \"8865\",\n            \"external_ref\": \"8865\",\n            \"dossier_id\": 4,\n            \"insurer_id\": null,\n            \"insurer_reference\": null,\n            \"auto_repair_manager_id\": null,\n            \"auto_repair_manager_reference\": null,\n            \"application_id\": \"da\",\n            \"created_by\": 3,\n            \"created_at\": \"2023-02-23 10:20:31\",\n            \"updated_at\": \"2023-02-23 10:20:31\",\n            \"order_type_id\": null,\n            \"is_controlled\": false,\n            \"is_huk_relevant\": false\n          }\n        ],\n        \"workshop_tasks\": [\n          {\n            \"id\": 5,\n            \"dossier_id\": 4,\n            \"workshop_team_id\": 1,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"start_date\": \"2023-02-23\",\n            \"start_time\": \"11:45:00\",\n            \"work_load\": 8,\n            \"work_state\": 3,\n            \"workshop_service_id\": 4,\n            \"description\": null,\n            \"resource_id\": 1,\n            \"order_id\": null,\n            \"workshop_task_package_id\": null,\n            \"team_order\": 4,\n            \"resource_order\": 0,\n            \"vat\": null,\n            \"price_netto\": null\n          }\n        ],\n        \"replacement_vehicle\": {\n          \"id\": 1,\n          \"replacement_vehicle_vin\": \"12345678910111213\",\n          \"dossier_id\": 4,\n          \"start_date\": \"2023-02-23 11:45:00\",\n          \"end_date\": \"2023-03-05 08:30:00\",\n          \"driver\": null,\n          \"last_name\": \"Hohmann\",\n          \"first_name\": \"Arnulf\",\n          \"company\": null,\n          \"phone_number\": \"00331 38118\",\n          \"mobile_number\": \"+49(0) 044359944\",\n          \"email\": \"jochen.oswald@example.net\",\n          \"customer_id\": \"1672\",\n          \"rental_contract_id\": \"1677149250\",\n          \"rental_contract_date\": \"2023-02-23\",\n          \"mileage\": 0,\n          \"comment\": null,\n          \"salutation_id\": null,\n          \"transfer_location\": null,\n          \"return_location\": null,\n          \"event_type\": null,\n          \"vehicle_status\": null,\n          \"vehicle_custom_status\": null,\n          \"created_by\": 1,\n          \"driver_license_number\": null,\n          \"mileage_free\": null,\n          \"daily_rate\": null,\n          \"mileage_rate\": null,\n          \"contribution\": null,\n          \"insurance\": null,\n          \"tank_capacity\": null,\n          \"tarif\": null,\n          \"tarif_typ\": null,\n          \"mileage_out\": 0,\n          \"mileage_return\": 0,\n          \"city\": \"Garmisch-Partenkirchen\",\n          \"zip_code\": \"74942\",\n          \"street\": \"Maja-Beer-Weg 4b\",\n          \"modified\": false,\n          \"vehicle_type\": null,\n          \"miete6_is_synced\": null,\n          \"created_at\": \"2023-02-23 11:47:34\",\n          \"updated_at\": \"2023-02-23 11:47:34\"\n        }\n      }\n    }\n  }\n```\n\n# Online appointment booking (OAB) portal iframe integration\n\nFor integrating the DA OAB portal by iframe you have to respect the following issues.\nIf you want to use the embedded version of our booking portal, get in touch with us.\n\n## Design customization\n\nIt is possible to create a CSS for styling the embedded version of the OAB. Only one CSS file will be imported. For the creation of your design, the booking URL has to be called passing the query parameter `embedded_mode=true`.\n\n## Query parameters\n\nAppend the following query parameters to the booking URL:\n\n`embedded_mode=true`\n\nOnly a stripped down version of the booking page will be displayed, without borders and images.\n\n`parent_url={parent URL of the embedding page}`\n\npostMessages will be send to this URL.\n\nSee also:\nhttps://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage\n\n## PostMessages\n\nFollowing events will be send to the `parent_url` via postMessage:\n\n* On a JS resize event: `document.body.clientHeight + 40`\n* On change of the URL/ route: `routeChanged`\n* After successfull booking of the appointment: `EventDateTime:<YYYY>-<mm>-<dd> <HH>:<mm>:<ss>`\n\n## Online Booking API with Booking Configuration\n\nFor a convient use of the online booking API you can pre configure a Booking Configuration with following options:\n\n* EventType (relevant for appointment duration)\n* Bookable mobilities\n* Bookable resources\n* Bookable workshop services\n* Business hours\n* Ignoring work unit by calculating free slots\n* Grid length\n* Offset\n\nTo use a pre defined configuration you have to pass the Query Parameter `booking_configuration_id=<MY_CONFIG_ID>` to every Request of the online booking. \\\n(The ID will show up in the configuration view) \\\nBy passing this Parameter the API will include the configured options in all their operations.\n\n# API Examples\n\n## Getting an access token\n\n```\ncurl --location --request POST 'https://api.werkstattplanung.net/da/v1/oauth/token' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/x-www-form-urlencoded' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--data-urlencode 'grant_type=password' \\\n--data-urlencode 'client_id=<YOUR CLIENT ID>' \\\n--data-urlencode 'client_secret=<YOUR CLIENT SECRET>' \\\n--data-urlencode 'username=<USER EMAIL ADDRESS>' \\\n--data-urlencode 'password=<USER PASSWORD>'\n```\n\nSample Response\n\n```json\n{\n    \"token_type\":\"Bearer\",\n    \"expires_in\":31536000,\n    \"access_token\":<YOUR ACCESS TOKEN>,\n    \"refresh_token\":<YOUR FREFRESH TOKEN>,\n    \"scope\":\"*\"\n}\n```\n\n\nFor the following requests you will need the access_token!\n\nWe recommend if your access token is expired, fetch a new one instead of refreshing.\n\n\n## Getting case and appointment information\n\nIn the following request we are going to fetch all cases (or dossiers in our language) in a given date range. For fetching the dossiers of a single day, please provide the day your are looking for as `start` and the day after this one as `end`.\n\nBy specifying `include=dossier.statables` you will get all related states of the dossier merged into the response body.\n\n```\ncurl --location -g --request GET 'https://api.werkstattplanung.net/da/v1/service_events?filter[inRange]=2021-09-21,2021-09-23&include=dossier.statables' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR ACCESS TOKEN>'\n```\n\n\nSample Response\n\n```json\n{\n    \"current_page\": 1,\n    \"data\": [\n        {\n            \"id\": 220,\n            \"note\": null,\n            \"completion_date_time\": null,\n            \"preorder_verified\": false,\n            \"maintenance_booklet\": 0,\n            \"vehicle_registration_orignal\": 0,\n            \"requested_call_back\": 0,\n            \"requested_care_program\": 0,\n            \"mobility_addressed\": false,\n            \"mobility_id\": null,\n            \"mobility_driving_permit\": false,\n            \"mobility_excess\": false,\n            \"mobility_others\": null,\n            \"note_workshop\": null,\n            \"note_question\": null,\n            \"created_by\": 1,\n            \"created_at\": \"2021-09-30 08:08:23\",\n            \"driver\": null,\n            \"driver_phone_number\": null,\n            \"in_open_list\": false,\n            \"divergent_billing_address\": null,\n            \"updated_at\": \"2021-09-30 08:33:06\",\n            \"imported_at\": null,\n            \"reparation_start_date_time\": null,\n            \"application_id\": \"da\",\n            \"external_ref\": \"4770\",\n            \"reminder\": null,\n            \"deposit_key_number\": null,\n            \"canceled_at\": null,\n            \"evaluated_by_customer_delta\": false,\n            \"et360_pick_up\": null,\n            \"et360_drop_off\": null,\n            \"handled_by\": 1,\n            \"et360_auf_achse\": false,\n            \"changed_by\": 1,\n            \"parking_space\": null,\n            \"service_consultation_id\": null,\n            \"care_program_id\": null,\n            \"is_attendant\": false,\n            \"is_skipping_reception\": false,\n            \"is_vehicle_registration_present\": false,\n            \"vehicle_id\": 209,\n            \"contact_id\": 212,\n            \"statables\": [\n                {\n                    \"id\": 208,\n                    \"state_id\": 17,\n                    \"statable_id\": 220,\n                    \"statable_type\": \"App\\\\Models\\\\Dossier\",\n                    \"changed_by\": 1,\n                    \"created_by\": 1,\n                    \"created_at\": \"2021-09-30 08:28:49\",\n                    \"updated_at\": \"2021-09-30 08:28:49\"\n                },\n                {\n                    \"id\": 209,\n                    \"state_id\": 24,\n                    \"statable_id\": 220,\n                    \"statable_type\": \"App\\\\Models\\\\Dossier\",\n                    \"changed_by\": 1,\n                    \"created_by\": 1,\n                    \"created_at\": \"2021-09-30 08:28:49\",\n                    \"updated_at\": \"2021-09-30 08:28:49\"\n                }\n            ],\n            \"start_date_time\": \"2021-09-30 11:00:00\",\n            \"end_date_time\": \"2021-09-30 11:15:00\",\n            \"resource_id\": 1,\n            \"event_type_id\": null,\n            \"external_booking_number\": null,\n            \"pick_up_date_time\": null,\n            \"pick_up_address\": null,\n            \"bring_date_time\": null,\n            \"bring_address\": null,\n            \"finish_pickup_date_time\": \"2021-10-12 07:00:00\",\n            \"workshop_tasks\": [\n                {\n                    \"id\": 424,\n                    \"dossier_id\": 220,\n                    \"workshop_team_id\": 1,\n                    \"external_ref\": null,\n                    \"application_id\": null,\n                    \"start_date\": \"2021-09-30\",\n                    \"start_time\": null,\n                    \"work_load\": 8,\n                    \"work_state\": 3,\n                    \"workshop_service_id\": 1,\n                    \"description\": null,\n                    \"resource_id\": null,\n                    \"order_id\": null,\n                    \"workshop_task_package_id\": null,\n                    \"team_order\": 0,\n                    \"resource_order\": 0,\n                    \"start_date_time\": null\n                },\n                {\n                    \"id\": 425,\n                    \"dossier_id\": 220,\n                    \"workshop_team_id\": 1,\n                    \"external_ref\": null,\n                    \"application_id\": null,\n                    \"start_date\": \"2021-09-30\",\n                    \"start_time\": null,\n                    \"work_load\": 12,\n                    \"work_state\": 3,\n                    \"workshop_service_id\": 2,\n                    \"description\": null,\n                    \"resource_id\": null,\n                    \"order_id\": null,\n                    \"workshop_task_package_id\": null,\n                    \"team_order\": 0,\n                    \"resource_order\": 0,\n                    \"start_date_time\": null\n                }\n            ],\n            \"vehicle_identification_number\": \"IK125XMQ2KK211497\",\n            \"first_registration_date\": \"2000-11-06\",\n            \"license_plate\": \"B-AW 9976\",\n            \"brand\": null,\n            \"model\": null,\n            \"model_type\": \"Golf 8 GTI\",\n            \"manufacturer_key_number\": null,\n            \"type_key_number\": null,\n            \"mileage\": \"36287\",\n            \"general_inspection_date\": \"1977-02-02\",\n            \"account_number\": \"4770\",\n            \"salutation_id\": 6,\n            \"last_name\": \"Meier\",\n            \"first_name\": \"Gudrun\",\n            \"company\": null,\n            \"phone_number\": \"+49(0)9430 74557\",\n            \"mobile_number\": \"+49 (0) 3773 844710\",\n            \"email\": \"nancy22@example.org\",\n            \"street\": \"Hasan-Paul-Gasse 8\",\n            \"zip_code\": \"63526\",\n            \"city\": \"H\\u00fcrth\",\n            \"send_event_reminder\": false,\n            \"dse_phone\": false,\n            \"dse_sms\": false,\n            \"dse_fax\": true,\n            \"dse_post\": false,\n            \"dse_opt_in\": true,\n            \"dse_document\": \"1\",\n            \"dse_origin\": \"1\",\n            \"dse_submission\": \"2004-04-15\",\n            \"dse_expiry\": \"1981-09-21\",\n            \"dse_ccs_info\": \"0\",\n            \"dse_email\": true,\n            \"customer_number\": \"4770\",\n            \"vehicle_type\": \"Golf 8 GTI\"\n        }\n    ],\n    \"first_page_url\": \"https:\\/\\/werkstattplanung.net\\/demo\\/api\\/kic\\/api\\/gateway\\/service_events?filter%5BinRange%5D=2021-09-29%2C2021-10-01&include=dossier.statables%2Cstatables&page=1\",\n    \"from\": 1,\n    \"next_page_url\": null,\n    \"path\": \"https:\\/\\/werkstattplanung.net\\/demo\\/api\\/kic\\/api\\/gateway\\/service_events\",\n    \"per_page\": 100,\n    \"prev_page_url\": null,\n    \"to\": 1\n}\n```\n\nAs you can see this is quite a long response body, because we merge much of the data which exists on our side into the reponse of this single request in order to minimize the number of requests to the API.\n\nNote on the states:\n\nIn the `statables` array you will get all states related to the dossier. If you need further information the individual states or state categories you have to query that by `/states` or `/state_categories` routes (see below).\n\n\n## Working with states\n\nSince the state system in DA is fully customizable, you can't rely on specific states to be existent in each instance. In DA the user can create several `state_categories` which can be connected to objects like a dossier, an order or an appointment. Each state category can contain as many `states` as needed.\n\nTherefore you have to query the instance of DA you are working with, which state categories and related states have been created by the user.\n\n### Fetching all availabe states\n\n```\ncurl --location --request GET 'https://api.werkstattplanung.net/da/v1/states' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR ACCESS TOKEN>'\n```\n\nSample Response\n\n```json\n{\n    \"current_page\": 1,\n    \"data\": [\n        {\n            \"id\": 1,\n            \"name\": \"Test-Status\",\n            \"type\": \"order\",\n            \"is_immutable\": false,\n            \"created_at\": \"2019-12-17 11:53:33\",\n            \"updated_at\": \"2019-12-17 11:53:33\"\n        },\n        {\n            \"id\": 2,\n            \"name\": \"Vorgangsstatus\",\n            \"type\": \"dossier\",\n            \"is_immutable\": true,\n            \"created_at\": \"2020-02-25 14:54:19\",\n            \"updated_at\": \"2020-02-25 14:54:19\"\n        },\n        {\n            \"id\": 3,\n            \"name\": \"Marketing\",\n            \"type\": \"dossier\",\n            \"is_immutable\": false,\n            \"created_at\": \"2021-06-23 10:07:36\",\n            \"updated_at\": \"2021-06-23 10:07:36\"\n        },\n        {\n            \"id\": 4,\n            \"name\": \"Serviceberatung\",\n            \"type\": \"appointment\",\n            \"is_immutable\": false,\n            \"created_at\": \"2021-09-30 08:29:48\",\n            \"updated_at\": \"2021-09-30 08:29:48\"\n        }\n    ],\n    \"first_page_url\": \"https:\\/\\/werkstattplanung.net\\/demo\\/api\\/kic\\/api\\/gateway\\/state_categories?page=1\",\n    \"from\": 1,\n    \"next_page_url\": null,\n    \"path\": \"https:\\/\\/werkstattplanung.net\\/demo\\/api\\/kic\\/api\\/gateway\\/state_categories\",\n    \"per_page\": 100,\n    \"prev_page_url\": null,\n    \"to\": 4\n}\n```\n\nIn that sample response we see that there are four state categories configured in that instance. There are two categories related to dossiers (*Vorgangsstatus* and *Marketig*), one to orders (*Test-Status*) and one to appointments (*Serviceberatung*).\n\n\n### Fetching all states of a state category\n\nTo get a list of all states in a state category, you can filter by a given id:\n\n```\ncurl --location --request GET 'https://api.werkstattplanung.net/da/v1/states?filter[state_category_id]=2' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR ACCESS TOKEN>'\n```\n\nSample response\n\n```json\n{\n    \"current_page\": 1,\n    \"data\": [\n        {\n            \"id\": 10,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#FFFF8D\",\n            \"name\": \"Auftrag vorbereitet\",\n            \"is_done\": false,\n            \"order\": 100,\n            \"is_immutable\": false,\n            \"completion_status_id\": 14,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 11,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#EA80FC\",\n            \"name\": \"Teile vorr\\u00e4tig\",\n            \"is_done\": false,\n            \"order\": 700,\n            \"is_immutable\": false,\n            \"completion_status_id\": 57,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 12,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#FFFF8D\",\n            \"name\": \"Kunde im Haus\",\n            \"is_done\": false,\n            \"order\": 800,\n            \"is_immutable\": false,\n            \"completion_status_id\": 60,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 13,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#FFE57F\",\n            \"name\": \"Dialogannahme\",\n            \"is_done\": false,\n            \"order\": 900,\n            \"is_immutable\": false,\n            \"completion_status_id\": 61,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 14,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#FFD180\",\n            \"name\": \"Werkstatt\",\n            \"is_done\": false,\n            \"order\": 1000,\n            \"is_immutable\": false,\n            \"completion_status_id\": 62,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 15,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#FF8A80\",\n            \"name\": \"Wartet auf Ersatzteile\",\n            \"is_done\": false,\n            \"order\": 1100,\n            \"is_immutable\": false,\n            \"completion_status_id\": 63,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 16,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#B388FF\",\n            \"name\": \"Fahrzeug fertig\",\n            \"is_done\": false,\n            \"order\": 1200,\n            \"is_immutable\": false,\n            \"completion_status_id\": 64,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 17,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#8C9EFF\",\n            \"name\": \"Endkontrolle\",\n            \"is_done\": false,\n            \"order\": 200,\n            \"is_immutable\": false,\n            \"completion_status_id\": 72,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 18,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#80D8FF\",\n            \"name\": \"W\\u00e4sche\",\n            \"is_done\": false,\n            \"order\": 300,\n            \"is_immutable\": false,\n            \"completion_status_id\": 73,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 19,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#8C9EFF\",\n            \"name\": \"Rechnung\",\n            \"is_done\": false,\n            \"order\": 400,\n            \"is_immutable\": false,\n            \"completion_status_id\": 74,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 20,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#8C9EFF\",\n            \"name\": \"Kunde informiert\",\n            \"is_done\": false,\n            \"order\": 500,\n            \"is_immutable\": false,\n            \"completion_status_id\": 75,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        },\n        {\n            \"id\": 21,\n            \"external_ref\": null,\n            \"application_id\": null,\n            \"state_category_id\": 2,\n            \"color\": \"#8C9EFF\",\n            \"name\": \"Fahrzeug abgeholt\",\n            \"is_done\": false,\n            \"order\": 600,\n            \"is_immutable\": false,\n            \"completion_status_id\": 76,\n            \"created_at\": \"2019-05-14 14:22:07\",\n            \"updated_at\": \"2019-05-14 14:22:07\"\n        }\n    ],\n    \"first_page_url\": \"https:\\/\\/werkstattplanung.net\\/demo\\/api\\/kic\\/api\\/gateway\\/states?filter%5Bstate_category_id%5D=2&page=1\",\n    \"from\": 1,\n    \"next_page_url\": null,\n    \"path\": \"https:\\/\\/werkstattplanung.net\\/demo\\/api\\/kic\\/api\\/gateway\\/states\",\n    \"per_page\": 100,\n    \"prev_page_url\": null,\n    \"to\": 12\n}\n```\n\n\n### Getting details for a state\n\nTo query the API for details regarding a single state, say state with id 17 of the `/service_appointments` example above:\n\n```\ncurl --location --request GET 'https://api.werkstattplanung.net/da/v1/states/17' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR ACCESS TOKEN>'\n```\n\nSample Response\n\n```json\n{\n    \"id\": 17,\n    \"external_ref\": null,\n    \"application_id\": null,\n    \"state_category_id\": 2,\n    \"color\": \"#8C9EFF\",\n    \"name\": \"Endkontrolle\",\n    \"is_done\": false,\n    \"order\": 200,\n    \"is_immutable\": false,\n    \"completion_status_id\": 72,\n    \"created_at\": \"2019-05-14 14:22:07\",\n    \"updated_at\": \"2019-05-14 14:22:07\"\n}\n\n```\n\nTo load an array of all available states, simply skip the ressource id and use the `/states` route.\n\n\n## Using the status trigger logic\n\nIn order for a simple external state change of a case in DA there is a functionality calles `status_triggers`. This is typically used by handheld barcode scanners or license plate detection systems.\nFor this mechanism to work one has to configure all possible external trigger sources in the DA application under `Verwaltung > Termin > Statustrigger`.\n\n![status_trigger_list.jpg](images/status_trigger_list.jpg)\n\nWhen the external source is triggered by calling the `status_triggers` route, internally a matching case is searched using the passed arguments (see below). If a case is found, the configured state in the status trigger configuration will be set.\n\nCurrently there are two possible types of trigger sources:\n\n* camera\n* scanner\n\nTrigger type `camera` will seach for a case for a vehicle with the given license plate which has an delivery <= *last month* and a completion >= *last month*. \\\nTrigger type `scanner` will search for a case for a vehicle with the given vin\nand has a delivery >= *last month* and a completion >= *last month*.\n\n![status_trigger_config_camera.jpg](images/status_trigger_config_camera.jpg)\n\nIn the screenshot above there is an external trigger configured for a camera which will set the state to \"Vorgangsstatus: Kunde im Haus\" if the camera with id 1 will detect a license plate.\n\n### Changing a state by type camera\n\n```\ncurl --location --request POST 'https://api.werkstattplanung.net/da/v1/status_triggers' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR ACCESS TOKEN>'\n--data-raw '{\n    \"type\": \"camera\",\n    \"status_trigger_configuration_id\": {your configured status trigger id},\n    \"data\": {\n        \"license_plate\": \"{license plate}\"\n    }\n}'\n```\n\n### Changing a state by type scanner\n\n```\ncurl --location --request POST 'https://api.werkstattplanung.net/da/v1/status_triggers' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR ACCESS TOKEN>'\n--data-raw '{\n    \"type\": \"scanner\",\n    \"status_trigger_configuration_id\": {your configured status trigger id},\n    \"data\": {\n        \"vin\": \"{vin}\"\n    }\n}'\n```\n\n### Changing a state without trigger configuration\n\nIf you don't want to configure a trigger you can pass the state id instead:\n\n```\ncurl --location --request POST 'https://api.werkstattplanung.net/da/v1/status_triggers' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR ACCESS TOKEN>'\n--data-raw '{\n    \"type\": \"camera\",\n    \"status_id\": 4,\n    \"data\": {\n        \"license_plate\": \"{license plate}\"\n    }\n}'\n```\n\n### Fetching free slots for appointment booking\n\nTo include the work unit calculation you have to pass the workshop_service_ids\n\n```\ncurl --location -g --request GET 'https://api.werkstattplanung.net/da/v1/free_slots?start_date=2022-06-21&end_date=2022-06-23&workshop_service_ids[0]=3&workshop_service_ids[1]=6&duration=30&grid=30' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR_TOKEN>' \\\n--data-raw ''\n```\n\n### Fetching free slots for appointment booking using a Booking Configuration\n\n```\ncurl --location -g --request GET 'https://api.werkstattplanung.net/da/v1/free_slots?start_date=2022-06-21&end_date=2022-06-23&workshop_service_ids[0]=3&workshop_service_ids[1]=6&booking_configuration_id=<YOUR_BOOKING_CONFIGURATION_ID>' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR_TOKEN>' \\\n--data-raw '''\n```\n\n## Creating a booking appointment with attachments, workshop tasks and states (statables)\n\n```\ncurl --location --request POST 'https://api.werkstattplanung.net/da/v1/service_events' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR_TOKEN>' \\\n--data-raw '{\n    \"start_date_time\": \"2022-06-23 13:00:00\",\n    \"end_date_time\": \"2022-06-23 13:30:00\",\n    \"resource_id\": 2,\n    \"last_name\": \"Test\",\n    \"first_name\": \"Tom\",\n    \"mobile_number\": \"01784563226\",\n    \"email\": \"tom.test@gmx.de\",\n    \"street\": \"Teststr. 1\",\n    \"zip_code\": \"1337\",\n    \"city\": \"Testtown\",\n    \"license_plate\": \"BO-GU 1234\",\n    \"vehicle_identification_number\": \"WVWZZZ1JZ3W386752\",\n    \"first_registration_date\": \"2010-02-03\",\n    \"brand\": \"VW\",\n    \"model\": \"Golf\",\n    \"model_type\": \"2.0 GTI\",\n    \"mileage\": 39541,\n    \"manufacturer_key_number\": \"0603\",\n    \"type_key_number\": \"348\",\n    \"attachments\": [\n        {\n            \"name\": \"Kratzer vorne rechts\",\n            \"base64_encoded_content\": \"<BASE64 ENCODED CONTENT>\"\n        }\n    ],\n    \"workshop_tasks\": [\n        {\n            \"workshop_service_id\": 3,\n            \"start_date_time\": \"2022-06-23 13:00:00\",\n      \"description\": \"Mit Vorabcheck!\"\n        },\n        {\n            \"workshop_service_id\": 6,\n            \"start_date_time\": \"2022-06-23 13:00:00\"\n        }\n    ],\n    \"statables\": [\n        {\n            \"state_id\": 1\n        },\n        {\n            \"state_id\": 2\n        }\n    ]\n}'\n```\n\n## Cancel an existing Service Event\nYou can revert the cancelation in the DA itself\n\n```\ncurl --location --request DELETE 'https://api.werkstattplanung.net/da/v1/service_events/<DA_SERVICE_EVENT_ID>' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR GROUP>' \\\n--header 'center: <YOUR CENTER>' \\\n--header 'Authorization: Bearer <YOUR_TOKEN>' \\\n--data-raw ''\n```\n\n## Fetching states of an existing Service Event\nA Service Event can habe multiple states\n```\ncurl --location --request GET 'https://api.werkstattplanung.net/da/v1/service_events/<DA_SERVICE_EVENT_ID>/states' \\\n--header 'Accept: application/json' \\\n--header 'Content-Type: application/json' \\\n--header 'group: <YOUR_GROUP>' \\\n--header 'center: <YOUR_CENTER>' \\\n--header 'Authorization: Bearer <YOUR_TOKEN>' \\\n--data-raw ''\n```\n\n# API Changelog\n\n## [1.9] - 2024-11-18\n\n- Added new endpoint to query documents based on an order_number\n\n## [1.8] - 2024-09-03\n\n- Added bookable mobilities to Booking Configuration\n\n## [1.7] - 2024-04-16\n\n- Added documentation for creating, updating and deleting Statables\n- Added documentation for fetching a Booking Configuration by ID\n- Specified what parameters are valid as `filter[name]` for fetching Statables\n\n## [1.6] - 2024-04-11\n\n- Added `description` Parameter in workshop_tasks\n- Added `node` Parameter in service_events\n\n## [1.5] - 2022-08-01\n\n- Added `booking_configuration_id` Parameter in online appointment booking context\n- Added additional examples\n\n## [1.4] - 2020-07-27\n\n- Moved online booking beta routes to stable\n\n## [1.3] - 2020-02-28\n\n**stable**\n\n**beta**\n\n- Remove completion_status_id by ServiceEvent\n- Added statables reference to ServiceEvent\n- Removed Route /completion_statuses\n\n## [1.2] - 2020-01-23\n\n**stable**\n\n**beta**\n\n- Added /v1-beta routes\n  - /states\n  - /statables\n  - /state_categories\n\n## [1.1] - 2019-08-08\n\n**stable**\n\n**beta**\n\n- Added GET method for service_events route\n\n## [1.0] - 2019-07-10\n\n**stable**\n\n- extended /customers query parameter `type` by `phone_numbers` to search for phone or mobile number\n\n**beta**\n\n- Added /v1-beta routes\n  - /center_config\n  - /free_slots\n  - /service_events\n  - /vehicle_types\n  - /event_types\n  - /resources\n  - /workshop_services\n  - /salutations\n  - /completion_statuses\n  - /mobilities\n",
+    "version": "1.6"
+  },
+  "servers": [
+    {
+      "url": "https://api.werkstattplanung.net/da/v1"
+    }
+  ],
+  "security": [
+    {
+      "da_auth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "OAuth",
+      "description": "Generate OAuth Token"
+    }
+  ],
+  "externalDocs": {
+    "description": "Find out more about Swagger",
+    "url": "http://swagger.io"
+  },
+  "paths": {
+    "/oauth/token": {
+      "post": {
+        "tags": [
+          "OAuth"
+        ],
+        "summary": "Create/refresh OAuth token",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "required": [
+                  "client_id",
+                  "client_secret"
+                ],
+                "properties": {
+                  "grant_type": {
+                    "type": "string",
+                    "description": "Grant type",
+                    "enum": [
+                      "password",
+                      "refresh_token"
+                    ]
+                  },
+                  "client_id": {
+                    "type": "string",
+                    "description": "Your application client_id"
+                  },
+                  "client_secret": {
+                    "type": "string",
+                    "description": "Your application client_secret"
+                  },
+                  "username": {
+                    "type": "string",
+                    "description": "The user email who will get related to the Token"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "The user password"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "description": "Only needed by grant_type=refresh_token"
+                  },
+                  "refresh_token": {
+                    "type": "string",
+                    "description": "Only needed by grant_type=refresh_token"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token_type": {
+                      "type": "string"
+                    },
+                    "expires_in": {
+                      "type": "integer",
+                      "description": "After this timestamp the Token is invalid (get expires_at: current time + expires_in)"
+                    },
+                    "access_token": {
+                      "type": "string",
+                      "description": "Your OAuth Token"
+                    },
+                    "refresh_token": {
+                      "type": "string",
+                      "description": "Your refresh Token"
+                    },
+                    "scope": {
+                      "type": "string",
+                      "description": "Your enabled scopes"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - invalid user or client credentials",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/customers": {
+      "get": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Get customers by filter",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "description": "The search term",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "The type you are searching for\n * `phone_numbers` - in E.164 format\n * `name` - first name, last name, or company\n * `customer_id` - the unique customer number\n * `vin` - the unique vehicle identification number\n * `license_plate` - the vehicle license plate\n",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "customer_id",
+                "phone_numbers",
+                "license_plate",
+                "vin"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success - There can be several applications used in the background, you will get a result object for every application - In the case a system throws an exception there will be the error message in the errors object\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "result": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/Customer"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-customers"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Create a new customer",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Customer object that needs to be added",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Customer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success - There can be several applications used in the background, you will get a result object for every application - In the case a system throws an exception there will be the error message in the errors object\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "result": {
+                            "$ref": "#/components/schemas/Customer"
+                          }
+                        }
+                      }
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "create-customers"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/customers/{customer_number}": {
+      "delete": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Delete an existing customer",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customer_number",
+            "in": "path",
+            "description": "Customer number",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "delete-customers"
+            ]
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Update an existing customer",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customer_number",
+            "in": "path",
+            "description": "Customer number",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Customer object that needs to be updated",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Customer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success - There can be several applications used in the background, you will get a result object for every application - In the case a system throws an exception there will be the error message in the errors object\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "result": {
+                            "$ref": "#/components/schemas/Customer"
+                          }
+                        }
+                      }
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "update-customers"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/vehicles": {
+      "get": {
+        "tags": [
+          "vehicles"
+        ],
+        "summary": "Get vehicles by filter",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "description": "The search term",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "The type you are searching for\n * `vin` - the unique vehicle identification number\n * `license_plate` - the vehicle license plate\n * `customer_id` - the unique customer number\n",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "vin",
+                "license_plate",
+                "customer_id"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success - There can be several applications used in the background, you will get a result object for every application - In the case a system throws an exception there will be the error message in the errors object\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "result": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/Vehicle"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-vehicles"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "vehicles"
+        ],
+        "summary": "Create a new vehicle",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Vehicle object that needs to be added",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Vehicle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success - There can be several applications used in the background, you will get a result object for every application - In the case a system throws an exception there will be the error message in the errors object\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "result": {
+                            "$ref": "#/components/schemas/Vehicle"
+                          }
+                        }
+                      }
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "create-vehicles"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/vehicles/{vehicle_identification_number}": {
+      "delete": {
+        "tags": [
+          "vehicles"
+        ],
+        "summary": "Delete an existing vehicle",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehicle_identification_number",
+            "in": "path",
+            "description": "Vehicle identification number",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "delete-vehicles"
+            ]
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "vehicles"
+        ],
+        "summary": "Update an existing vehicle",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehicle_identification_number",
+            "in": "path",
+            "description": "Vehicle identification number",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Vehicle object that needs to be updated",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Vehicle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success - There can be several applications used in the background, you will get a result object for every application - In the case a system throws an exception there will be the error message in the errors object\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "result": {
+                            "$ref": "#/components/schemas/Vehicle"
+                          }
+                        }
+                      }
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "application_id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "update-vehicles"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/archive/documents": {
+      "get": {
+        "tags": [
+          "archive documents"
+        ],
+        "summary": "Get documents to archive",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success - Returns paginated documents where archived_at is NULL or updated_at > archived_at.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Documents returned successfully."
+                    },
+                    "documents": {
+                      "type": "object",
+                      "properties": {
+                        "current_page": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Document"
+                          }
+                        },
+                        "first_page_url": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "from": {
+                          "type": "integer"
+                        },
+                        "last_page": {
+                          "type": "integer"
+                        },
+                        "last_page_url": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "links": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "nullable": true
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "active": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "next_page_url": {
+                          "type": "string",
+                          "format": "uri",
+                          "nullable": true
+                        },
+                        "path": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "per_page": {
+                          "type": "integer"
+                        },
+                        "prev_page_url": {
+                          "type": "string",
+                          "format": "uri",
+                          "nullable": true
+                        },
+                        "to": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "documents"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/archive/documents/{documentId}/confirmation": {
+      "patch": {
+        "tags": [
+          "archive documents"
+        ],
+        "summary": "Set a document as archived",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success - The document is updated to archived\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Document archived successfully."
+                    },
+                    "document": {
+                      "$ref": "#/components/schemas/Document"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/booking_configurations/{booking_configuration_id}": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a booking configuration",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "booking_configuration_id",
+            "in": "path",
+            "description": "Booking Configuration ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingConfiguration"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": null
+          }
+        ]
+      }
+    },
+    "/service_events": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of service events",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[customer_number]",
+            "in": "query",
+            "description": "Filter by the property customer_number",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[license_plate]",
+            "in": "query",
+            "description": "Filter by the property license_plate",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[inRange]",
+            "in": "query",
+            "description": "Get a list of items in the given Range (start,end), values must be in date format Y-m-d comma separated",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[vehicle_identification_number]",
+            "in": "query",
+            "description": "Filter by the property vehicle_identification_number",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[external_booking_number]",
+            "in": "query",
+            "description": "Filter by external_booking_number",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[state_id]",
+            "in": "query",
+            "description": "Filter by state id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include={relation you want to include as comma seperated list}",
+            "in": "query",
+            "description": "Possible relations to include: statables (appointment/event states), dossier.statables (dossier states), resource, address",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ServiceEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-events"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Create a new Service Event",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "booking_configuration_id",
+            "in": "query",
+            "description": "Will include pre defined settings of BookingConfiguration (ignore_work_unit etc.)",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Service Event object",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceEventWithAttachments"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationFailed"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "create-event",
+              "create-workshop-task"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/service_events/{service_event_id}": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a service event",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service_event_id",
+            "in": "path",
+            "description": "ServiceEvent ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-events"
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Cancel an existing event",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service_event_id",
+            "in": "path",
+            "description": "ServiceEvent ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "delete-event"
+            ]
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Update an existing event",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service_event_id",
+            "in": "path",
+            "description": "ServiceEvent ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Service Event object",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceEventWithoutDates"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ServiceEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationFailed"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "update-event"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/service_events/{service_event_id}/states": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get the states of a service event",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service_event_id",
+            "in": "path",
+            "description": "ServiceEvent ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/State"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-events"
+            ]
+          }
+        ]
+      }
+    },
+    "/free_slots": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get free Slots for booking a service event",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "description": "Y-m-d - 2019-07-02",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "description": "Y-m-d - 2019-07-02",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "duration",
+            "in": "query",
+            "description": "The event duration in minutes",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "resource_ids[]",
+            "in": "query",
+            "description": "Only searching for specific employees/resources",
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          },
+          {
+            "name": "workshop_service_ids[]",
+            "in": "query",
+            "description": "Only searching for specific workshop services",
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          },
+          {
+            "name": "booking_configuration_id",
+            "in": "query",
+            "description": "Will include pre defined settings of selected BookingConfiguration in free slot calculation (bookable resources, duration etc.)",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "event_type_id",
+            "in": "query",
+            "description": "The event type ID to filter the free slots based on appointment rules",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date_value": {
+                      "type": "array",
+                      "description": "The date value of the property in the format 'Y-m-d' e.g. 2019-07-02",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start_date": {
+                            "type": "string",
+                            "description": "Y-m-d H:i:s",
+                            "example": "2019-07-02 13:00:00"
+                          },
+                          "end_date": {
+                            "type": "string",
+                            "description": "Y-m-d H:i:s",
+                            "example": "2019-07-02 13:00:00"
+                          },
+                          "resource_id": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-free-events"
+            ]
+          }
+        ]
+      }
+    },
+    "/center_config": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get DA center config",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Config"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-config"
+            ]
+          }
+        ]
+      }
+    },
+    "/vehicle_types": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of vehicle types",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[name]",
+            "in": "query",
+            "description": "Filter by the property name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VehicleType"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-vehicle-types"
+            ]
+          }
+        ]
+      }
+    },
+    "/workshop_tasks": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of workshop tasks",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[dossier_id]",
+            "in": "query",
+            "description": "Filter by the property dossier_id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WorkshopTask"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-workshop-tasks"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Create a new WorkshopTask",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "WorkshopTask object",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkshopTask"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationFailed"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "create-event",
+              "create-workshop-task"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/workshop_tasks/{workshop_task_id}": {
+      "delete": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Delete an existing WorkshopTask",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workshop_task_id",
+            "in": "path",
+            "description": "WorkshopTask ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "delete-workshop-tasks"
+            ]
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Update an existing workshop task",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workshop_task_id",
+            "in": "path",
+            "description": "WorkshopTask ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "WorkshopTask object that needs to be updated",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkshopTask"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopTask"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationFailed"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "delete-workshop-tasks"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/event_types": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of event types",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[name]",
+            "in": "query",
+            "description": "Filter by the property name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EventType"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-event-types"
+            ]
+          }
+        ]
+      }
+    },
+    "/resources": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of resources",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "filter[id]",
+            "in": "query",
+            "description": "Filter by the resource id"
+          },
+          {
+            "name": "filter[is_visible_in_calendar]",
+            "in": "query",
+            "description": "Filter by the property is_visible_in_calendar",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "booking_configuration_id",
+            "in": "query",
+            "description": "Will only load pre defined Resources in selected BookingConfiguration",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Resource"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-resources"
+            ]
+          }
+        ]
+      }
+    },
+    "/workshop_services": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of workshop services",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[name]",
+            "in": "query",
+            "description": "Filter by the property name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[id]",
+            "in": "query",
+            "description": "Filter by the property id",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "filter[vehicle_model_id]",
+            "in": "query",
+            "description": "Filter by Vehicle Type",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "booking_configuration_id",
+            "in": "query",
+            "description": "Will only load pre defined WorkshopServices in selected BookingConfiguration",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WorkshopService"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-workshop-services"
+            ]
+          }
+        ]
+      }
+    },
+    "/workshop_services/{workshop_service_id}": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get an existing WorkshopService",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workshop_service_id",
+            "in": "path",
+            "description": "WorkshopService ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopService"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-workshop-services"
+            ]
+          }
+        ]
+      }
+    },
+    "/salutations": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of salutations",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[name]",
+            "in": "query",
+            "description": "Filter by the property name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Salutation"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-salutations"
+            ]
+          }
+        ]
+      }
+    },
+    "/state_categories": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of state categories",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[name]",
+            "in": "query",
+            "description": "Filter by the property name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/StateCategory"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-state-category"
+            ]
+          }
+        ]
+      }
+    },
+    "/states": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of states",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[name]",
+            "in": "query",
+            "description": "Filter by the property name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/State"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-state"
+            ]
+          }
+        ]
+      }
+    },
+    "/statables": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of statables",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[name]",
+            "in": "query",
+            "description": "Filter by property. There are two filters available - \"filter[statable_id]\" and \"filter[statable_type]\". If you want to get all statables of a dossier, you can use the statable_id as an ID of the dossier and the statable_type \"App\\Models\\Dossier\". (Notice that you have to specify only one forward slash, although in the response the forward slash is escaped.)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Statable"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-statable"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Create a new Statable",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Statable object",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "state_id": {
+                    "type": "integer",
+                    "description": "The id of a state object"
+                  },
+                  "statable_id": {
+                    "type": "integer",
+                    "description": "The id of the statable object, the statable should belongs to."
+                  },
+                  "statable_type": {
+                    "type": "string",
+                    "description": "The type of the statable object."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationFailed"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "create-statable"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/statables/{statable_id}": {
+      "patch": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Update an existing statable",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statable_id",
+            "in": "path",
+            "description": "Statable ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Statable object that needs to be updated",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "state_id": {
+                    "type": "integer",
+                    "description": "The id of a state object"
+                  },
+                  "statable_id": {
+                    "type": "integer",
+                    "description": "The id of the statable object, the statable belongs to. We do not recommend to change it."
+                  },
+                  "statable_type": {
+                    "type": "string",
+                    "description": "The type of the statable object, the statable belongs to. We do not recommend to change it."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationFailed"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "update-statable"
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Delete an existing statable",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statable_id",
+            "in": "path",
+            "description": "Statable ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Statable"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "404": {
+            "description": "Record not found",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationFailed"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "update-statable"
+            ]
+          }
+        ]
+      }
+    },
+    "/mobilities": {
+      "get": {
+        "tags": [
+          "online booking"
+        ],
+        "summary": "Get a list of mobilities",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[name]",
+            "in": "query",
+            "description": "Filter by the property name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Filter by property",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Select the page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Mobility"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-mobilities"
+            ]
+          }
+        ]
+      }
+    },
+    "/status_triggers": {
+      "post": {
+        "tags": [
+          "status trigger"
+        ],
+        "summary": "Create a new StatusTrigger (camera, scanner)",
+        "description": "An incoming StatusTrigger will change the state on an event detected by the data property to the given or configured state you can define a configuration for the StatusTrigger in the DA Application and can use the ID for the property status_trigger_configuration_id <br /> <br /> Type camera: The license_plate data property is required, the detected dossier must match the given license plate and must be today <br /> <br /> Type scanner: The vin data property is required, the detected dossier must match the given vin, start date time of the service appointment >= \"last month\" and completion date time >= \"today\" ",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "StatusTrigger object",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusTrigger"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationFailed"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "create-status-trigger"
+            ]
+          }
+        ],
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/documents/{document_id}/view": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get the content of the specified document",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-document"
+            ]
+          }
+        ]
+      }
+    },
+    "/documents/attach": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Upload and attach a document to a dossier",
+        "description": "Uploads a file of any format and attaches it to a specified dossier. You can specify the target dossier in one of two ways: \n - By providing a direct dossier_id. \n - By providing an order_number. In this case, the system will find the most recently created order with that order_number and use its associated dossier. Optionally, you can further filter the order by application_id.",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Document upload data",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DocumentAttachViaDossierId"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentAttachViaOrderNumber"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success - Document uploaded and attached to dossier",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "ID of the created document",
+                      "example": 789
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the uploaded document",
+                      "example": "Important_Document.pdf"
+                    },
+                    "object_id": {
+                      "type": "integer",
+                      "description": "Dossier ID the document is attached to",
+                      "example": 456
+                    },
+                    "file_type": {
+                      "type": "string",
+                      "description": "MIME type of the uploaded file",
+                      "example": "application/pdf"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found - Order not found for the provided order_number",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Order not found for the provided order_number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict - Document with same name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Document with this name already exists for this dossier"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "errors": {
+                      "type": "object",
+                      "description": "Validation error details"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "create-document"
+            ]
+          }
+        ]
+      }
+    },
+    "/orders": {
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Create a order",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Order object",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Order"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "create-event"
+            ]
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Get a list of orders",
+        "parameters": [
+          {
+            "name": "filter[number]",
+            "in": "query",
+            "description": "Filter by order number",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[application_id]",
+            "in": "query",
+            "description": "Filter by application id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[dossier_id]",
+            "in": "query",
+            "description": "filter by dossier id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Order"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-event"
+            ]
+          }
+        ]
+      }
+    },
+    "/orders/{order_id}": {
+      "patch": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Updates an order",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "header",
+            "description": "The group name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "center",
+            "in": "header",
+            "description": "The center name of the DA instance to be accessed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Order object",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Order"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {}
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "update-event"
+            ]
+          }
+        ]
+      }
+    },
+    "/orders/{order_number}/documents": {
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Get a list of documents based on order_number",
+        "parameters": [
+          {
+            "name": "order_number",
+            "in": "path",
+            "description": "Order number",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "file.jpeg"
+                    },
+                    "file_type": {
+                      "type": "string",
+                      "example": "image/jpeg"
+                    },
+                    "api_view_url": {
+                      "type": "string",
+                      "example": "https://api.werkstattplanung.net/da/v1/documents/1/view"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {}
+          }
+        },
+        "security": [
+          {
+            "da_auth": [
+              "read-event"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BookingConfiguration": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "business_hours": {
+            "type": "object",
+            "properties": {
+              "monday": {
+                "$ref": "#/components/schemas/Day"
+              },
+              "tuesday": {
+                "$ref": "#/components/schemas/Day"
+              },
+              "wednesday": {
+                "$ref": "#/components/schemas/Day"
+              },
+              "thursday": {
+                "$ref": "#/components/schemas/Day"
+              },
+              "friday": {
+                "$ref": "#/components/schemas/Day"
+              },
+              "saturday": {
+                "$ref": "#/components/schemas/Day"
+              },
+              "sunday": {
+                "$ref": "#/components/schemas/Day"
+              }
+            }
+          },
+          "colors": {
+            "type": "object",
+            "properties": {
+              "primary": {
+                "type": "string",
+                "nullable": true
+              },
+              "secondary": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "ignore_work_unit": {
+            "type": "boolean"
+          },
+          "grid_length": {
+            "type": "integer"
+          },
+          "event_type_id": {
+            "type": "integer"
+          },
+          "is_enabled": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bookable_resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Resource"
+            }
+          },
+          "bookable_workshop_services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkshopService"
+            }
+          },
+          "bookable_mobilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Mobility"
+            }
+          }
+        }
+      },
+      "Day": {
+        "type": "object",
+        "properties": {
+          "is_enabled": {
+            "type": "boolean"
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "end_time": {
+            "type": "string"
+          }
+        }
+      },
+      "Customer": {
+        "required": [
+          "customer_number"
+        ],
+        "type": "object",
+        "properties": {
+          "customer_number": {
+            "type": "string"
+          },
+          "salutation": {
+            "type": "string",
+            "description": "As text, we will try to set the correct id by the name property of the Salutation model"
+          },
+          "salutation_id": {
+            "type": "integer",
+            "description": "Reference to Salutation model"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "company": {
+            "type": "string"
+          },
+          "phone_number": {
+            "type": "string"
+          },
+          "mobile_number": {
+            "type": "string"
+          },
+          "street": {
+            "type": "string"
+          },
+          "zip_code": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "object_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "document_directory_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "is_watermarked": {
+            "type": "boolean",
+            "description": "Whether the document is watermarked (0 = false, 1 = true)"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "is_favorite": {
+            "type": "boolean"
+          },
+          "file_size": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Size of the file in bytes"
+          },
+          "file_type": {
+            "type": "string",
+            "nullable": true,
+            "description": "MIME type of the file"
+          },
+          "export_status": {
+            "type": "string",
+            "nullable": true
+          },
+          "export_message": {
+            "type": "string",
+            "nullable": true
+          },
+          "thumbnail_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "driver": {
+            "type": "string",
+            "description": "Storage driver used (e.g., fs, s3)"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "integer"
+          },
+          "archived_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "is_image": {
+            "type": "boolean"
+          },
+          "is_local": {
+            "type": "boolean"
+          },
+          "view_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to view the document locally"
+          },
+          "api_gateway_view_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "API gateway URL to view the document"
+          }
+        },
+        "required": [
+          "id",
+          "document_directory_id",
+          "name",
+          "is_watermarked",
+          "is_favorite",
+          "driver",
+          "order",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "is_image",
+          "is_local",
+          "view_url",
+          "api_gateway_view_url"
+        ]
+      },
+      "Vehicle": {
+        "required": [
+          "customer_number",
+          "vehicle_identification_number"
+        ],
+        "type": "object",
+        "properties": {
+          "vehicle_identification_number": {
+            "type": "string"
+          },
+          "customer_number": {
+            "type": "string",
+            "description": "Reference to Customer model"
+          },
+          "first_registration_date": {
+            "type": "string"
+          },
+          "license_plate": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "type": "string",
+            "description": "is deprecated use model_type instead"
+          },
+          "model_type": {
+            "type": "string"
+          },
+          "brand": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "mileage": {
+            "type": "integer"
+          },
+          "general_inspection_date": {
+            "type": "string"
+          }
+        }
+      },
+      "Config": {
+        "type": "object",
+        "properties": {
+          "opening_time": {
+            "type": "integer"
+          },
+          "closing_time": {
+            "type": "integer"
+          },
+          "scheduler_grid_length": {
+            "type": "integer"
+          },
+          "center_title": {
+            "type": "string"
+          },
+          "disable_sundays": {
+            "type": "boolean"
+          },
+          "app_version": {
+            "type": "string",
+            "description": "Current version of DA"
+          },
+          "application_configs": {
+            "type": "object",
+            "properties": {},
+            "description": "Configurations for applications"
+          }
+        }
+      },
+      "VehicleType": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          }
+        }
+      },
+      "EventType": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "default_event_duration": {
+            "type": "integer"
+          }
+        }
+      },
+      "Resource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "staff_id": {
+            "type": "string"
+          },
+          "is_visible_in_calendar": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WorkshopService": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "default_workload": {
+            "type": "integer"
+          },
+          "workload_in_minutes": {
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "price_netto": {
+            "type": "integer"
+          }
+        }
+      },
+      "Salutation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          }
+        }
+      },
+      "State": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "state_category_id": {
+            "type": "integer"
+          }
+        }
+      },
+      "StateCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "Statable": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "state_id": {
+            "type": "integer"
+          },
+          "statable_id": {
+            "type": "integer"
+          },
+          "statable_type": {
+            "type": "string"
+          }
+        }
+      },
+      "Mobility": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          }
+        }
+      },
+      "ServiceEventWithWorkshopTasks": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ServiceEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "workshop_tasks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WorkshopTask"
+                }
+              },
+              "statables": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Statable"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ServiceEventWithAttachments": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ServiceEventWithWorkshopTasks"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "WorkshopTask": {
+        "required": [
+          "dossier_id",
+          "start_date",
+          "workshop_service_id"
+        ],
+        "type": "object",
+        "properties": {
+          "start_date": {
+            "type": "string",
+            "description": "Y-m-d",
+            "example": "2019-07-02"
+          },
+          "start_time": {
+            "type": "string",
+            "description": "H:i:s",
+            "example": "13:00:00"
+          },
+          "order_id": {
+            "type": "integer",
+            "description": "Reference to Order model"
+          },
+          "external_ref": {
+            "type": "string",
+            "description": "External reference for the workshop task"
+          },
+          "workshop_service_id": {
+            "type": "integer",
+            "description": "Reference to Workshopservice model"
+          },
+          "dossier_id": {
+            "type": "integer",
+            "description": "Reference to ServiceEvent model"
+          },
+          "work_load": {
+            "type": "integer"
+          },
+          "work_state": {
+            "type": "integer",
+            "description": "Workshop states, allowed values -> 0 - Break, 1 - In Work, 2 - Done, 3 - New"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the workshop task",
+            "example": "This task involves replacing the brake pads and rotors."
+          }
+        }
+      },
+      "ServiceEventWithoutDates": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "resource_id": {
+            "type": "integer",
+            "description": "Reference to Resource model"
+          },
+          "event_type_id": {
+            "type": "integer",
+            "description": "Reference to EventType model"
+          },
+          "note": {
+            "type": "string",
+            "description": "Note for the event"
+          },
+          "customer_number": {
+            "type": "string"
+          },
+          "salutation_id": {
+            "type": "integer",
+            "description": "Reference to Salutation model"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "company": {
+            "type": "string"
+          },
+          "phone_number": {
+            "type": "string"
+          },
+          "mobile_number": {
+            "type": "string"
+          },
+          "street": {
+            "type": "string"
+          },
+          "zip_code": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "pick_up_address": {
+            "type": "string"
+          },
+          "bring_address": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "vehicle_identification_number": {
+            "type": "string"
+          },
+          "first_registration_date": {
+            "type": "string"
+          },
+          "license_plate": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "type": "string",
+            "description": "The vehicle model",
+            "example": "VW Golf"
+          },
+          "vehicle_type_id": {
+            "type": "integer",
+            "description": "Reference to VehicleType model"
+          },
+          "mobility_id": {
+            "type": "integer",
+            "description": "Reference to Mobility model"
+          },
+          "mileage": {
+            "type": "integer"
+          },
+          "general_inspection_date": {
+            "type": "string"
+          },
+          "external_booking_number": {
+            "type": "string"
+          },
+          "deposit_key_number": {
+            "type": "string",
+            "description": "The number of the car key"
+          },
+          "auto_customer_data": {
+            "type": "boolean",
+            "description": "If set we will try to autocomplete the customer and vehicle data by the field 'vehicle_identification_number' or 'license_plate'"
+          },
+          "booking_configuration_id": {
+            "type": "integer",
+            "description": "Reference to BookingConfiguration model"
+          }
+        }
+      },
+      "ServiceEvent": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ServiceEventWithoutDates"
+          },
+          {
+            "required": [
+              "end_date_time",
+              "start_date_time"
+            ],
+            "type": "object",
+            "properties": {
+              "start_date_time": {
+                "type": "string",
+                "description": "Start date and time for the car checkin [Y-m-d H:i:s]",
+                "example": "2019-07-02 13:00:00"
+              },
+              "end_date_time": {
+                "type": "string",
+                "description": "End date and time for the car checkin.\nActually this is the duration which is reserved in the service consultants calendar for customer care\nand the initial inspection of the car.\n[Y-m-d H:i:s]'\n",
+                "example": "2019-07-02 13:00:00"
+              },
+              "completion_date_time": {
+                "type": "string",
+                "description": "Planned completion date and time for the order [Y-m-d H:i:s]",
+                "example": "2019-07-02 13:00:00"
+              },
+              "pick_up_date_time": {
+                "type": "string",
+                "description": "Date and time for the car pick-up, in case a pick-up and delivery service was booked by the customer [Y-m-d H:i:s]",
+                "example": "2019-07-02 13:00:00"
+              },
+              "bring_date_time": {
+                "type": "string",
+                "description": "Date and time for the car delivery to the customer, in case a pick-up and delivery service was booked [Y-m-d H:i:s]",
+                "example": "2019-07-02 13:00:00"
+              },
+              "finish_pickup_date_time": {
+                "type": "string",
+                "description": "Date and time when the customer picks up the car [Y-m-d H:i:s]",
+                "example": "2019-07-02 13:00:00"
+              }
+            }
+          }
+        ]
+      },
+      "ValidationFailed": {
+        "type": "object",
+        "properties": {
+          "property": {
+            "type": "string",
+            "description": "The error text of the failed property validation"
+          }
+        }
+      },
+      "Attachment": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name or title of attachment"
+          },
+          "base64_encoded_content": {
+            "type": "string",
+            "description": "Base64 encoded Content of attachment"
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string",
+            "description": "The unique Number of the order"
+          },
+          "dossier_id": {
+            "type": "integer",
+            "description": "Refernce to a dossier"
+          },
+          "application_id": {
+            "type": "string",
+            "description": "Reference to a application"
+          },
+          "auto_repair_manager_id": {
+            "type": "integer",
+            "description": "Reference to a auto repair manager"
+          },
+          "insurer_id": {
+            "type": "integer",
+            "description": "Reference to a insurer"
+          },
+          "order_type_id": {
+            "type": "integer",
+            "description": "Reference to a order type"
+          }
+        }
+      },
+      "StatusTrigger": {
+        "required": [
+          "data"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The input type \"camera\" or \"scanner\" - required without status_trigger_configuration_id",
+            "example": "camera"
+          },
+          "status_id": {
+            "type": "integer",
+            "description": "Reference to the Status Model - required without status_trigger_configuration_id"
+          },
+          "status_trigger_configuration_id": {
+            "type": "integer",
+            "description": "The \"ID\" of you defined StatusTrigger in DA Application if set the fields type and status_id will be ignored"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "license_plate": {
+                "type": "string",
+                "description": "required by type camera"
+              },
+              "vin": {
+                "type": "string",
+                "description": "required by type scanner"
+              }
+            },
+            "description": "The Payload to identify the event"
+          }
+        }
+      },
+      "DocumentAttachViaDossierId": {
+        "type": "object",
+        "required": [
+          "file",
+          "dossier_id"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "The file to upload (any format supported)"
+          },
+          "dossier_id": {
+            "type": "integer",
+            "description": "ID of the dossier to attach the document to",
+            "example": 456
+          },
+          "name": {
+            "type": "string",
+            "description": "Custom name for the document (optional, defaults to original filename)",
+            "example": "Important_Document.pdf"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the document (optional)",
+            "example": "Important contract document"
+          },
+          "tag": {
+            "type": "string",
+            "description": "Tag to attach to the document (optional)",
+            "example": "Invoice"
+          }
+        }
+      },
+      "DocumentAttachViaOrderNumber": {
+        "type": "object",
+        "required": [
+          "file",
+          "order_number"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "The file to upload (any format supported)"
+          },
+          "order_number": {
+            "type": "string",
+            "description": "Order number to find the associated dossier. We always use last order by created_at to get dossier.",
+            "example": "ORD-2024-001"
+          },
+          "application_id": {
+            "type": "string",
+            "description": "used to find dossier via order_number and application_id.",
+            "example": "da"
+          },
+          "name": {
+            "type": "string",
+            "description": "Custom name for the document (optional, defaults to original filename)",
+            "example": "Important_Document.pdf"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the document (optional)",
+            "example": "Important contract document"
+          },
+          "tag": {
+            "type": "string",
+            "description": "Tag to attach to the document (optional)",
+            "example": "Invoice"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "group": {
+        "name": "group",
+        "in": "header",
+        "description": "The group name of the DA instance to be accessed",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "center": {
+        "name": "center",
+        "in": "header",
+        "description": "The center name of the DA instance to be accessed",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "page": {
+        "name": "page",
+        "in": "query",
+        "description": "Select the page",
+        "schema": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "filter_name": {
+        "name": "filter[name]",
+        "in": "query",
+        "description": "Filter by the property name",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "sort": {
+        "name": "sort",
+        "in": "query",
+        "description": "Filter by property",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "filter_customer_number": {
+        "name": "filter[customer_number]",
+        "in": "query",
+        "description": "Filter by the property customer_number",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "filter_license_plate": {
+        "name": "filter[license_plate]",
+        "in": "query",
+        "description": "Filter by the property license_plate",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "filter_vehicle_identification_number": {
+        "name": "filter[vehicle_identification_number]",
+        "in": "query",
+        "description": "Filter by the property vehicle_identification_number",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "filter_in_range": {
+        "name": "filter[inRange]",
+        "in": "query",
+        "description": "Get a list of items in the given Range (start,end), values must be in date format Y-m-d comma separated",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "filter_dossier_id": {
+        "name": "filter[dossier_id]",
+        "in": "query",
+        "description": "Filter by the property dossier_id",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "securitySchemes": {
+      "da_auth": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "tokenUrl": "https://api.werkstattplanung.net/da/v1/oauth/token",
+            "scopes": {
+              "read-document": "read document",
+              "read-customers": "read customers",
+              "create-customers": "create customers",
+              "update-customers": "update customers",
+              "delete-customers": "delete customers",
+              "read-vehicles": "read vehicles",
+              "create-vehicles": "create vehicles",
+              "update-vehicles": "update vehicles",
+              "delete-vehicles": "delete vehicles",
+              "read-event-types": "read event types",
+              "read-free-events": "read free slots",
+              "read-salutations": "read salutations",
+              "read-mobilities": "read mobilities",
+              "read-workshop-services": "read workshop services",
+              "read-vehicle-types": "read vehicle types",
+              "read-config": "read config",
+              "read-events": "read events",
+              "read-replacement-vehicle": "read replacement vehicles",
+              "read-workshop-tasks": "read-workshop-tasks",
+              "read-resources": "read resources",
+              "update-event": "update event",
+              "update-workshop-tasks": "update-workshop-tasks",
+              "delete-event": "delete event",
+              "delete-workshop-tasks": "delete-workshop-tasks",
+              "create-event": "create event",
+              "create-workshop-task": "create workshop tasks",
+              "create-replacement-vehicle-event": "create replacement vehicles",
+              "read-state": "read state",
+              "read-state-category": "read state-category",
+              "read-statable": "read statable",
+              "create-statable": "create statable",
+              "update-statable": "update statable",
+              "delete-statable": "delete statable",
+              "create-status-trigger": "create status trigger"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VFW / TW Kalkulation — Mockup DRIVE</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <style>
+    :root {
+      --drive-primary: #0d6efd;
+      --drive-success: #198754;
+      --kalk-bg: #f8fafc;
+      --kalk-border: #e2e8f0;
+    }
+    body { background: #f1f5f9; font-size: 0.9375rem; }
+    .mockup-badge { font-size: 0.7rem; vertical-align: middle; }
+    .card { border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .card-header { font-weight: 600; background: #fff; border-bottom: 1px solid var(--kalk-border); }
+    .kalk-block { background: var(--kalk-bg); border: 1px solid var(--kalk-border); border-radius: 0.375rem; padding: 1rem 1.25rem; }
+    .kalk-row { display: flex; justify-content: space-between; align-items: center; padding: 0.25rem 0; border-bottom: 1px solid rgba(0,0,0,.05); }
+    .kalk-row:last-child { border-bottom: none; }
+    .kalk-row strong { min-width: 10rem; }
+    .kalk-row .value { font-variant-numeric: tabular-nums; text-align: right; }
+    .kalk-row.total { font-weight: 700; font-size: 1.05rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 2px solid var(--kalk-border); }
+    .kalk-row.ersparnis { color: var(--drive-success); }
+    .form-label { font-weight: 500; }
+    .input-group-text { min-width: 2.5rem; justify-content: center; }
+    @media print {
+      body { background: #fff; }
+      .no-print { display: none !important; }
+      .kalk-block { box-shadow: none; border: 1px solid #dee2e6; }
+    }
+  </style>
+</head>
+<body class="py-4">
+  <div class="container-xl">
+    <header class="d-flex justify-content-between align-items-center mb-4 no-print">
+      <div>
+        <h1 class="h4 mb-1"><i class="bi bi-calculator text-primary me-2"></i>VFW / Tageszulassung — Kalkulation</h1>
+        <p class="text-muted small mb-0">Ein Modul ersetzt die Excel-Kalkulationen. Daten nur zum Verständnis; Berechnung im Browser.</p>
+      </div>
+      <span class="badge bg-secondary mockup-badge">MOCKUP</span>
+    </header>
+
+    <div class="row">
+      <!-- Linke Spalte: Eingaben -->
+      <div class="col-lg-5 mb-4">
+        <div class="card h-100">
+          <div class="card-header py-2 px-3">
+            <i class="bi bi-pencil-square me-2"></i>Eingaben
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label">Fahrzeug aus Bestand übernehmen</label>
+              <select id="bestand" class="form-select form-select-sm">
+                <option value="">— Neu eingeben —</option>
+                <option value="R4270588">Corsa GS 1.2 100 PS — R4270588 (Opel TW)</option>
+                <option value="J435580">Tucson Prime 1.6 150 PS — J435580 (Hyundai VFW)</option>
+                <option value="Z550229">i20 Trend 100 PS — Z550229 (Hyundai VFW n.gef.)</option>
+              </select>
+              <small class="text-muted">Optional: VIN/Modell werden vorbelegt</small>
+            </div>
+
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <label class="form-label">Marke</label>
+                <select id="marke" class="form-select form-select-sm">
+                  <option value="Opel">Opel / Stellantis</option>
+                  <option value="Hyundai">Hyundai</option>
+                  <option value="Leapmotor">Leapmotor</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Aktion</label>
+                <select id="aktion" class="form-select form-select-sm">
+                  <option value="TW">TW (Tageszulassung)</option>
+                  <option value="VFW gef.">VFW gef.</option>
+                  <option value="VFW n.gef.">VFW n. gef.</option>
+                  <option value="Netprice">Netprice</option>
+                  <option value="OR">OR</option>
+                  <option value="">— Freitext —</option>
+                </select>
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Modell</label>
+              <input type="text" id="modell" class="form-control form-control-sm" placeholder="z. B. Corsa GS 1.2 100 PS" value="Corsa GS 1.2 100 PS">
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Fahrgestellnummer / VIN</label>
+              <input type="text" id="vin" class="form-control form-control-sm" placeholder="z. B. R4270588" maxlength="17" value="R4270588">
+            </div>
+
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <label class="form-label">VH netto (€)</label>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">€</span>
+                  <input type="number" id="vh_netto" class="form-control" step="0.01" min="0" value="20153.24">
+                </div>
+              </div>
+              <div class="col-6">
+                <label class="form-label">UPE netto (€)</label>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">€</span>
+                  <input type="number" id="upe_netto" class="form-control" step="0.01" min="0" value="22126.04">
+                </div>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Überführung (€)</label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">€</span>
+                <input type="number" id="ueberfuehrung" class="form-control" step="1" min="0" value="995">
+              </div>
+            </div>
+
+            <p class="small fw-semibold text-muted mb-1">Boni (auf UPE oder fester Betrag)</p>
+            <div class="bonus-rows">
+              <div class="row g-1 mb-1 align-items-end">
+                <div class="col-6"><input type="text" id="b1_label" class="form-control form-control-sm" placeholder="Bezeichnung" value="./. KAB + TW"></div>
+                <div class="col-3"><input type="number" id="b1_pct" class="form-control form-control-sm" step="0.01" placeholder="%" value="6"></div>
+                <div class="col-3"><input type="number" id="b1_eur" class="form-control form-control-sm" step="0.01" placeholder="€" value=""></div>
+              </div>
+              <div class="row g-1 mb-1 align-items-end">
+                <div class="col-6"><input type="text" id="b2_label" class="form-control form-control-sm" placeholder="Bezeichnung" value="./. Reg.-Budget"></div>
+                <div class="col-3"><input type="number" id="b2_pct" class="form-control form-control-sm" step="0.01" placeholder="%"></div>
+                <div class="col-3"><input type="number" id="b2_eur" class="form-control form-control-sm" step="0.01" placeholder="€" value="500"></div>
+              </div>
+              <div class="row g-1 mb-1 align-items-end">
+                <div class="col-6"><input type="text" id="b3_label" class="form-control form-control-sm" placeholder="Bezeichnung"></div>
+                <div class="col-3"><input type="number" id="b3_pct" class="form-control form-control-sm" step="0.01" placeholder="%"></div>
+                <div class="col-3"><input type="number" id="b3_eur" class="form-control form-control-sm" step="0.01" placeholder="€"></div>
+              </div>
+              <div class="row g-1 mb-1 align-items-end">
+                <div class="col-6"><input type="text" id="b4_label" class="form-control form-control-sm" placeholder="Bezeichnung"></div>
+                <div class="col-3"><input type="number" id="b4_pct" class="form-control form-control-sm" step="0.01" placeholder="%"></div>
+                <div class="col-3"><input type="number" id="b4_eur" class="form-control form-control-sm" step="0.01" placeholder="€"></div>
+              </div>
+            </div>
+
+            <div class="row g-2 mb-2 mt-2">
+              <div class="col-6">
+                <label class="form-label">Marge (€)</label>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">€</span>
+                  <input type="number" id="marge_eur" class="form-control" step="0.01" value="1400">
+                </div>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Aktionspreis VK brutto (€)</label>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">€</span>
+                  <input type="number" id="aktionspreis" class="form-control" step="1" value="23490">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rechte Spalte: Kalkulation (Live) -->
+      <div class="col-lg-7 mb-4">
+        <div class="card h-100">
+          <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-cash-stack me-2"></i>Kalkulation</span>
+            <div class="no-print">
+              <button type="button" class="btn btn-sm btn-outline-primary me-1" id="btnPrint"><i class="bi bi-printer"></i> Drucken</button>
+              <button type="button" class="btn btn-sm btn-primary" id="btnPdf"><i class="bi bi-file-pdf"></i> PDF</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="kalk-block mb-3">
+              <div class="kalk-row"><strong>VH netto (EK)</strong><span class="value" id="out_vh">0,00 €</span></div>
+              <div id="out_boni"></div>
+              <div class="kalk-row total"><strong>Zwischensumme</strong><span class="value" id="out_zwischen">0,00 €</span></div>
+              <div class="kalk-row"><strong>+ Marge</strong><span class="value" id="out_marge">0,00 €</span></div>
+              <div class="kalk-row"><strong>Summe vor Steuer</strong><span class="value" id="out_vor_st">0,00 €</span></div>
+              <div class="kalk-row"><strong>+ 19 % MwSt.</strong><span class="value" id="out_mwst">0,00 €</span></div>
+              <div class="kalk-row total"><strong>Gesamtsumme (brutto intern)</strong><span class="value" id="out_brutto">0,00 €</span></div>
+            </div>
+            <div class="kalk-block mb-3">
+              <div class="kalk-row"><strong>UPE netto</strong><span class="value" id="out_upe_netto">0,00 €</span></div>
+              <div class="kalk-row"><strong>UPE inkl. MwSt.</strong><span class="value" id="out_upe_brutto">0,00 €</span></div>
+              <div class="kalk-row"><strong>+ Überführung</strong><span class="value" id="out_ueberf">0,00 €</span></div>
+              <div class="kalk-row total"><strong>Gesamtpreis (Listenpreis)</strong><span class="value" id="out_listenpreis">0,00 €</span></div>
+            </div>
+            <div class="kalk-block">
+              <div class="kalk-row"><strong>Aktionspreis (VK brutto)</strong><span class="value" id="out_aktionspreis">0,00 €</span></div>
+              <div class="kalk-row ersparnis total"><strong>Ersparnis</strong><span class="value" id="out_ersparnis">0,00 € (0 %)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="text-muted small no-print mt-2">
+      Mockup für DRIVE VFW-Vermarktungsmodul. Logik wie Excel: VH netto − Boni (%×UPE oder fest) = Zwischensumme; + Marge = Summe vor St.; + 19 % = Gesamtsumme. Ersparnis = Listenpreis − Aktionspreis.
+    </footer>
+  </div>
+
+  <script>
+    function num(v) { return Math.round(parseFloat(v) || 0 * 100) / 100; }
+    function fmtEur(v) { return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v); }
+    function fmtPct(v) { return new Intl.NumberFormat('de-DE', { style: 'percent', minimumFractionDigits: 2 }).format(v); }
+
+    function recalc() {
+      var vh = num(document.getElementById('vh_netto').value);
+      var upe = num(document.getElementById('upe_netto').value);
+      var ueberf = num(document.getElementById('ueberfuehrung').value);
+      var marge = num(document.getElementById('marge_eur').value);
+      var aktionspreis = num(document.getElementById('aktionspreis').value);
+
+      var abzuege = 0;
+      var boniHtml = '';
+      for (var i = 1; i <= 4; i++) {
+        var label = document.getElementById('b' + i + '_label').value.trim();
+        var pct = num(document.getElementById('b' + i + '_pct').value) / 100;
+        var eur = num(document.getElementById('b' + i + '_eur').value);
+        var betrag = (pct > 0 ? upe * pct : 0) + eur;
+        if (label || betrag !== 0) {
+          abzuege += betrag;
+          boniHtml += '<div class="kalk-row"><strong>./. ' + (label || 'Bonus ' + i) + '</strong><span class="value">' + fmtEur(-betrag) + '</span></div>';
+        }
+      }
+      document.getElementById('out_boni').innerHTML = boniHtml || '<div class="kalk-row text-muted"><strong>— keine Boni —</strong><span class="value">0,00 €</span></div>';
+
+      var zwischen = vh - abzuege;
+      var vorSt = zwischen + marge;
+      var mwst = vorSt * 0.19;
+      var brutto = vorSt + mwst;
+
+      var upeBrutto = upe * 1.19;
+      var listenpreis = upeBrutto + ueberf;
+      var ersparnis = listenpreis - aktionspreis;
+      var ersparnisPct = listenpreis > 0 ? ersparnis / listenpreis : 0;
+
+      document.getElementById('out_vh').textContent = fmtEur(vh);
+      document.getElementById('out_zwischen').textContent = fmtEur(zwischen);
+      document.getElementById('out_marge').textContent = fmtEur(marge);
+      document.getElementById('out_vor_st').textContent = fmtEur(vorSt);
+      document.getElementById('out_mwst').textContent = fmtEur(mwst);
+      document.getElementById('out_brutto').textContent = fmtEur(brutto);
+      document.getElementById('out_upe_netto').textContent = fmtEur(upe);
+      document.getElementById('out_upe_brutto').textContent = fmtEur(upeBrutto);
+      document.getElementById('out_ueberf').textContent = fmtEur(ueberf);
+      document.getElementById('out_listenpreis').textContent = fmtEur(listenpreis);
+      document.getElementById('out_aktionspreis').textContent = fmtEur(aktionspreis);
+      document.getElementById('out_ersparnis').textContent = fmtEur(ersparnis) + ' (' + fmtPct(ersparnisPct) + ')';
+    }
+
+    document.querySelectorAll('#vh_netto, #upe_netto, #ueberfuehrung, #marge_eur, #aktionspreis, #b1_pct, #b1_eur, #b2_pct, #b2_eur, #b3_pct, #b3_eur, #b4_pct, #b4_eur').forEach(function(el) {
+      el.addEventListener('input', recalc);
+    });
+    document.getElementById('bestand').addEventListener('change', function() {
+      var v = this.value;
+      if (v === 'R4270588') { document.getElementById('modell').value = 'Corsa GS 1.2 100 PS'; document.getElementById('vin').value = 'R4270588'; document.getElementById('vh_netto').value = '20153.24'; document.getElementById('upe_netto').value = '22126.04'; document.getElementById('aktion').value = 'TW'; }
+      if (v === 'J435580') { document.getElementById('modell').value = 'Tucson Prime 1.6 150 PS'; document.getElementById('vin').value = 'J435580'; document.getElementById('vh_netto').value = '34581.57'; document.getElementById('upe_netto').value = '39428.57'; document.getElementById('aktion').value = 'VFW gef.'; }
+      if (v === 'Z550229') { document.getElementById('modell').value = 'i20 Trend 100 PS'; document.getElementById('vin').value = 'Z550229'; document.getElementById('vh_netto').value = '19763.76'; document.getElementById('upe_netto').value = '20352.94'; document.getElementById('aktion').value = 'VFW n.gef.'; }
+      recalc();
+    });
+    document.getElementById('btnPrint').addEventListener('click', function() { window.print(); });
+    document.getElementById('btnPdf').addEventListener('click', function() { alert('Im Modul: PDF-Export über Backend (z. B. VIN als Dateiname).'); });
+    recalc();
+  </script>
+</body>
+</html>

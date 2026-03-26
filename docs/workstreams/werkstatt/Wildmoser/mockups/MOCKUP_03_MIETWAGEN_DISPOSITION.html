@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mockup 03 - Mietwagen Disposition</title>
+  <style>
+    :root {
+      --bg: #0a0f1a;
+      --panel: #111827;
+      --card: #1f2937;
+      --line: #334155;
+      --txt: #f8fafc;
+      --muted: #9ca3af;
+      --vio: #a78bfa;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(135deg, #020617 0%, #0f172a 55%, #1e1b4b 100%);
+      color: var(--txt);
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+    .title { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+    .sub { color: var(--muted); margin-bottom: 16px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 320px;
+      gap: 12px;
+    }
+    .panel {
+      background: rgba(17,24,39,.94);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 560px;
+    }
+    .h { color: var(--vio); font-weight: 700; margin-bottom: 9px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px 6px;
+      text-align: left;
+    }
+    th { color: var(--muted); font-size: 12px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .badge {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      margin-left: 5px;
+    }
+    .ok { color: var(--green); }
+    .warn { color: var(--amber); }
+    .err { color: var(--red); }
+    .step {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: rgba(167,139,250,.1);
+      border-left: 3px solid var(--vio);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .footer {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px dashed var(--line);
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Mockup 03: Mietwagen-Dispo (DRIVE -> Locosoft)</div>
+    <div class="sub">Ziel: Reservierungen aus Termin/Auftrag in DRIVE steuern und im Locosoft-Mietwagenmodul als Fallback spiegeln.</div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="h">Mietwagen-Kalender (Auszug)</div>
+        <table>
+          <thead>
+            <tr><th>Fahrzeug</th><th>24.03</th><th>25.03</th><th>26.03</th><th>27.03</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>MIET-12 Corsa</td><td class="ok">frei</td><td class="warn">reserviert</td><td class="warn">reserviert</td><td class="ok">frei</td></tr>
+            <tr><td>MIET-07 Astra</td><td class="warn">reserviert</td><td class="warn">reserviert</td><td class="err">konflikt</td><td class="ok">frei</td></tr>
+            <tr><td>MIET-03 i20</td><td class="ok">frei</td><td class="ok">frei</td><td class="warn">reserviert</td><td class="warn">reserviert</td></tr>
+          </tbody>
+        </table>
+        <div class="step">Konfliktregeln greifen vor Buchung: keine Doppelbelegung, Mindestpuffer bei Uebergabe/Rueckgabe.</div>
+      </section>
+
+      <section class="panel">
+        <div class="h">Buchungsfluss aus Auftrag</div>
+        <div class="card"><strong>Auftrag A-44015</strong><br/>Kunde: M. Wildmoser<br/>Termin: 25.03 08:00-16:00</div>
+        <div class="card"><strong>Mietwagenvorschlag</strong><br/>MIET-12 Corsa, Verfuegbar 07:45-17:00<span class="badge ok">OK</span></div>
+        <div class="card"><strong>Uebergabe</strong><br/>Fuehrerschein geprueft, Tank 6/8, Zustand dokumentiert</div>
+        <div class="card"><strong>Ruecknahme</strong><br/>Rueckgabe 16:45, Schadenfrei, Abschluss automatisch</div>
+        <div class="step">Jeder Schritt erzeugt Events: CREATE_BOOKING, HANDOVER, RETURN, EXTEND -> Sync nach Locosoft.</div>
+      </section>
+
+      <section class="panel">
+        <div class="h">Sync-Center</div>
+        <div class="card"><strong>BOOKING #M-8031</strong><br/>Locosoft Ref: MW-22051<span class="badge ok">SYNCED</span></div>
+        <div class="card"><strong>EXTEND #M-8031</strong><br/>+2h Verlaengerung<span class="badge warn">PENDING</span></div>
+        <div class="card"><strong>RETURN #M-8014</strong><br/>Ruecknahme fehlerhaft<span class="badge err">FAILED</span></div>
+        <div class="step">Fallback-Sicherheit: Bei Ausfall Locosoft bleibt DRIVE fuehrend, Nachsynchronisierung ueber Queue.</div>
+      </section>
+    </div>
+
+    <div class="footer">Hinweis Mockup: Mietwagen ist integraler Teil des Serviceprozesses und muss direkt mit Termin + Auftrag gekoppelt sein.</div>
+  </div>
+</body>
+</html>
+

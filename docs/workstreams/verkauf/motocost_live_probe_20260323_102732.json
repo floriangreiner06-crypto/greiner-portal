@@ -1,0 +1,465 @@
+{
+  "timestamp": "2026-03-23T10:27:15",
+  "login": {
+    "login_success": true,
+    "final_url": "https://dashboard.motocost.com/?orgId=1&from=now-6h&to=now&timezone=browser",
+    "error": null
+  },
+  "dashboard_url": "https://dashboard.motocost.com/d/ff05ge90k79j4e",
+  "summary": {
+    "api_request_count": 29,
+    "api_response_count": 29,
+    "ds_query_request_count": 9,
+    "ds_query_response_statuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      400,
+      200,
+      200,
+      200
+    ],
+    "pagination_flags": {
+      "contains_limit": false,
+      "contains_offset": false,
+      "contains_skip": false
+    },
+    "ds_query_samples": [
+      {
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=10db08a2-9445-420a-b021-1a564d7d6dfc",
+        "body_preview": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"platform\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$platform\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=1c00ff04-0afd-4448-9a31-b24ee006af74",
+        "body_preview": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"salesType\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$salesType\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=90c19ad5-5588-4ed8-bf3b-0a09fe147a45",
+        "body_preview": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true } },\\r\\n  { \\\"$addFields\\\": { \\\"countryCanon\\\": { \\\"$trim\\\": { \\\"input\\\": { \\\"$toString\\\": \\\"$country\\\" } } } } },\\r\\n  { \\\"$match\\\": { \\\"countryCanon\\\": { \\\"$ne\\\": null } } },\\r\\n  { \\\"$match\\\": { \\\"countryCanon\\\": { \\\"$ne\\\": \\\"\\\" } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$countryCanon\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=cdcdc176-65e1-4032-b663-e096dfacb16c",
+        "body_preview": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"clean_make\\\": {\\\"$exists\\\": true} } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$clean_make\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=f028426c-9bd7-4ee0-8b6d-c432f3156263",
+        "body_preview": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"vehicle.fuelGerman\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$vehicle.fuelGerman\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      }
+    ],
+    "login_success": true,
+    "final_url": "https://dashboard.motocost.com/?orgId=1&from=now-6h&to=now&timezone=browser",
+    "entry_count": 58
+  },
+  "raw": {
+    "entries": [
+      {
+        "kind": "request",
+        "requestId": "3706167.77",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-exploretraces-app/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.78",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-lokiexplore-app/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.79",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-metricsdrilldown-app/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.80",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-pyroscope-app/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.96",
+        "url": "https://dashboard.motocost.com/api/login/ping",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.77",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-exploretraces-app/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.79",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-metricsdrilldown-app/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.80",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-pyroscope-app/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.78",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-lokiexplore-app/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.96",
+        "url": "https://dashboard.motocost.com/api/login/ping",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.101",
+        "url": "https://dashboard.motocost.com/api/dashboards/home",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.101",
+        "url": "https://dashboard.motocost.com/api/dashboards/home",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.120",
+        "url": "https://dashboard.motocost.com/api/search?limit=30&starred=true",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.121",
+        "url": "https://dashboard.motocost.com/api/search?limit=30&type=dash-db",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.120",
+        "url": "https://dashboard.motocost.com/api/search?limit=30&starred=true",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.121",
+        "url": "https://dashboard.motocost.com/api/search?limit=30&type=dash-db",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.147",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-exploretraces-app/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.148",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-lokiexplore-app/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.149",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-metricsdrilldown-app/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.150",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-pyroscope-app/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.147",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-exploretraces-app/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.150",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-pyroscope-app/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.148",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-lokiexplore-app/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.149",
+        "url": "https://dashboard.motocost.com/api/plugins/grafana-metricsdrilldown-app/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.180",
+        "url": "https://dashboard.motocost.com/api/login/ping",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.181",
+        "url": "https://dashboard.motocost.com/api/folders/ef00ixvt5ci68e?accesscontrol=true&isLegacyCall=false",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.180",
+        "url": "https://dashboard.motocost.com/api/login/ping",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.181",
+        "url": "https://dashboard.motocost.com/api/folders/ef00ixvt5ci68e?accesscontrol=true&isLegacyCall=false",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.183",
+        "url": "https://dashboard.motocost.com/api/plugins/meln5674-mongodb-community/settings",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.186",
+        "url": "https://dashboard.motocost.com/api/prometheus/grafana/api/v1/rules?dashboard_uid=ff05ge90k79j4e",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.188",
+        "url": "https://dashboard.motocost.com/api/user/stars",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.189",
+        "url": "https://dashboard.motocost.com/api/annotations?from=1774236442230&to=1774258042230&limit=100&matchAny=false&dashboardUID=ff05ge90k79j4e",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.183",
+        "url": "https://dashboard.motocost.com/api/plugins/meln5674-mongodb-community/settings",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.186",
+        "url": "https://dashboard.motocost.com/api/prometheus/grafana/api/v1/rules?dashboard_uid=ff05ge90k79j4e",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.188",
+        "url": "https://dashboard.motocost.com/api/user/stars",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.189",
+        "url": "https://dashboard.motocost.com/api/annotations?from=1774236442230&to=1774258042230&limit=100&matchAny=false&dashboardUID=ff05ge90k79j4e",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.201",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=10db08a2-9445-420a-b021-1a564d7d6dfc",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"platform\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$platform\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.202",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=1c00ff04-0afd-4448-9a31-b24ee006af74",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"salesType\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$salesType\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.203",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=90c19ad5-5588-4ed8-bf3b-0a09fe147a45",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true } },\\r\\n  { \\\"$addFields\\\": { \\\"countryCanon\\\": { \\\"$trim\\\": { \\\"input\\\": { \\\"$toString\\\": \\\"$country\\\" } } } } },\\r\\n  { \\\"$match\\\": { \\\"countryCanon\\\": { \\\"$ne\\\": null } } },\\r\\n  { \\\"$match\\\": { \\\"countryCanon\\\": { \\\"$ne\\\": \\\"\\\" } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$countryCanon\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.204",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=cdcdc176-65e1-4032-b663-e096dfacb16c",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"clean_make\\\": {\\\"$exists\\\": true} } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$clean_make\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.205",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=f028426c-9bd7-4ee0-8b6d-c432f3156263",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"vehicle.fuelGerman\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$vehicle.fuelGerman\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.202",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=1c00ff04-0afd-4448-9a31-b24ee006af74",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.205",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=f028426c-9bd7-4ee0-8b6d-c432f3156263",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.201",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=10db08a2-9445-420a-b021-1a564d7d6dfc",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.204",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=cdcdc176-65e1-4032-b663-e096dfacb16c",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.211",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=353c50a3-e830-4361-9286-a98dfa61420e",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"vehicle.transmissionTypeGerman\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$vehicle.transmissionTypeGerman\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.212",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=328b3a07-c7c2-49c3-9c82-24c167469839",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"vehicle.bodyTypeGerman\\\": { \\\"$exists\\\": true } } },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$vehicle.bodyTypeGerman\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.213",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=d91ff591-793c-47e5-9f9b-6267deb6a1e9",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"refId\":\"metricFindQuery\",\"database\":\"remarketing\",\"collection\":\"allListings\",\"queryType\":\"Table\",\"timestampField\":\"\",\"timestampFormat\":\"\",\"labelFields\":[],\"valueFields\":[\"value\"],\"valueFieldTypes\":[\"string\"],\"aggregation\":\"[\\r\\n  { \\\"$match\\\": { \\\"active\\\": true, \\\"clean_make\\\": { \\\"$exists\\\": true }, \\\"clean_model\\\": { \\\"$exists\\\": true } } },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": {\\r\\n        \\\"$let\\\": {\\r\\n          \\\"vars\\\": { \\\"m\\\": \\\"(ALPINA|Abarth|Alfa Romeo|Audi|BMW|BYD|Bentley|Cadillac|Chevrolet|Chrysler|Citroën|Cupra|DS Automobiles|Dacia|Daewoo|Daihatsu|Dodge|Fiat|Ford|GWM|Genesis|Honda|Hyundai|Infiniti|Isuzu|Iveco|Jaguar|Jeep|KGM|Kia|Lada|Lancia|Land Rover|Lexus|Ligier|Lynk&Co|MAN|MG|MINI|Mahindra|Maserati|Maxus|Mazda|Mercedes-Benz|Mitsubishi|Nissan|Opel|Peugeot|Piaggio|Polestar|Porsche|Renault|Rover|Saab|Seat|Seres|Skoda|Smart|Ssangyong|Subaru|Suzuki|Tata|Tesla|Toyota|Triumph|Volkswagen|Volvo|Zeekr|e\\\\.GO)\\\" },\\r\\n          \\\"in\\\": {\\r\\n            \\\"$or\\\": [\\r\\n              { \\\"$in\\\": [ \\\"$$m\\\", [\\\"\\\", \\\".*\\\"] ] },                            \\r\\n              { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$m\\\", \\\"regex\\\": \\\"^\\\\\\\\$\\\\\\\\{.*\\\\\\\\}$\\\" } }, \\r\\n              { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$clean_make\\\", \\\"regex\\\": { \\\"$concat\\\": [\\\"^(\\\", \\\"$$m\\\", \\\")$\\\"] }, \\\"options\\\": \\\"i\\\" } }\\r\\n            ]\\r\\n          }\\r\\n        }\\r\\n      }\\r\\n    }\\r\\n  },\\r\\n  { \\\"$group\\\": { \\\"_id\\\": \\\"$clean_model\\\" } },\\r\\n  { \\\"$project\\\": { \\\"_id\\\": 0, \\\"value\\\": \\\"$_id\\\" } },\\r\\n  { \\\"$sort\\\": { \\\"value\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"schemaInference\":false,\"schemaInferenceDepth\":0,\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"datasourceId\":12,\"intervalMs\":0}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.203",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=90c19ad5-5588-4ed8-bf3b-0a09fe147a45",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.213",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=d91ff591-793c-47e5-9f9b-6267deb6a1e9",
+        "status": 400,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.212",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=328b3a07-c7c2-49c3-9c82-24c167469839",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.211",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=353c50a3-e830-4361-9286-a98dfa61420e",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.215",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR100",
+        "http_method": "POST",
+        "postData": "{\"queries\":[{\"aggregation\":\"[\\r\\n  {\\r\\n    \\\"$addFields\\\": {\\r\\n      \\\"firstReg\\\": {\\r\\n        \\\"$let\\\": {\\r\\n          \\\"vars\\\": { \\\"fr\\\": \\\"$vehicle.firstRegistration\\\" },\\r\\n          \\\"in\\\": {\\r\\n            \\\"$switch\\\": {\\r\\n              \\\"branches\\\": [\\r\\n                { \\\"case\\\": { \\\"$eq\\\": [ { \\\"$type\\\": \\\"$$fr\\\" }, \\\"date\\\" ] }, \\\"then\\\": \\\"$$fr\\\" },\\r\\n                {\\r\\n                  \\\"case\\\": { \\\"$eq\\\": [ { \\\"$type\\\": \\\"$$fr\\\" }, \\\"object\\\" ] },\\r\\n                  \\\"then\\\": { \\\"$toDate\\\": { \\\"$getField\\\": { \\\"field\\\": \\\"$date\\\", \\\"input\\\": \\\"$$fr\\\" } } }\\r\\n                }\\r\\n              ],\\r\\n              \\\"default\\\": null\\r\\n            }\\r\\n          }\\r\\n        }\\r\\n      },\\r\\n      \\\"countDownSeconds\\\": {\\r\\n        \\\"$cond\\\": [\\r\\n          { \\\"$ne\\\": [ \\\"$endDate\\\", null ] },\\r\\n          {\\r\\n            \\\"$max\\\": [\\r\\n              0,\\r\\n              {\\r\\n                \\\"$dateDiff\\\": {\\r\\n                  \\\"startDate\\\": \\\"$$NOW\\\",\\r\\n                  \\\"endDate\\\": {\\r\\n                    \\\"$switch\\\": {\\r\\n                      \\\"branches\\\": [\\r\\n                        { \\\"case\\\": { \\\"$eq\\\": [ { \\\"$type\\\": \\\"$endDate\\\" }, \\\"date\\\" ] }, \\\"then\\\": \\\"$endDate\\\" },\\r\\n                        {\\r\\n                          \\\"case\\\": { \\\"$eq\\\": [ { \\\"$type\\\": \\\"$endDate\\\" }, \\\"object\\\" ] },\\r\\n                          \\\"then\\\": { \\\"$toDate\\\": { \\\"$getField\\\": { \\\"field\\\": \\\"$date\\\", \\\"input\\\": \\\"$endDate\\\" } } }\\r\\n                        }\\r\\n                      ],\\r\\n                      \\\"default\\\": null\\r\\n                    }\\r\\n                  },\\r\\n                  \\\"unit\\\": \\\"second\\\"\\r\\n                }\\r\\n              }\\r\\n            ]\\r\\n          },\\r\\n          null\\r\\n        ]\\r\\n      },\\r\\n      \\\"countUpSeconds\\\": {\\r\\n        \\\"$cond\\\": [\\r\\n          { \\\"$ne\\\": [ \\\"$firstSeen\\\", null ] },\\r\\n          {\\r\\n            \\\"$max\\\": [\\r\\n              0,\\r\\n              {\\r\\n                \\\"$dateDiff\\\": {\\r\\n                  \\\"startDate\\\": {\\r\\n                    \\\"$switch\\\": {\\r\\n                      \\\"branches\\\": [\\r\\n                        { \\\"case\\\": { \\\"$eq\\\": [ { \\\"$type\\\": \\\"$firstSeen\\\" }, \\\"date\\\" ] }, \\\"then\\\": \\\"$firstSeen\\\" },\\r\\n                        {\\r\\n                          \\\"case\\\": { \\\"$eq\\\": [ { \\\"$type\\\": \\\"$firstSeen\\\" }, \\\"object\\\" ] },\\r\\n                          \\\"then\\\": { \\\"$toDate\\\": { \\\"$getField\\\": { \\\"field\\\": \\\"$date\\\", \\\"input\\\": \\\"$firstSeen\\\" } } }\\r\\n                        }\\r\\n                      ],\\r\\n                      \\\"default\\\": null\\r\\n                    }\\r\\n                  },\\r\\n                  \\\"endDate\\\": \\\"$$NOW\\\",\\r\\n                  \\\"unit\\\": \\\"second\\\"\\r\\n                }\\r\\n              }\\r\\n            ]\\r\\n          },\\r\\n          null\\r\\n        ]\\r\\n      },\\r\\n      \\\"platformCanon\\\": { \\\"$trim\\\": { \\\"input\\\": { \\\"$toString\\\": \\\"$platform\\\" } } },\\r\\n      \\\"salesCanon\\\": { \\\"$trim\\\": { \\\"input\\\": { \\\"$toString\\\": \\\"$salesType\\\" } } },\\r\\n      \\\"fuelDe\\\": \\\"$vehicle.fuelGerman\\\",\\r\\n      \\\"transmissionDe\\\": \\\"$vehicle.transmissionTypeGerman\\\",\\r\\n      \\\"bodyTypeDe\\\": \\\"$vehicle.bodyTypeGerman\\\",\\r\\n      \\\"countryCanon\\\": { \\\"$trim\\\": { \\\"input\\\": { \\\"$toString\\\": \\\"$country\\\" } } },\\r\\n      \\\"firstImage\\\": {\\r\\n        \\\"$cond\\\": [\\r\\n          { \\\"$gt\\\": [ { \\\"$size\\\": { \\\"$ifNull\\\": [ \\\"$images\\\", [] ] } }, 0 ] },\\r\\n          { \\\"$arrayElemAt\\\": [ \\\"$images\\\", 0 ] },\\r\\n          \\\"\\\"\\r\\n        ]\\r\\n      },\\r\\n      \\\"problemText\\\": {\\r\\n        \\\"$cond\\\": [\\r\\n          { \\\"$eq\\\": [ \\\"$vehicle.problemCar\\\", true ] },\\r\\n          \\\"Ja\\\",\\r\\n          \\\"Nein\\\"\\r\\n        ]\\r\\n      },\\r\\n      \\\"mwstText\\\": {\\r\\n        \\\"$cond\\\": [\\r\\n          { \\\"$eq\\\": [ \\\"$purchase.differentialTax\\\", true ] },\\r\\n          \\\"diff.\\\",\\r\\n          \\\"ausw.\\\"\\r\\n        ]\\r\\n      }\\r\\n\\r\\n    }\\r\\n  },\\r\\n  { \\\"$match\\\": { \\\"active\\\": true } },\\r\\n\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": {\\r\\n        \\\"$or\\\": [\\r\\n          { \\\"$eq\\\": [ \\\"[]\\\", \\\"[]\\\" ] },\\r\\n          { \\\"$eq\\\": [ \\\"$problemText\\\", \\\"[]\\\" ] }\\r\\n        ]\\r\\n      }\\r\\n    }\\r\\n  },\\r\\n\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": {\\r\\n        \\\"$or\\\": [\\r\\n          { \\\"$eq\\\": [ \\\"[]\\\", \\\"[]\\\" ] },\\r\\n          { \\\"$eq\\\": [ \\\"$mwstText\\\", \\\"[]\\\" ] }\\r\\n        ]\\r\\n      }\\r\\n    }\\r\\n  },\\r\\n\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": { \\\"$or\\\": [ { \\\"$eq\\\": [ [\\\"AAA\\\",\\\"Auto1\\\",\\\"BCA\\\",\\\"CarOnSale\\\",\\\"FINN\\\",\\\"Spoticar\\\",\\\"VWFS\\\"], [] ] }, { \\\"$in\\\": [ \\\"$platformCanon\\\", [\\\"AAA\\\",\\\"Auto1\\\",\\\"BCA\\\",\\\"CarOnSale\\\",\\\"FINN\\\",\\\"Spoticar\\\",\\\"VWFS\\\"] ] } ] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": { \\\"$or\\\": [ { \\\"$eq\\\": [ [\\\"Auktion\\\",\\\"Sofortkauf\\\",\\\"Vorschau\\\"], [] ] }, { \\\"$in\\\": [ \\\"$salesCanon\\\", [\\\"Auktion\\\",\\\"Sofortkauf\\\",\\\"Vorschau\\\"] ] } ] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": { \\\"$or\\\": [ { \\\"$eq\\\": [ [\\\"DE\\\"], [] ] }, { \\\"$in\\\": [ \\\"$countryCanon\\\", [\\\"DE\\\"] ] } ] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": { \\\"$or\\\": [ { \\\"$eq\\\": [ [\\\"ALPINA\\\",\\\"Abarth\\\",\\\"Alfa Romeo\\\",\\\"Audi\\\",\\\"BMW\\\",\\\"BYD\\\",\\\"Bentley\\\",\\\"Cadillac\\\",\\\"Chevrolet\\\",\\\"Chrysler\\\",\\\"Citroën\\\",\\\"Cupra\\\",\\\"DS Automobiles\\\",\\\"Dacia\\\",\\\"Daewoo\\\",\\\"Daihatsu\\\",\\\"Dodge\\\",\\\"Fiat\\\",\\\"Ford\\\",\\\"GWM\\\",\\\"Genesis\\\",\\\"Honda\\\",\\\"Hyundai\\\",\\\"Infiniti\\\",\\\"Isuzu\\\",\\\"Iveco\\\",\\\"Jaguar\\\",\\\"Jeep\\\",\\\"KGM\\\",\\\"Kia\\\",\\\"Lada\\\",\\\"Lancia\\\",\\\"Land Rover\\\",\\\"Lexus\\\",\\\"Ligier\\\",\\\"Lynk&Co\\\",\\\"MAN\\\",\\\"MG\\\",\\\"MINI\\\",\\\"Mahindra\\\",\\\"Maserati\\\",\\\"Maxus\\\",\\\"Mazda\\\",\\\"Mercedes-Benz\\\",\\\"Mitsubishi\\\",\\\"Nissan\\\",\\\"Opel\\\",\\\"Peugeot\\\",\\\"Piaggio\\\",\\\"Polestar\\\",\\\"Porsche\\\",\\\"Renault\\\",\\\"Rover\\\",\\\"Saab\\\",\\\"Seat\\\",\\\"Seres\\\",\\\"Skoda\\\",\\\"Smart\\\",\\\"Ssangyong\\\",\\\"Subaru\\\",\\\"Suzuki\\\",\\\"Tata\\\",\\\"Tesla\\\",\\\"Toyota\\\",\\\"Triumph\\\",\\\"Volkswagen\\\",\\\"Volvo\\\",\\\"Zeekr\\\",\\\"e.GO\\\"], [] ] }, { \\\"$in\\\": [ \\\"$clean_make\\\", [\\\"ALPINA\\\",\\\"Abarth\\\",\\\"Alfa Romeo\\\",\\\"Audi\\\",\\\"BMW\\\",\\\"BYD\\\",\\\"Bentley\\\",\\\"Cadillac\\\",\\\"Chevrolet\\\",\\\"Chrysler\\\",\\\"Citroën\\\",\\\"Cupra\\\",\\\"DS Automobiles\\\",\\\"Dacia\\\",\\\"Daewoo\\\",\\\"Daihatsu\\\",\\\"Dodge\\\",\\\"Fiat\\\",\\\"Ford\\\",\\\"GWM\\\",\\\"Genesis\\\",\\\"Honda\\\",\\\"Hyundai\\\",\\\"Infiniti\\\",\\\"Isuzu\\\",\\\"Iveco\\\",\\\"Jaguar\\\",\\\"Jeep\\\",\\\"KGM\\\",\\\"Kia\\\",\\\"Lada\\\",\\\"Lancia\\\",\\\"Land Rover\\\",\\\"Lexus\\\",\\\"Ligier\\\",\\\"Lynk&Co\\\",\\\"MAN\\\",\\\"MG\\\",\\\"MINI\\\",\\\"Mahindra\\\",\\\"Maserati\\\",\\\"Maxus\\\",\\\"Mazda\\\",\\\"Mercedes-Benz\\\",\\\"Mitsubishi\\\",\\\"Nissan\\\",\\\"Opel\\\",\\\"Peugeot\\\",\\\"Piaggio\\\",\\\"Polestar\\\",\\\"Porsche\\\",\\\"Renault\\\",\\\"Rover\\\",\\\"Saab\\\",\\\"Seat\\\",\\\"Seres\\\",\\\"Skoda\\\",\\\"Smart\\\",\\\"Ssangyong\\\",\\\"Subaru\\\",\\\"Suzuki\\\",\\\"Tata\\\",\\\"Tesla\\\",\\\"Toyota\\\",\\\"Triumph\\\",\\\"Volkswagen\\\",\\\"Volvo\\\",\\\"Zeekr\\\",\\\"e.GO\\\"] ] } ] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": { \\\"$or\\\": [ { \\\"$eq\\\": [ [], [] ] }, { \\\"$in\\\": [ \\\"$clean_model\\\", [] ] } ] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": { \\\"$or\\\": [ { \\\"$eq\\\": [ [\\\"Benzin\\\",\\\"Diesel\\\",\\\"Hybrid\\\"], [] ] }, { \\\"$in\\\": [ \\\"$fuelDe\\\", [\\\"Benzin\\\",\\\"Diesel\\\",\\\"Hybrid\\\"] ] } ] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": { \\\"$or\\\": [ { \\\"$eq\\\": [ [\\\"Automatik\\\",\\\"Manuell\\\",\\\"Unbekannt\\\"], [] ] }, { \\\"$in\\\": [ \\\"$transmissionDe\\\", [\\\"Automatik\\\",\\\"Manuell\\\",\\\"Unbekannt\\\"] ] } ] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": { \\\"$or\\\": [ { \\\"$eq\\\": [ [\\\"Andere\\\",\\\"Cabrio/Roadster\\\",\\\"Geländewagen/Pickup/SUV\\\",\\\"Kleinwagen\\\",\\\"Kombi\\\",\\\"Limousine\\\",\\\"Sportwagen/Coupé\\\",\\\"Unbekannt\\\",\\\"Van/Minibus\\\"], [] ] }, { \\\"$in\\\": [ \\\"$bodyTypeDe\\\", [\\\"Andere\\\",\\\"Cabrio/Roadster\\\",\\\"Geländewagen/Pickup/SUV\\\",\\\"Kleinwagen\\\",\\\"Kombi\\\",\\\"Limousine\\\",\\\"Sportwagen/Coupé\\\",\\\"Unbekannt\\\",\\\"Van/Minibus\\\"] ] } ] }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$match\\\": {\\r\\n      \\\"$expr\\\": {\\r\\n        \\\"$let\\\": {\\r\\n          \\\"vars\\\": {\\r\\n            \\\"vMaxMileage\\\": \\\"100000\\\",\\r\\n            \\\"vMinYear\\\": \\\"2016\\\",\\r\\n            \\\"vMinMargin\\\": \\\"3000\\\",\\r\\n            \\\"vMinPrice\\\": \\\"3000\\\",\\r\\n            \\\"vMaxPrice\\\": \\\"40000\\\"\\r\\n          },\\r\\n          \\\"in\\\": {\\r\\n            \\\"$and\\\": [\\r\\n              {\\r\\n                \\\"$or\\\": [\\r\\n                  { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMaxMileage\\\", \\\"regex\\\": \\\"^\\\\\\\\s*$\\\" } },\\r\\n                  {\\r\\n                    \\\"$and\\\": [\\r\\n                      { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMaxMileage\\\", \\\"regex\\\": \\\"^-?\\\\\\\\d+$\\\" } },\\r\\n                      { \\\"$lte\\\": [ \\\"$vehicle.mileage\\\", { \\\"$toInt\\\": \\\"$$vMaxMileage\\\" } ] }\\r\\n                    ]\\r\\n                  }\\r\\n                ]\\r\\n              },\\r\\n              {\\r\\n                \\\"$or\\\": [\\r\\n                  { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMinYear\\\", \\\"regex\\\": \\\"^\\\\\\\\s*$\\\" } },\\r\\n                  {\\r\\n                    \\\"$and\\\": [\\r\\n                      { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMinYear\\\", \\\"regex\\\": \\\"^-?\\\\\\\\d+$\\\" } },\\r\\n                      { \\\"$ne\\\": [ \\\"$firstReg\\\", null ] },\\r\\n                      { \\\"$gte\\\": [ { \\\"$year\\\": \\\"$firstReg\\\" }, { \\\"$toInt\\\": \\\"$$vMinYear\\\" } ] }\\r\\n                    ]\\r\\n                  }\\r\\n                ]\\r\\n              },\\r\\n              {\\r\\n                \\\"$or\\\": [\\r\\n                  { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMinMargin\\\", \\\"regex\\\": \\\"^\\\\\\\\s*$\\\" } },\\r\\n                  {\\r\\n                    \\\"$and\\\": [\\r\\n                      { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMinMargin\\\", \\\"regex\\\": \\\"^-?\\\\\\\\d+$\\\" } },\\r\\n                      { \\\"$gte\\\": [ \\\"$purchase.margin\\\", { \\\"$toDouble\\\": \\\"$$vMinMargin\\\" } ] }\\r\\n                    ]\\r\\n                  }\\r\\n                ]\\r\\n              },\\r\\n              {\\r\\n                \\\"$or\\\": [\\r\\n                  { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMinPrice\\\", \\\"regex\\\": \\\"^\\\\\\\\s*$\\\" } },\\r\\n                  {\\r\\n                    \\\"$and\\\": [\\r\\n                      { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMinPrice\\\", \\\"regex\\\": \\\"^-?\\\\\\\\d+$\\\" } },\\r\\n                      { \\\"$gte\\\": [ \\\"$purchase.netPriceTotal\\\", { \\\"$toDouble\\\": \\\"$$vMinPrice\\\" } ] }\\r\\n                    ]\\r\\n                  }\\r\\n                ]\\r\\n              },\\r\\n              {\\r\\n                \\\"$or\\\": [\\r\\n                  { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMaxPrice\\\", \\\"regex\\\": \\\"^\\\\\\\\s*$\\\" } },\\r\\n                  {\\r\\n                    \\\"$and\\\": [\\r\\n                      { \\\"$regexMatch\\\": { \\\"input\\\": \\\"$$vMaxPrice\\\", \\\"regex\\\": \\\"^-?\\\\\\\\d+$\\\" } },\\r\\n                      { \\\"$lte\\\": [ \\\"$purchase.netPriceTotal\\\", { \\\"$toDouble\\\": \\\"$$vMaxPrice\\\" } ] }\\r\\n                    ]\\r\\n                  }\\r\\n                ]\\r\\n              }\\r\\n            ]\\r\\n          }\\r\\n        }\\r\\n      }\\r\\n    }\\r\\n  },\\r\\n  {\\r\\n    \\\"$project\\\": {\\r\\n      \\\"_id\\\": 0,\\r\\n      \\\"Land\\\": { \\\"$ifNull\\\": [ \\\"$countryCanon\\\", \\\"\\\" ] },\\r\\n      \\\"Plattform\\\": { \\\"$ifNull\\\": [ \\\"$platformCanon\\\", \\\"\\\" ] },\\r\\n      \\\"Marke\\\": { \\\"$ifNull\\\": [ \\\"$clean_make\\\", \\\"\\\" ] },\\r\\n      \\\"Modell\\\": { \\\"$ifNull\\\": [ \\\"$clean_model\\\", \\\"\\\" ] },\\r\\n      \\\"Modellbeschreibung\\\": { \\\"$ifNull\\\": [ \\\"$modelDescription\\\", \\\"\\\" ] },\\r\\n      \\\"Preis\\\": { \\\"$round\\\": [ { \\\"$toDouble\\\": { \\\"$ifNull\\\": [ \\\"$purchase.netPriceTotal\\\", 0 ] } }, 0 ] },\\r\\n      \\\"Marge\\\": { \\\"$round\\\": [ { \\\"$toDouble\\\": { \\\"$ifNull\\\": [ \\\"$purchase.margin\\\", 0 ] } }, 0 ] },\\r\\n      \\\"Rabatt\\\": { \\\"$toDouble\\\": { \\\"$ifNull\\\": [ \\\"$purchase.rebate\\\", 0 ] } },\\r\\n      \\\"Anzahl\\\": { \\\"$toInt\\\": { \\\"$ifNull\\\": [ \\\"$comparisonPrices.count\\\", 0 ] } },\\r\\n      \\\"SekundenSeitStart\\\": { \\\"$toDouble\\\": { \\\"$ifNull\\\": [ \\\"$countUpSeconds\\\", 0 ] } },\\r\\n      \\\"SekundenBisEnde\\\": { \\\"$toDouble\\\": { \\\"$ifNull\\\": [ \\\"$countDownSeconds\\\", 0 ] } },\\r\\n      \\\"Median\\\": { \\\"$toDouble\\\": { \\\"$ifNull\\\": [ \\\"$comparisonPrices.median\\\", 0 ] } },\\r\\n      \\\"P10\\\": { \\\"$toDouble\\\": { \\\"$ifNull\\\": [ \\\"$comparisonPrices.p10\\\", 0 ] } },\\r\\n      \\\"PS\\\": { \\\"$toInt\\\": { \\\"$ifNull\\\": [ \\\"$vehicle.hp\\\", 0 ] } },\\r\\n      \\\"Kraftstoff\\\": { \\\"$ifNull\\\": [ \\\"$fuelDe\\\", \\\"\\\" ] },\\r\\n      \\\"Getriebe\\\": { \\\"$ifNull\\\": [ \\\"$transmissionDe\\\", \\\"\\\" ] },\\r\\n      \\\"Karosserie\\\": { \\\"$ifNull\\\": [ \\\"$bodyTypeDe\\\", \\\"\\\" ] },\\r\\n      \\\"Erstzulassung\\\": { \\\"$ifNull\\\": [ \\\"$firstReg\\\", { \\\"$toDate\\\": \\\"1970-01-01T00:00:00Z\\\" } ] },\\r\\n      \\\"Kilometerstand\\\": { \\\"$toInt\\\": { \\\"$ifNull\\\": [ \\\"$vehicle.mileage\\\", 0 ] } },\\r\\n      \\\"Verkaufsart\\\": { \\\"$ifNull\\\": [ \\\"$salesCanon\\\", \\\"\\\" ] },\\r\\n      \\\"Bestandsnummer\\\": { \\\"$ifNull\\\": [ { \\\"$toString\\\": \\\"$stockNumber\\\" }, \\\"\\\" ] },\\r\\n      \\\"Problem\\\": \\\"$problemText\\\",\\r\\n      \\\"MwSt\\\": \\\"$mwstText\\\",\\r\\n      \\\"Problembeschreibung\\\": { \\\"$ifNull\\\": [ \\\"$vehicle.problemDescription\\\", \\\"\\\" ] },\\r\\n      \\\"Bild\\\": { \\\"$ifNull\\\": [ \\\"$firstImage\\\", \\\"\\\" ] },\\r\\n      \\\"Link\\\": { \\\"$ifNull\\\": [ \\\"$url\\\", \\\"\\\" ] }\\r\\n    }\\r\\n  },\\r\\n  { \\\"$sort\\\": { \\\"SekundenBisEnde\\\": 1, \\\"Marke\\\": 1, \\\"Modell\\\": 1 } }\\r\\n]\\r\\n\",\"autoTimeBound\":false,\"autoTimeSort\":false,\"collection\":\"allListings\",\"database\":\"remarketing\",\"datasource\":{\"type\":\"meln5674-mongodb-community\",\"uid\":\"de3b0tgjwgm4gb\"},\"labelFields\":[\"sensorID\"],\"legendFormat\":\"\",\"queryType\":\"Table\",\"refId\":\"A\",\"schemaInference\":true,\"schemaInferenceDepth\":20,\"timestampField\":\"timestamp\",\"timestampFormat\":\"\",\"valueFieldTypes\":[\"float64\"],\"valueFields\":[\"measurement\"],\"datasourceId\":12,\"intervalMs\":30000,\"maxDataPoints\":733}],\"from\":\"1774236442230\",\"to\":\"1774258042230\"}"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.215",
+        "url": "https://dashboard.motocost.com/api/ds/query?ds_type=meln5674-mongodb-community&requestId=SQR100",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.235",
+        "url": "https://dashboard.motocost.com/api/login/ping",
+        "http_method": "GET",
+        "postData": ""
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.235",
+        "url": "https://dashboard.motocost.com/api/login/ping",
+        "status": 200,
+        "mimeType": "application/json"
+      },
+      {
+        "kind": "request",
+        "requestId": "3706167.236",
+        "url": "https://dashboard.motocost.com/api/frontend-metrics",
+        "http_method": "POST",
+        "postData": "{\"events\":[{\"name\":\"frontend_app_init_ms\",\"value\":10.700000762939453},{\"name\":\"loadDashboardScene_ms\",\"value\":113.20000076293945}]}"
+      },
+      {
+        "kind": "response",
+        "requestId": "3706167.236",
+        "url": "https://dashboard.motocost.com/api/frontend-metrics",
+        "status": 200,
+        "mimeType": ""
+      }
+    ]
+  }
+}

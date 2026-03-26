@@ -1,0 +1,12 @@
+jahr,mitarbeiter_nr,name,standort,nw_stueck,gw_stueck,summe_stueck
+2024,9001,"Greiner,Florian",,6,166,172
+2024,2001,"Punzmann,Edeltraud",DEG,103,55,158
+2024,1003,"Sterr,Rolf",LAN,0,132,132
+2024,2004,"Pellkofer,Florian",DEG,48,77,125
+2024,2006,"Schmid,Roland",DEG,75,47,122
+2024,2005,"Löbel,Marius",LAN,32,79,111
+2024,2002,"Penn,Michael",DEG,74,32,106
+2024,2003,"Fialkowski,Daniel",DEG,6,86,92
+2024,2000,"Süß,Anton",DEG,39,38,77
+2024,2007,"Kraus,Rafael",DEG,26,47,73
+2024,2009,Gilg,,1,0,1

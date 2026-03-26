@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mockup 01 - DRIVE Termin und Auftrag</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --card: #1f2937;
+      --line: #334155;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --txt: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(180deg, #020617, var(--bg));
+      color: var(--txt);
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+    .title { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+    .sub { color: var(--muted); margin-bottom: 18px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      gap: 14px;
+    }
+    .panel {
+      background: rgba(17,24,39,.9);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      min-height: 560px;
+    }
+    .h { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: var(--accent); }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .field div {
+      padding: 9px 10px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .slot {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+    .slot .t { font-size: 13px; color: var(--muted); }
+    .slot .c { font-size: 15px; font-weight: 600; margin-top: 3px; }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      margin-left: 6px;
+      border: 1px solid var(--line);
+    }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .err { color: var(--err); }
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+    .day {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      min-height: 110px;
+    }
+    .step {
+      border-left: 3px solid var(--accent);
+      padding: 8px 10px;
+      margin: 8px 0;
+      background: rgba(56,189,248,.08);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .footer {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px dashed var(--line);
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Mockup 01: DRIVE Termin und Auftrag (Prozessfuehrung)</div>
+    <div class="sub">Ziel: Termine und Auftraege in DRIVE anlegen/steuern, Locosoft-Terminplaner als Fallback automatisch befuellen.</div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="h">Terminanlage (DRIVE)</div>
+        <div class="field"><label>Kunde</label><div>Wildmoser Testkunde #301044</div></div>
+        <div class="field"><label>Fahrzeug</label><div>W0L0ZCF68R1234567</div></div>
+        <div class="field"><label>Leistungsart</label><div>Inspektion + Bremsen vorne</div></div>
+        <div class="field"><label>Wunschtermin</label><div>24.03.2026, 08:30 - 10:00</div></div>
+        <div class="field"><label>Serviceberater</label><div>SB-12 | Landau</div></div>
+        <div class="step">Beim Klick auf "Termin speichern" wird Auftrag automatisch vorbereitet und Sync nach Locosoft angestossen.</div>
+      </section>
+
+      <section class="panel">
+        <div class="h">Ressourcen- und Zeitslot-Board</div>
+        <div class="timeline">
+          <div class="day"><strong>Di 24.03</strong><div class="slot"><div class="t">08:30</div><div class="c">Buehne 2 frei</div></div><div class="slot"><div class="t">10:00</div><div class="c">Buehne 2 belegt</div></div></div>
+          <div class="day"><strong>Mi 25.03</strong><div class="slot"><div class="t">08:00</div><div class="c">2 Slots frei</div></div></div>
+          <div class="day"><strong>Do 26.03</strong><div class="slot"><div class="t">08:00</div><div class="c">1 Slot frei</div></div></div>
+          <div class="day"><strong>Fr 27.03</strong><div class="slot"><div class="t">08:00</div><div class="c">Ueberbucht +12 AW</div></div></div>
+          <div class="day"><strong>Mo 30.03</strong><div class="slot"><div class="t">08:00</div><div class="c">Normal</div></div></div>
+        </div>
+        <div class="step">Regelwerk: DRIVE entscheidet den Slot, Locosoft-Terminplaner wird gespiegelt (Fallback).</div>
+      </section>
+
+      <section class="panel">
+        <div class="h">Sync-Status nach Locosoft</div>
+        <div class="slot"><strong>Termin #DRV-T-98231</strong><br/>Status<span class="badge ok">SYNCED</span><br/><small>Locosoft Ref: T-554120</small></div>
+        <div class="slot"><strong>Auftrag #DRV-A-44012</strong><br/>Status<span class="badge warn">PENDING_SYNC</span><br/><small>Retry in 30s (Timeout)</small></div>
+        <div class="slot"><strong>Konfliktpruefung</strong><br/>Status<span class="badge err">SYNC_FAILED</span><br/><small>Ressource doppelt belegt</small></div>
+        <div class="step">Sync-Queue + Retry + Audit-Log sind Pflicht, damit Fallback zuverlaessig bleibt.</div>
+      </section>
+    </div>
+
+    <div class="footer">Hinweis Mockup: DRIVE ist Master-UI. Locosoft wird als Fallback-/Backbone-System kontinuierlich befuellt.</div>
+  </div>
+</body>
+</html>
+

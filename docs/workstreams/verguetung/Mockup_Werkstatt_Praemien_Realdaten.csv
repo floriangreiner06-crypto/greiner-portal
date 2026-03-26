@@ -1,0 +1,31 @@
+#;Mitarbeiter;Standort;Funktion;Anw_gesamt;Fehlstunden;P-Faktor;Verfuegbar;Prod_gesamt;Prod_extern;Prod_intern;IST_Prod;Team_Prod;Stufe_Prod;Praemie_Prod;Abg_gesamt;Abg_intern;Abg_extern;IST_Leist;Team_Leist;Stufe_Leist;Praemie_Leist;IST_Eff;Team_Eff;Stufe_Eff;Praemie_Eff;Umsatz
+1;Dederer,Andreas;Deggendorf;Mechaniker;176.0;72.0;1.0;104.0;128.3;115.3;13.0;1,23;0,43;—;0;136.6;13.8;122.8;1,06;1,11;Stufe 1: 95%;150;1,56;1,47;Stufe 1: 85%;100;10910.54
+2;Ebner,Patrick;Deggendorf;Mechaniker;176.0;40.0;1.0;136.0;133.1;104.1;29.0;0,98;0,43;—;0;184.4;40.2;144.2;1,39;1,11;Stufe 1: 95%;150;1,48;1,47;Stufe 1: 85%;100;11962.76
+3;Fink,Dominik;Deggendorf;Mechaniker;176.0;0;1.0;176.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+4;Hoffmann,Lucas;Deggendorf;Mechaniker;176.0;80.0;1.0;96.0;104.6;91.7;12.9;1,09;0,43;—;0;144.3;17.8;126.5;1,38;1,11;Stufe 1: 95%;150;1,48;1,47;Stufe 1: 85%;100;10109.65
+5;Huber,Herbert;Deggendorf;Mechaniker;176.0;40.0;1.0;136.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+6;Klammsteiner,Fabian;Deggendorf;Mechaniker;176.0;160.0;1.0;16.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+7;Klein,Götz;Deggendorf;Mechaniker;176.0;160.0;1.0;16.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+8;König,Matthias;Deggendorf;Mechaniker;176.0;48.0;1.0;128.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+9;Kraus,Andreas;Deggendorf;Mechaniker;176.0;144.0;1.0;32.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+10;Kreulinger,Luca;Deggendorf;Mechaniker;176.0;128.0;1.0;48.0;59.2;31.1;28.1;1,23;0,43;—;0;34.4;16.3;18.1;0,58;1,11;Stufe 1: 95%;150;0,83;1,47;Stufe 1: 85%;100;3947.03
+11;Litwin,Jaroslaw;Deggendorf;Mechaniker;176.0;40.0;1.0;136.0;131.4;111.3;20.1;0,97;0,43;—;0;193.2;29.5;163.7;1,47;1,11;Stufe 1: 95%;150;1,63;1,47;Stufe 1: 85%;100;13044.21
+12;Löw,Luca-Emanuel;Deggendorf;Mechaniker;176.0;56.0;1.0;120.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+13;Majer,Jan;Deggendorf;Mechaniker;176.0;8.0;1.0;168.0;156.8;94.2;62.6;0,93;0,43;—;0;202.8;81.0;121.8;1,29;1,11;Stufe 1: 95%;150;1,21;1,47;Stufe 1: 85%;100;15326.84
+14;Meyer,Christian;Deggendorf;Mechaniker;176.0;112.0;1.0;64.0;0.0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+15;Pursch,Vincent;Deggendorf;Mechaniker;176.0;112.0;1.0;64.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+16;Raith,Christian;Deggendorf;Mechaniker;176.0;120.0;1.0;56.0;59.5;48.0;11.5;1,06;0,43;—;0;106.2;20.6;85.6;1,78;1,11;Stufe 1: 95%;150;1,57;1,47;Stufe 1: 85%;100;7227.36
+17;Reitmeier,Tobias;Deggendorf;Mechaniker;176.0;48.0;1.0;128.0;130.3;104.7;25.6;1,02;0,43;—;0;123.5;24.3;99.2;0,95;1,11;Stufe 1: 95%;150;1,44;1,47;Stufe 1: 85%;100;8476.01
+18;Rolof,Angelo;Deggendorf;Mechaniker;176.0;56.0;1.0;120.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+19;Salmansberger,Valentin;Deggendorf;Mechaniker;176.0;136.0;1.0;40.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+20;Scheingraber,Wolfgang;Deggendorf;Mechaniker;176.0;152.0;1.0;24.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+21;Scheppach,Zuzana;Deggendorf;Mechaniker;176.0;96.0;1.0;80.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+22;Schimmer,Sandra;Deggendorf;Mechaniker;176.0;24.0;1.0;152.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+23;Thammer,Daniel;Deggendorf;Mechaniker;176.0;56.0;1.0;120.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+24;Berger,Sascha;Landau;Mechaniker;176.0;8.0;1.0;168.0;162.5;148.0;14.5;0,97;0,43;—;0;119.9;10.7;109.2;0,74;1,11;Stufe 1: 95%;150;1,60;1,47;Stufe 1: 85%;100;7277.93
+25;Ebner,Marius;Landau;Mechaniker;176.0;32.0;1.0;144.0;136.3;114.8;21.5;0,95;0,43;—;0;157.5;24.9;132.6;1,16;1,11;Stufe 1: 95%;150;1,66;1,47;Stufe 1: 85%;100;9230.53
+26;Erlmeier,Rosmarie;Landau;Mechaniker;176.0;0;1.0;176.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+27;Keidl,Leonhard;Landau;Mechaniker;176.0;56.0;1.0;120.0;0;0.0;0.0;0;0,43;—;0;1.3;0.0;1.3;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+28;Smola,Walter;Landau;Mechaniker;176.0;56.0;1.0;120.0;122.2;99.3;22.9;1,02;0,43;—;0;58.8;11.0;47.8;0,48;1,11;Stufe 1: 95%;150;1,57;1,47;Stufe 1: 85%;100;3826.41
+29;Suttner,Andreas Karl;Landau;Mechaniker;176.0;48.0;1.0;128.0;0;0.0;0.0;0;0,43;—;0;0;0;0;—;1,11;Stufe 1: 95%;150;—;1,47;Stufe 1: 85%;100;0
+30;Wagner,Lena;Landau;Mechaniker;176.0;120.0;1.0;56.0;8.6;4.2;4.4;0,15;0,43;—;0;11.3;5.8;5.5;1,31;1,11;Stufe 1: 95%;150;2,31;1,47;Stufe 1: 85%;100;382.2

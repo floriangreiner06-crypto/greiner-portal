@@ -1,0 +1,152 @@
+{
+  "programme": [
+    {
+      "quelle": "RS-V-2025-125_Aktualisierung Vertriebsprogramm Hyundai Q1.pdf",
+      "hersteller": "Hyundai",
+      "programm_bezeichnung": "Vertriebsprogramm Privat- und Gewerbekunden",
+      "von_datum": "2026-01-01",
+      "bis_datum": "2026-03-31",
+      "konditionen": [
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "+0.7%p Marktanteil",
+              "typ": "pct",
+              "wert": 0.7
+            },
+            {
+              "bezeichnung": "+20% Kaufvertragseingang",
+              "typ": "pct",
+              "wert": 20.0
+            },
+            {
+              "bezeichnung": "-20% Vorführwagenzulassungen",
+              "typ": "pct",
+              "wert": -20.0
+            },
+            {
+              "bezeichnung": "Finanzierungszins (0% bei 24 Monaten)",
+              "typ": "pct",
+              "wert": 0.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Konditionen für Gewerbekundengruppen „Medium“ & „Large“",
+              "typ": null,
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "INSTER Barpreisprämie (privat)",
+              "typ": null,
+              "wert": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "quelle": "vp-13_2025_verkaufsprogramme_q1_2026_update5.pdf",
+      "hersteller": "Stellantis/Opel",
+      "programm_bezeichnung": "VP-13/2025: Verkaufsprogramme Q1/2026",
+      "von_datum": null,
+      "bis_datum": "2026-03-31",
+      "konditionen": [
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Restmargen",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "0 %-Finanzierung BEV PKW",
+              "typ": "pct",
+              "wert": 0.0
+            },
+            {
+              "bezeichnung": "1,99%-Finanzierung für NFZ-basierte BEV PKW",
+              "typ": "pct",
+              "wert": 1.99
+            },
+            {
+              "bezeichnung": "BEV B2C inkl. 3.000,– € Anzahlung",
+              "typ": "eur",
+              "wert": 3000
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Differenzierung Kundenauftrags- VFW-/TW- und B2B EA-Prämie nach Datum Faktura/CCF",
+              "typ": null,
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Umschreibezeitraum für Test- und Vorführwagen bis 31.03.2026 verlängert",
+              "typ": null,
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "TW",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Umschreibezeitraum für Test- und Vorführwagen bis 31.03.2026 verlängert",
+              "typ": null,
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Netprice",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Umstellung der Astra Verbrenner Werberate auf MHEV-Version",
+              "typ": null,
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW n.gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Flash Leasing mit ARW für Astra Verbrenner (Benziner und Diesel) in den Kanälen Vorführwagen (04-23-23) und Testwagen (04-27-27) mit Erstzulassung ab dem 01.01.2026",
+              "typ": null,
+              "wert": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "quelle": "RS-V-2025-125_Aktualisierung Vertriebsprogramm Hyundai Q1.pdf, vp-13_2025_verkaufsprogramme_q1_2026_update5.pdf"
+}

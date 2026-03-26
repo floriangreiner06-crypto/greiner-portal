@@ -1,0 +1,57 @@
+{
+  "drive": {
+    "color": {
+      "primary": { "value": "#6B7FDB" },
+      "primaryLight": { "value": "#8B9AE0" },
+      "primaryGradient": { "value": "linear-gradient(135deg, #6B7FDB 0%, #8B9AE0 100%)" },
+      "accentYellow": { "value": "#FFD93D" },
+      "background": { "value": "#f8f9fa" },
+      "backgroundAlt": { "value": "#f5f7fa" },
+      "backgroundAltEnd": { "value": "#e8ecf1" },
+      "surface": { "value": "#ffffff" },
+      "text": { "value": "#2d3748" },
+      "textMuted": { "value": "#718096" },
+      "border": { "value": "#e5e7eb" },
+      "borderLight": { "value": "#e0e0e0" },
+      "success": { "value": "#059669" },
+      "warning": { "value": "#d97706" },
+      "error": { "value": "#dc3545" },
+      "headerDarkStart": { "value": "#0f172a" },
+      "headerDarkEnd": { "value": "#1e293b" },
+      "cardHeaderGradientStart": { "value": "#667eea" },
+      "cardHeaderGradientEnd": { "value": "#764ba2" }
+    },
+    "spacing": {
+      "xs": { "value": "4" },
+      "sm": { "value": "8" },
+      "md": { "value": "16" },
+      "lg": { "value": "24" },
+      "xl": { "value": "32" }
+    },
+    "radius": {
+      "sm": { "value": "4" },
+      "md": { "value": "6" },
+      "lg": { "value": "8" },
+      "xl": { "value": "10" },
+      "xxl": { "value": "12" }
+    },
+    "typography": {
+      "fontFamily": { "value": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
+      "heading1": { "value": "24" },
+      "heading2": { "value": "20" },
+      "heading3": { "value": "18" },
+      "body": { "value": "16" },
+      "bodySmall": { "value": "14" },
+      "caption": { "value": "12" },
+      "weightRegular": { "value": "400" },
+      "weightMedium": { "value": "500" },
+      "weightSemibold": { "value": "600" },
+      "weightBold": { "value": "700" }
+    },
+    "shadow": {
+      "sm": { "value": "0 2px 4px rgba(0,0,0,0.08)" },
+      "md": { "value": "0 4px 12px rgba(0,0,0,0.12)" },
+      "lg": { "value": "0 4px 16px rgba(107,127,219,0.2)" }
+    }
+  }
+}

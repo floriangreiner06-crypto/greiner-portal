@@ -1,0 +1,1393 @@
+{
+  "programme": [
+    {
+      "quelle": "RS-V-2025-125_Aktualisierung Vertriebsprogramm Hyundai Q1.pdf",
+      "hersteller": "Hyundai",
+      "programm_bezeichnung": "Vertriebsprogramm Privat- und Gewerbekunden",
+      "von_datum": "2026-01-01",
+      "bis_datum": "2026-03-31",
+      "konditionen": [
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "INSTER Barpreisprämie (privat)",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Gewerbekundenprämien",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Leasing",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Finanzierungszins",
+              "typ": "pct",
+              "wert": 0.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Höchstalter für nicht zugelassene Lagerfahrzeuge",
+              "typ": "eur",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Mindesthaltedauer Vorführwagen",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Versehrtenrabatt (GdB >=50%)",
+              "typ": "pct",
+              "wert": 2.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Leasing/Finanzierung",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Leasing/Finanzierungsprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW n.gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Vorführwagenprämie",
+              "typ": "pct",
+              "wert": 6.5
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "INSTER",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 2.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "KONA EV (ab MJ 24)",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.5
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "IONIQ 5 FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "IONIQ 5 N",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 8.5
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "IONIQ 6",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "IONIQ 9",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 7.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "KONA ICE (ab MJ 24)",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 15.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "KONA HEV (ab MJ 24)",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 13.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "TUCSON ICE FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 18.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "TUCSON HEV FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 14.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "TUCSON PHEV FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 13.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "SANTA FE HEV",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 7.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "SANTA FE PHEV",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 6.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "NEXO",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 7.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "i10 FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 6.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "i20 FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "i-range, Bayon, i30 FL, Staria",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 13.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "BAYON FL",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 11.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": "STARIA HEV",
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "pct",
+              "wert": 5.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Leasing",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Leasing/Finanzierungsprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Finanzierung",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Leasing/Finanzierungsprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Endkundenprämie",
+              "typ": "eur",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Gewerbekundenprämien",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Grundhändlermarge",
+              "typ": "pct",
+              "wert": 8.0
+            },
+            {
+              "bezeichnung": "Kalkulierte Restmarge Small Fleet",
+              "typ": "pct",
+              "wert": 5.0
+            },
+            {
+              "bezeichnung": "Kalkulierte Restmarge Medium Fleet",
+              "typ": "pct",
+              "wert": 4.0
+            },
+            {
+              "bezeichnung": "Kalkulierte Restmarge Large Fleet",
+              "typ": "pct",
+              "wert": 3.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Gewerbekunden Small Fleet",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie INSTER",
+              "typ": "pct",
+              "wert": 5.5
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie KONA EV (ab MJ 24)",
+              "typ": "pct",
+              "wert": 13.5
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie IONIQ 5 FLE",
+              "typ": "pct",
+              "wert": 14.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie IONIQ 5 N",
+              "typ": "pct",
+              "wert": 11.5
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie IONIQ 6",
+              "typ": "pct",
+              "wert": 14.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie IONIQ 9",
+              "typ": "pct",
+              "wert": 9.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie KONA ICE (ab MJ 24)",
+              "typ": "pct",
+              "wert": 17.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie KONA HEV (ab MJ 24)",
+              "typ": "pct",
+              "wert": 15.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie TUCSON ICE FL",
+              "typ": "pct",
+              "wert": 20.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie TUCSON HEV FLS",
+              "typ": "pct",
+              "wert": 16.0
+            },
+            {
+              "bezeichnung": "Barpreis-Barpreis-Prämie TUCSON P HEV FL",
+              "typ": "pct",
+              "wert": 17.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "quelle": "vp-13_2025_verkaufsprogramme_q1_2026_update5.pdf",
+      "hersteller": "Opel (Stellantis)",
+      "programm_bezeichnung": "VP-13/2025: Verkaufsprogramme Q1/2026",
+      "von_datum": "2026-01-01",
+      "bis_datum": "2026-03-31",
+      "konditionen": [
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "0 %-Finanzierung BEV PKW",
+              "typ": "pct",
+              "wert": 0.0
+            },
+            {
+              "bezeichnung": "1,99%-Finanzierung für NFZ-basierte BEV PKW",
+              "typ": "pct",
+              "wert": 1.99
+            },
+            {
+              "bezeichnung": "BEV B2C inkl. Anzahlung",
+              "typ": "eur",
+              "wert": 3000
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Marktverfügbarkeitsbonus",
+              "typ": "pct",
+              "wert": 2.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Angrillen Sonderaktion (OPEL Flat4Free)",
+          "modell_pattern": null,
+          "boni": []
+        }
+      ]
+    },
+    {
+      "quelle": "VP-13/2025: Verkaufsprogramme Q1/2026",
+      "hersteller": "Stellantis (Opel)",
+      "programm_bezeichnung": "Verkaufsprogramme Q1/2026",
+      "von_datum": null,
+      "bis_datum": null,
+      "konditionen": [
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Marktverfügbarkeitsbonus",
+              "typ": "pct",
+              "wert": 2.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": []
+        },
+        {
+          "aktionstyp": "VFW",
+          "modell_pattern": null,
+          "boni": []
+        },
+        {
+          "aktionstyp": "VFW gef.",
+          "modell_pattern": null,
+          "boni": []
+        },
+        {
+          "aktionstyp": "VFW n.gef.",
+          "modell_pattern": null,
+          "boni": []
+        },
+        {
+          "aktionstyp": "TW",
+          "modell_pattern": null,
+          "boni": []
+        },
+        {
+          "aktionstyp": "Netprice",
+          "modell_pattern": null,
+          "boni": []
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": []
+        },
+        {
+          "aktionstyp": "Plug-In-Hybrid",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Kundenauftragsprämie 1 (KAP 1)",
+              "typ": "pct",
+              "wert": 7.0
+            },
+            {
+              "bezeichnung": "Kundenauftragsprämie 2",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Finanzierung",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "Summe Flash Leasing",
+              "typ": "pct",
+              "wert": 15.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Electric",
+          "modell_pattern": null,
+          "boni": []
+        },
+        {
+          "aktionstyp": "Verbrenner und MHEV",
+          "modell_pattern": null,
+          "boni": []
+        }
+      ]
+    },
+    {
+      "quelle": "Verkaufsprogramme Q1/2026",
+      "hersteller": "Stellantis/Opel",
+      "programm_bezeichnung": "Verkaufsprogramme Q1/2026",
+      "von_datum": "2026-02-01",
+      "bis_datum": "2026-03-31",
+      "konditionen": [
+        {
+          "aktionstyp": "VFW gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 7.0
+            },
+            {
+              "bezeichnung": "Bonus",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "KAP",
+              "typ": "pct",
+              "wert": 15.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "TW",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 7.0
+            },
+            {
+              "bezeichnung": "Bonus",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "KAP",
+              "typ": "pct",
+              "wert": 15.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 7.0
+            },
+            {
+              "bezeichnung": "Bonus",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "KAP",
+              "typ": "pct",
+              "wert": 15.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 7.0
+            },
+            {
+              "bezeichnung": "Bonus",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "KAP",
+              "typ": "pct",
+              "wert": 15.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW n.gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 7.0
+            },
+            {
+              "bezeichnung": "Bonus",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "KAP",
+              "typ": "pct",
+              "wert": 15.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Rocks - Privatkunden",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Bonus",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 0.0
+            },
+            {
+              "bezeichnung": "KAP",
+              "typ": "pct",
+              "wert": 6.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Rocks - B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Bonus",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 0.0
+            },
+            {
+              "bezeichnung": "KAP",
+              "typ": "pct",
+              "wert": 6.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Rocks - Vorführwagen",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Bonus",
+              "typ": "pct",
+              "wert": 2.0
+            },
+            {
+              "bezeichnung": "Restmarge",
+              "typ": "pct",
+              "wert": 0.0
+            },
+            {
+              "bezeichnung": "KAP",
+              "typ": "pct",
+              "wert": 6.0
+            },
+            {
+              "bezeichnung": "Auslieferungsvergütung",
+              "typ": "eur",
+              "wert": 500
+            }
+          ]
+        },
+        {
+          "aktionstyp": "Rocks - Vorführwagen (analog)",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie",
+              "typ": "pct",
+              "wert": 10.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Auslieferungsvergütung",
+              "typ": "eur",
+              "wert": 500
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW n.gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Vorführwagen-Prämie",
+              "typ": "pct",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "TW",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Testwagen-Prämie",
+              "typ": "pct",
+              "wert": 6.0
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2C",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Privatkunden-Prämie",
+              "typ": "pct",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "B2B",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "B2B-Prämie",
+              "typ": "pct",
+              "wert": null
+            }
+          ]
+        },
+        {
+          "aktionstyp": "VFW gef.",
+          "modell_pattern": null,
+          "boni": [
+            {
+              "bezeichnung": "Prämie 1A",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 1 (KAP 1)",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 2",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 3",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 4",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 5",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 6",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 7",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 8",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 9",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 10",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 11",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 12",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 13",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 14",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 15",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 16",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 17",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 18",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 19",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 20",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 21",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 22",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 23",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 24",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 25",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 26",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 27",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 28",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 29",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 30",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 31",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 32",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 33",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 34",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 35",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 36",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 37",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 38",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 39",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 40",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 41",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 42",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 43",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 44",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 45",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 46",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 47",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 48",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 49",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 50",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 51",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 52",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 53",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 54",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 55",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 56",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 57",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 58",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 59",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 60",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 61",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 62",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 63",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 64",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 65",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 66",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 67",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 68",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 69",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 70",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 71",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 72",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 73",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 74",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 75",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 76",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 77",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 78",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 79",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 80",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 81",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 82",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 83",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 84",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 85",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 86",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 87",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 88",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 89",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 90",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 91",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 92",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 93",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 94",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 95",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 96",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 97",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 98",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 99",
+              "typ": "pct",
+              "wert": null
+            },
+            {
+              "bezeichnung": "Prämie 100",
+              "typ": "pct",
+              "wert": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "quelle": "Merge aus RS-V-2025-125_Aktualisierung Vertriebsprogramm Hyundai Q1.pdf, vp-13_2025_verkaufsprogramme_q1_2026_update5.pdf, VP-13/2025: Verkaufsprogramme Q1/2026, Verkaufsprogramme Q1/2026"
+}

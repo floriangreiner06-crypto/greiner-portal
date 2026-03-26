@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Hilfe – Greiner DRIVE{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/hilfe.css') }}?v={{ STATIC_VERSION }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h1 class="mb-4"><i class="bi bi-question-circle"></i> Hilfe</h1>
+
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <form action="{{ url_for('hilfe.suche') }}" method="get" class="d-flex">
+                <input type="search" name="q" class="form-control form-control-lg me-2" placeholder="In der Hilfe suchen…" value="">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Suchen</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="kategorien-list" class="row g-3">
+        <div class="col-12 text-muted"><span class="spinner-border spinner-border-sm"></span> Kategorien werden geladen…</div>
+    </div>
+
+    <div id="beliebt-section" class="mt-5" style="display:none;">
+        <h5 class="text-muted"><i class="bi bi-star"></i> Häufig gesucht</h5>
+        <ul id="beliebt-list" class="list-group list-group-flush"></ul>
+    </div>
+</div>
+
+<script>
+(function() {
+    function loadKategorien() {
+        fetch('{{ url_for("hilfe_api.get_kategorien") }}', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                const el = document.getElementById('kategorien-list');
+                if (data.error) { el.innerHTML = '<div class="col-12 text-danger">' + data.error + '</div>'; return; }
+                const kats = data.kategorien || [];
+                if (kats.length === 0) {
+                    el.innerHTML = '<div class="col-12 text-muted">Noch keine Kategorien angelegt.</div>';
+                    return;
+                }
+                el.innerHTML = kats.map(k => `
+                    <div class="col-sm-6 col-lg-4">
+                        <a href="/hilfe/${k.slug}" class="card text-decoration-none text-dark h-100 hilfe-karte">
+                            <div class="card-body">
+                                <h5 class="card-title"><i class="bi ${k.icon || 'bi-question-circle'}"></i> ${k.name}</h5>
+                                <p class="card-text text-muted small mb-0">${k.artikel_anzahl || 0} Artikel</p>
+                            </div>
+                        </a>
+                    </div>
+                `).join('');
+            })
+            .catch(e => {
+                document.getElementById('kategorien-list').innerHTML = '<div class="col-12 text-danger">Fehler beim Laden.</div>';
+            });
+    }
+    function loadBeliebt() {
+        fetch('{{ url_for("hilfe_api.get_beliebt") }}', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                const artikel = data.artikel || [];
+                if (artikel.length === 0) return;
+                document.getElementById('beliebt-section').style.display = 'block';
+                document.getElementById('beliebt-list').innerHTML = artikel.map(a =>
+                    '<li class="list-group-item"><a href="/hilfe/artikel/' + a.id + '">' + a.titel + '</a></li>'
+                ).join('');
+            });
+    }
+    loadKategorien();
+    loadBeliebt();
+})();
+</script>
+{% endblock %}

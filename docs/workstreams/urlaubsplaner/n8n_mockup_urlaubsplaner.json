@@ -1,0 +1,264 @@
+{
+  "name": "DRIVE Urlaubsplaner (Mockup)",
+  "nodes": [
+    {
+      "id": "sticky-note-header",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -200],
+      "parameters": {
+        "content": "## DRIVE Urlaubsplaner\n\nDRIVE ruft diesen Webhook nach Buchung/Genehmigung/Ablehnung/Storno/Krankheit auf.\n\nPayload: `event` + `payload` (Empfänger, Texte, Buchungsdetails).",
+        "height": 220,
+        "width": 420
+      }
+    },
+    {
+      "id": "webhook-drive",
+      "name": "Webhook DRIVE",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 80],
+      "parameters": {
+        "path": "drive-urlaubsplaner",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "drive-urlaubsplaner-mockup"
+    },
+    {
+      "id": "switch-event",
+      "name": "Nach Event verzweigen",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [480, 80],
+      "parameters": {
+        "rules": {
+          "rules": [
+            { "outputKey": "book", "conditions": { "conditions": [{ "value1": "={{ $json.body.event }}", "value2": "book", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "approval", "conditions": { "conditions": [{ "value1": "={{ $json.body.event }}", "value2": "approval", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "reject", "conditions": { "conditions": [{ "value1": "={{ $json.body.event }}", "value2": "reject", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "cancel", "conditions": { "conditions": [{ "value1": "={{ $json.body.event }}", "value2": "cancel", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "sickness", "conditions": { "conditions": [{ "value1": "={{ $json.body.event }}", "value2": "sickness", "operator": { "type": "string", "operation": "equals" } }] } }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "wait-5s",
+      "name": "5 Sek warten (Bündelung)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [720, -80],
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "mail-approvers-book",
+      "name": "E-Mail an Genehmiger (Antrag)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [960, -80],
+      "parameters": {
+        "fromEmail": "drive@auto-greiner.de",
+        "toEmail": "={{ $json.body.payload.approver_emails.join(',') }}",
+        "subject": "📋 Neuer Urlaubsantrag: {{ $json.body.payload.employee_name }}",
+        "emailType": "html",
+        "message": "={{ $json.body.payload.approver_mail_html }}"
+      },
+      "notesInFlow": true,
+      "notes": "Eine E-Mail pro Zeitraum (nicht pro Tag)"
+    },
+    {
+      "id": "mail-hr-approval",
+      "name": "E-Mail an HR (Locosoft eintragen)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 80],
+      "parameters": {
+        "fromEmail": "drive@auto-greiner.de",
+        "toEmail": "={{ $json.body.payload.hr_emails.join(',') }}",
+        "subject": "✅ Urlaub genehmigt: {{ $json.body.payload.employee_name }}",
+        "emailType": "html",
+        "message": "={{ $json.body.payload.hr_mail_html }}"
+      }
+    },
+    {
+      "id": "mail-ma-approval",
+      "name": "E-Mail an Mitarbeiter (Bestätigung)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 240],
+      "parameters": {
+        "fromEmail": "drive@auto-greiner.de",
+        "toEmail": "={{ $json.body.payload.employee_email }}",
+        "subject": "✅ Dein Urlaub wurde genehmigt",
+        "emailType": "html",
+        "message": "={{ $json.body.payload.employee_mail_html }}"
+      }
+    },
+    {
+      "id": "calendar-approval",
+      "name": "Outlook: drive@ + MA-Kalender",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/me/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftGraphOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subject", "value": "={{ $json.body.payload.calendar_subject }}" },
+            { "name": "start", "value": "={{ $json.body.payload.calendar_start }}" },
+            { "name": "end", "value": "={{ $json.body.payload.calendar_end }}" }
+          ]
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Optional: 2 Aufrufe (drive@ + Mitarbeiter-Kalender). In n8n ggf. Microsoft-Node nutzen."
+    },
+    {
+      "id": "mail-ma-reject",
+      "name": "E-Mail an MA (Ablehnung)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 400],
+      "parameters": {
+        "fromEmail": "drive@auto-greiner.de",
+        "toEmail": "={{ $json.body.payload.employee_email }}",
+        "subject": "❌ Urlaubsantrag abgelehnt",
+        "emailType": "html",
+        "message": "={{ $json.body.payload.rejection_mail_html }}"
+      }
+    },
+    {
+      "id": "mail-approvers-cancel",
+      "name": "E-Mail an Genehmiger (Storno)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 560],
+      "parameters": {
+        "fromEmail": "drive@auto-greiner.de",
+        "toEmail": "={{ $json.body.payload.approver_emails.join(',') }}",
+        "subject": "🔄 Urlaub storniert: {{ $json.body.payload.employee_name }}",
+        "emailType": "html",
+        "message": "={{ $json.body.payload.cancel_approver_mail_html }}"
+      }
+    },
+    {
+      "id": "mail-hr-cancel",
+      "name": "E-Mail an HR (Storno)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [960, 560],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "id": "was-approved", "leftValue": "={{ $json.body.payload.was_approved }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "mail-hr-cancel-send",
+      "name": "E-Mail an HR (Storno in Locosoft)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1200, 520],
+      "parameters": {
+        "fromEmail": "drive@auto-greiner.de",
+        "toEmail": "={{ $json.body.payload.hr_emails.join(',') }}",
+        "subject": "🔄 Storno: {{ $json.body.payload.employee_name }}",
+        "emailType": "html",
+        "message": "={{ $json.body.payload.cancel_hr_mail_html }}"
+      }
+    },
+    {
+      "id": "mail-sickness",
+      "name": "E-Mail HR + Teamleitung + GL (Krankheit)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 720],
+      "parameters": {
+        "fromEmail": "drive@auto-greiner.de",
+        "toEmail": "={{ $json.body.payload.sickness_recipients.join(',') }}",
+        "subject": "🤒 Krankmeldung: {{ $json.body.payload.employee_name }}",
+        "emailType": "html",
+        "message": "={{ $json.body.payload.sickness_mail_html }}"
+      }
+    },
+    {
+      "id": "respond-ok",
+      "name": "Antwort an DRIVE",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1200, 80],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"event\": $json.body.event } }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook DRIVE": {
+      "main": [[{ "node": "Nach Event verzweigen", "type": "main", "index": 0 }]]
+    },
+    "Nach Event verzweigen": {
+      "main": [
+        [{ "node": "5 Sek warten (Bündelung)", "type": "main", "index": 0 }],
+        [{ "node": "E-Mail an HR (Locosoft eintragen)", "type": "main", "index": 0 }],
+        [{ "node": "E-Mail an MA (Ablehnung)", "type": "main", "index": 0 }],
+        [{ "node": "E-Mail an Genehmiger (Storno)", "type": "main", "index": 0 }],
+        [{ "node": "E-Mail HR + Teamleitung + GL (Krankheit)", "type": "main", "index": 0 }]
+      ]
+    },
+    "5 Sek warten (Bündelung)": {
+      "main": [[{ "node": "E-Mail an Genehmiger (Antrag)", "type": "main", "index": 0 }]]
+    },
+    "E-Mail an Genehmiger (Antrag)": {
+      "main": [[{ "node": "Antwort an DRIVE", "type": "main", "index": 0 }]]
+    },
+    "E-Mail an HR (Locosoft eintragen)": {
+      "main": [[{ "node": "E-Mail an Mitarbeiter (Bestätigung)", "type": "main", "index": 0 }]]
+    },
+    "E-Mail an Mitarbeiter (Bestätigung)": {
+      "main": [[{ "node": "Outlook: drive@ + MA-Kalender", "type": "main", "index": 0 }]]
+    },
+    "Outlook: drive@ + MA-Kalender": {
+      "main": [[{ "node": "Antwort an DRIVE", "type": "main", "index": 0 }]]
+    },
+    "E-Mail an MA (Ablehnung)": {
+      "main": [[{ "node": "Antwort an DRIVE", "type": "main", "index": 0 }]]
+    },
+    "E-Mail an Genehmiger (Storno)": {
+      "main": [[{ "node": "E-Mail an HR (Storno)", "type": "main", "index": 0 }]]
+    },
+    "E-Mail an HR (Storno)": {
+      "main": [
+        [{ "node": "E-Mail an HR (Storno in Locosoft)", "type": "main", "index": 0 }],
+        [{ "node": "Antwort an DRIVE", "type": "main", "index": 0 }]
+      ]
+    },
+    "E-Mail an HR (Storno in Locosoft)": {
+      "main": [[{ "node": "Antwort an DRIVE", "type": "main", "index": 0 }]]
+    },
+    "E-Mail HR + Teamleitung + GL (Krankheit)": {
+      "main": [[{ "node": "Antwort an DRIVE", "type": "main", "index": 0 }]]
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "staticData": null
+}
