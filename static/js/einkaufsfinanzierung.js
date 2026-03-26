@@ -350,6 +350,7 @@ function updateTopFahrzeuge(fahrzeuge) {
             </td>
             <td>${fz.modell || '-'}</td>
             <td>${fz.marke || '-'}</td>
+            <td>${formatEz(fz.erstzulassung)}</td>
             <td class="text-end"><strong>${formatCurrency(fz.saldo)}</strong></td>
             <td class="text-end text-muted">${formatCurrency(fz.original)}</td>
             <td class="text-end">${fz.alter || '-'} Tage</td>
@@ -402,6 +403,7 @@ function updateWarnungen(warnungen) {
                 </code>
             </td>
             <td>${warnung.modell || '-'}</td>
+            <td>${formatEz(warnung.erstzulassung)}</td>
             <td class="${tageClass}">
                 <i class="bi bi-exclamation-triangle-fill"></i>
                 ${tageText}
@@ -503,6 +505,7 @@ async function loadFahrzeugeMitZinsen() {
                         </code>
                     </td>
                     <td>${fz.modell || 'N/A'}</td>
+                    <td>${formatEz(fz.erstzulassung)}</td>
                     <td class="text-end">
                         <span class="badge bg-${severity} px-3">
                             <strong>${tage}</strong> Tage
@@ -627,6 +630,7 @@ async function showMarkeFahrzeuge(institut, marke) {
                         </td>
                         <td>${fz.modell || 'Unbekannt'}</td>
                         <td>${fz.marke || fz.hersteller || 'Unbekannt'}</td>
+                        <td>${formatEz(fz.erstzulassung)}</td>
                         <td class="text-end text-danger fw-bold">${formatCurrency(saldo)}</td>
                         <td class="text-end">${formatCurrency(original)}</td>
                         <td class="text-end">${standzeitTage > 0 ? standzeitTage + ' Tage' : '-'}</td>
@@ -941,6 +945,71 @@ function updateInstitutTabelleZinsen(dashboard) {
 }
 
 /**
+ * Modal mit der Liste der empfohlenen Fahrzeuge (Umfinanzierung) füllen und anzeigen
+ * @param {Object} emp - Empfehlung mit fahrzeuge/anzahl_fahrzeuge/von/nach
+ * @param {string} [titelZusatz] - z. B. " (zuerst umfinanzieren)" für die konkrete Teilmenge
+ */
+function showEmpfehlungFahrzeugeModal(emp, titelZusatz) {
+    const titleEl = document.getElementById('empfehlungFahrzeugeModalTitle');
+    const tbody = document.getElementById('empfehlungFahrzeugeTableBody');
+    const summeEl = document.getElementById('empfehlungFahrzeugeSumme');
+    if (!titleEl || !tbody || !summeEl) return;
+
+    const fahrzeuge = emp.fahrzeuge || [];
+    titleEl.textContent = `${emp.anzahl_fahrzeuge || fahrzeuge.length} Fahrzeuge (${emp.von} → ${emp.nach})${titelZusatz || ''}`;
+
+    let summe = 0;
+    tbody.innerHTML = fahrzeuge.map((f, i) => {
+        const saldo = typeof f.saldo === 'number' ? f.saldo : parseFloat(f.saldo) || 0;
+        summe += saldo;
+        const tage = f.tage_ueber != null ? f.tage_ueber : f.tage_verbleibend;
+        const tageText = tage != null ? String(tage) : '–';
+        const mobilitaet = f.mobilitaet_santander === true ? '<span class="badge bg-warning text-dark">Ja</span>' : (f.mobilitaet_santander === false ? '<span class="badge bg-secondary">Nein</span>' : '–');
+        // EZ immer als eigene Zelle (Reihenfolge = Header: #, VIN, Modell, EZ, Saldo, Tage, Mobilität)
+        const ez = formatEz(f.erstzulassung);
+        return `<tr>
+            <td>${i + 1}</td>
+            <td><code>${escapeHtml(f.vin || '')}</code></td>
+            <td>${escapeHtml(f.modell || '')}</td>
+            <td data-col="ez">${ez}</td>
+            <td class="text-end" data-col="saldo">${formatCurrency(saldo)}</td>
+            <td class="text-end" data-col="tage">${tageText}</td>
+            <td class="text-center" data-col="mobilitaet">${mobilitaet}</td>
+        </tr>`;
+    }).join('');
+
+    summeEl.textContent = formatCurrency(summe);
+
+    const modalEl = document.getElementById('empfehlungFahrzeugeModal');
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    } else if (modalEl && modalEl.classList) {
+        modalEl.classList.add('show');
+        modalEl.style.display = 'block';
+    }
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+/** Erstzulassung (ISO-Datum oder String) für Anzeige formatieren */
+function formatEz(ez) {
+    if (ez == null || ez === '') return '–';
+    try {
+        const d = typeof ez === 'string' ? new Date(ez) : ez;
+        if (isNaN(d.getTime())) return ez;
+        return d.toLocaleDateString('de-DE', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    } catch {
+        return ez;
+    }
+}
+
+/**
  * Handlungsempfehlungen aktualisieren
  */
 function updateEmpfehlungen(data) {
@@ -978,14 +1047,70 @@ function updateEmpfehlungen(data) {
                 </div>
             </div>`;
         } else if (emp.typ === "fahrzeug_umfinanzierung") {
-            html += `<div class="list-group-item ${priorityClass} border-start border-3">
+            const limitMobilitaet = emp.santander_limit_mobilitaet != null ? emp.santander_limit_mobilitaet : 500000;
+            const belegtMobilitaet = emp.santander_mobilitaet_belegt != null ? emp.santander_mobilitaet_belegt : 0;
+            const freiMobilitaet = emp.santander_mobilitaet_frei != null ? emp.santander_mobilitaet_frei : 0;
+            const limit = emp.santander_limit != null ? emp.santander_limit : 1500000;
+            const belegt = emp.santander_belegt != null ? emp.santander_belegt : 0;
+            const frei = emp.santander_frei != null ? emp.santander_frei : 0;
+            const betragEmpfohlen = emp.betrag_empfohlen != null ? emp.betrag_empfohlen : 0;
+            const nichtEmpfohlen = emp.empfehlung_nicht_empfohlen === true;
+            const handlungsempfehlung = (emp.handlungsempfehlung || '').trim();
+            const passenRein = betragEmpfohlen >= (emp.betrag || 0);
+            const hinweisNichtAlles = !nichtEmpfohlen && !passenRein ? `<p class="mb-0 mt-1 small text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Nur <strong>${formatCurrency(betragEmpfohlen)}</strong> passen in den verfügbaren Rahmen (Saldo gesamt ${formatCurrency(emp.betrag)}).</p>` : '';
+            const hinweisMobilitaet = (emp.keine_luft_mobilitaet && emp.anzahl_mobilitaet > 0) ? `<p class="mb-0 mt-1 small text-danger"><i class="bi bi-exclamation-octagon me-1"></i><strong>${emp.anzahl_mobilitaet} Fahrzeuge</strong> zählen bei Santander als „Mobilität“. Mobilität-Rahmen: ${formatCurrency(limitMobilitaet)} (belegt: ${formatCurrency(belegtMobilitaet)}, frei: ${formatCurrency(freiMobilitaet)}).</p>` : '';
+            const fahrzeugeCount = (emp.fahrzeuge && emp.fahrzeuge.length) ? emp.fahrzeuge.length : emp.anzahl_fahrzeuge;
+            const empfohlenCount = emp.fahrzeuge_empfohlen && emp.fahrzeuge_empfohlen.length ? emp.fahrzeuge_empfohlen.length : 0;
+            const saldoEmpfohlen = emp.saldo_empfohlen != null ? emp.saldo_empfohlen : betragEmpfohlen;
+            const boxClass = nichtEmpfohlen ? 'border-danger' : priorityClass;
+            const titel = nichtEmpfohlen ? 'Nicht empfohlen' : 'Fahrzeug-Umfinanzierung';
+            const vorschlagMob = (emp.vorschlag_mobilitaet_anzahl != null && emp.vorschlag_mobilitaet_anzahl > 0) ? `${emp.vorschlag_mobilitaet_anzahl} Fz. Mobilität (${formatCurrency(emp.vorschlag_mobilitaet_saldo || 0)})` : '';
+            const vorschlagNorm = (emp.vorschlag_normal_anzahl != null && emp.vorschlag_normal_anzahl > 0) ? `${emp.vorschlag_normal_anzahl} Fz. normale Linie (${formatCurrency(emp.vorschlag_normal_saldo || 0)})` : '';
+            const vorschlagLinien = [vorschlagMob, vorschlagNorm].filter(Boolean).join(', ');
+            const konkreteEmpfehlung = !nichtEmpfohlen && empfohlenCount > 0 ? `<div class="alert alert-success py-2 px-2 mb-1 mt-1 small"><strong>Vorschlag (passt in die Linien, priorisiert nach Sparpotenzial):</strong> ${vorschlagLinien ? vorschlagLinien + '. ' : ''}Zuerst diese <button type="button" class="btn btn-sm btn-success py-0 px-1 btn-empfehlung-fahrzeuge" data-emp-index="${idx}" data-nur-empfohlen="1" title="Empfohlene Fahrzeuge anzeigen">${empfohlenCount} Fahrzeuge anzeigen</button> umfinanzieren (Saldo ${formatCurrency(saldoEmpfohlen)}, Ersparnis ${formatCurrency(emp.ersparnis_monat)}/Monat).</div>` : (!nichtEmpfohlen && betragEmpfohlen > 0 && empfohlenCount === 0 ? `<div class="alert alert-info py-2 px-2 mb-1 mt-1 small"><strong>Fahrzeugempfehlung:</strong> Kein Einzelfahrzeug passt in den Rahmen (${formatCurrency(betragEmpfohlen)} frei). <button type="button" class="btn btn-sm btn-link p-0 btn-empfehlung-fahrzeuge" data-emp-index="${idx}">Alle ${fahrzeugeCount} Fahrzeuge anzeigen</button> – Priorität nach Zinslast (Tage × Saldo).</div>` : '');
+            html += `<div class="list-group-item ${boxClass} border-start border-3" data-emp-index="${idx}">
                 <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <h6 class="mb-1">${priorityBadge} <i class="bi bi-truck me-1"></i>Fahrzeug-Umfinanzierung</h6>
-                        <p class="mb-1"><strong>${emp.anzahl_fahrzeuge} Fahrzeuge</strong> von ${emp.von} → ${emp.nach}</p>
-                        <small class="text-muted">${emp.beschreibung}</small>
+                    <div class="flex-grow-1">
+                        <h6 class="mb-1">${nichtEmpfohlen ? '<span class="badge bg-danger me-1">Nicht empfohlen</span>' : priorityBadge} <i class="bi bi-truck me-1"></i>${titel}</h6>
+                        <p class="mb-1"><strong>${emp.anzahl_fahrzeuge} Fahrzeuge</strong> von ${emp.von} → ${emp.nach}
+                            <button type="button" class="btn btn-sm btn-link p-0 ms-1 btn-empfehlung-fahrzeuge" data-emp-index="${idx}" title="Alle Fahrzeuge anzeigen">${fahrzeugeCount} Fahrzeuge anzeigen</button>
+                        </p>
+                        ${konkreteEmpfehlung}
+                        ${handlungsempfehlung ? `<p class="mb-1 mt-1 small ${nichtEmpfohlen ? 'text-danger fw-semibold' : 'text-secondary'}">${escapeHtml(handlungsempfehlung)}</p>` : ''}
+                        <div class="small mt-1 text-secondary">
+                            <span class="me-2">Santander Gesamtrahmen: <strong>${formatCurrency(limit)}</strong></span>
+                            <span class="me-2">Belegt: ${formatCurrency(belegt)}</span>
+                            <span>Frei: <strong>${formatCurrency(frei)}</strong></span>
+                        </div>
+                        <div class="small mt-0 text-secondary">
+                            <span class="me-2">Santander Mobilität-Rahmen: <strong>${formatCurrency(limitMobilitaet)}</strong></span>
+                            <span class="me-2">Belegt: ${formatCurrency(belegtMobilitaet)}</span>
+                            <span>Frei: <strong>${formatCurrency(freiMobilitaet)}</strong></span>
+                        </div>
+                        ${!nichtEmpfohlen ? `<p class="mb-0 mt-1 small">Umfinanzierbar: <strong>${formatCurrency(betragEmpfohlen)}</strong>${!passenRein ? ` von ${formatCurrency(emp.betrag)} Saldo` : ''}</p>` : ''}
+                        ${hinweisNichtAlles}
+                        ${hinweisMobilitaet}
                     </div>
-                    <div class="text-end">
+                    <div class="text-end ms-2">
+                        ${nichtEmpfohlen ? '<div class="text-danger fw-bold">0 €</div><div class="small text-muted">Keine Kapazität</div>' : `<div class="fs-5 fw-bold">${formatCurrency(betragEmpfohlen)}</div><div class="text-success"><i class="bi bi-piggy-bank me-1"></i>${formatCurrency(emp.ersparnis_monat)}/Monat</div><small class="text-muted">${formatCurrency(emp.ersparnis_jahr)}/Jahr</small>`}
+                    </div>
+                </div>
+            </div>`;
+        } else if (emp.typ === "fahrzeug_umfinanzierung_warnung") {
+            const nochFrei = emp.santander_noch_frei != null ? emp.santander_noch_frei : 0;
+            const betragEmpfohlen = emp.betrag_empfohlen != null ? emp.betrag_empfohlen : emp.betrag;
+            const fahrzeugeCount = (emp.fahrzeuge && emp.fahrzeuge.length) ? emp.fahrzeuge.length : emp.anzahl_fahrzeuge;
+            html += `<div class="list-group-item ${priorityClass} border-start border-3" data-emp-index="${idx}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <h6 class="mb-1">${priorityBadge} <i class="bi bi-truck me-1"></i>Bald Zinsfreiheit Ende</h6>
+                        <p class="mb-1"><strong>${emp.anzahl_fahrzeuge} Fahrzeuge</strong> von ${emp.von} → ${emp.nach}
+                            <button type="button" class="btn btn-sm btn-link p-0 ms-1 btn-empfehlung-fahrzeuge" data-emp-index="${idx}" title="Fahrzeugliste anzeigen">${fahrzeugeCount} Fahrzeuge anzeigen</button>
+                        </p>
+                        <small class="text-muted d-block">${emp.beschreibung}</small>
+                        <div class="small mt-1 text-secondary">Santander danach noch frei: <strong>${formatCurrency(nochFrei)}</strong> · Umfinanzierbar: ${formatCurrency(betragEmpfohlen)}</div>
+                    </div>
+                    <div class="text-end ms-2">
                         <div class="fs-5 fw-bold">${formatCurrency(emp.betrag)}</div>
                         <div class="text-success"><i class="bi bi-piggy-bank me-1"></i>${formatCurrency(emp.ersparnis_monat)}/Monat</div>
                         <small class="text-muted">${formatCurrency(emp.ersparnis_jahr)}/Jahr</small>
@@ -997,6 +1122,27 @@ function updateEmpfehlungen(data) {
     
     html += '</div>';
     container.innerHTML = html;
+
+    // Referenz für Modal-Klick (welche Empfehlung anzeigen)
+    window._lastEmpfehlungenData = data;
+
+    container.querySelectorAll('.btn-empfehlung-fahrzeuge').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const idx = parseInt(this.getAttribute('data-emp-index'), 10);
+            const nurEmpfohlen = this.getAttribute('data-nur-empfohlen') === '1';
+            const empfehlungen = (window._lastEmpfehlungenData && window._lastEmpfehlungenData.empfehlungen) || [];
+            const emp = empfehlungen[idx];
+            if (!emp) return;
+            const liste = nurEmpfohlen && emp.fahrzeuge_empfohlen && emp.fahrzeuge_empfohlen.length
+                ? emp.fahrzeuge_empfohlen
+                : (emp.fahrzeuge || []);
+            if (liste.length === 0) return;
+            const empAnzeige = { ...emp, fahrzeuge: liste, anzahl_fahrzeuge: liste.length };
+            const titelZusatz = nurEmpfohlen ? ' (zuerst umfinanzieren)' : '';
+            showEmpfehlungFahrzeugeModal(empAnzeige, titelZusatz);
+        });
+    });
     
     document.getElementById('badgeEmpfehlungen').textContent = empfehlungen.length;
     document.getElementById('gesamtErsparnis').textContent = 

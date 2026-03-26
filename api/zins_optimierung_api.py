@@ -9,10 +9,121 @@ from flask_login import login_required
 from datetime import datetime
 
 # Zentrale DB-Utilities (TAG117, TAG136: PostgreSQL-kompatibel)
-from api.db_utils import db_session, row_to_dict, rows_to_list
+from api.db_utils import db_session, row_to_dict, rows_to_list, locosoft_session
 from api.db_connection import get_db_type, convert_placeholders
 
 zins_api = Blueprint('zins_api', __name__)
+
+# Laut Buchhaltung zählen die Stellantis-Fahrzeuge (über Zinsfreiheit) bei Santander als Mobilität.
+# Wenn True: Empfehlung orientiert sich am Mobilität-Rahmen (500k), nicht am Neu/Gebraucht-Rahmen (1,5 Mio).
+STELLANTIS_ALS_SANTANDER_MOBILITAET = True
+
+
+def _locosoft_fahrzeuge_fuer_vins(vins):
+    """
+    Holt für eine Liste von VINs aus Locosoft: Modell, Marke und ob Santander „Mobilität“
+    (Vorführer/Vermieter/Mietwagen/Tageszulassung). Rückgabe: dict key (vin_upper oder last8) -> { modell, marke, mobilitaet_santander }.
+    Regel Mobilität (Locosoft Programm 132 / dealer_vehicles + vehicles):
+    - dealer_vehicle_type IN ('V','D') = Vorführer/Demo
+    - dealer_vehicle_type = 'T' = Tageszulassung
+    - dealer_vehicle_type = 'N' und first_registration_date gesetzt = noch als Neuwagen geführt, aber zugelassen → Mobilität (bei Statusänderung N→G akzeptiert Santander in normaler Linie → dann kein Mobilität)
+    - is_rental_or_school_vehicle = Mietwagen
+    - dealer_vehicle_type='G' und pre_owned_car_code='M' = Mietwagen (Buchhaltung)
+    """
+    if not vins:
+        return {}
+    vins_clean = [str(v).strip() for v in vins if v and str(v).strip()]
+    if not vins_clean:
+        return {}
+    vins_upper = [v.upper() for v in vins_clean]
+    out = {}
+    try:
+        with locosoft_session() as loco_conn:
+            cur = loco_conn.cursor()
+            placeholders = ','.join(['%s'] * len(vins_upper))
+            cur.execute("""
+                SELECT
+                    UPPER(TRIM(v.vin)) as vin_norm,
+                    COALESCE(NULLIF(TRIM(v.free_form_model_text), ''), NULLIF(TRIM(mo.description), ''), '') as modell,
+                    COALESCE(NULLIF(TRIM(m.description), ''), '') as marke,
+                    dv.dealer_vehicle_type,
+                    dv.is_rental_or_school_vehicle,
+                    dv.pre_owned_car_code,
+                    v.first_registration_date
+                FROM vehicles v
+                LEFT JOIN dealer_vehicles dv
+                    ON v.dealer_vehicle_number = dv.dealer_vehicle_number
+                    AND v.dealer_vehicle_type = dv.dealer_vehicle_type
+                LEFT JOIN makes m ON v.make_number = m.make_number
+                LEFT JOIN models mo ON v.make_number = mo.make_number AND v.model_code = mo.model_code
+                WHERE UPPER(TRIM(v.vin)) IN (""" + placeholders + """)
+            """, vins_upper)
+            for row in cur.fetchall():
+                r = row_to_dict(row, cur) or {}
+                vin_norm = (r.get('vin_norm') or '').strip()
+                dtype = (r.get('dealer_vehicle_type') or '').strip().upper()
+                is_rental = r.get('is_rental_or_school_vehicle') in (True, 't', 1, 'true')
+                jw = (r.get('pre_owned_car_code') or '').strip().upper()
+                ez = r.get('first_registration_date')  # Erstzulassung (Locosoft Programm 132 / vehicles)
+                # Nur N mit EZ = Mobilität; bei Statusänderung (z. B. N→G) nimmt Santander in der normalen Linie → kein Mobilität
+                mobilitaet = (
+                    dtype in ('V', 'D')  # Vorführer, Demo
+                    or dtype == 'T'  # Tageszulassung
+                    or (dtype == 'N' and ez is not None)  # Neuwagen mit EZ, noch als N geführt → Mobilität
+                    or is_rental  # Mietwagen/Schulungsfahrzeug
+                    or (dtype == 'G' and jw == 'M')  # GW Mietwagen (Buchhaltung)
+                )
+                modell = (r.get('modell') or '').strip()
+                marke = (r.get('marke') or '').strip()
+                erstzulassung = ez.isoformat() if ez else None  # für JSON/Anzeige
+                out[vin_norm] = {'modell': modell, 'marke': marke, 'mobilitaet_santander': mobilitaet, 'erstzulassung': erstzulassung}
+                if len(vin_norm) >= 8:
+                    out[vin_norm[-8:]] = out[vin_norm]  # Suffix-Lookup für kurze VINs
+            # Fallback: Suffix-Match für kurze VINs (z. B. 8 Zeichen)
+            short = [v for v in vins_upper if len(v) <= 10 and v not in out]
+            if short:
+                placeholders2 = ','.join(['%s'] * len(short))
+                cur.execute("""
+                    SELECT
+                        UPPER(TRIM(v.vin)) as vin_norm,
+                        COALESCE(NULLIF(TRIM(v.free_form_model_text), ''), NULLIF(TRIM(mo.description), ''), '') as modell,
+                        COALESCE(NULLIF(TRIM(m.description), ''), '') as marke,
+                        dv.dealer_vehicle_type,
+                        dv.is_rental_or_school_vehicle,
+                        dv.pre_owned_car_code,
+                        v.first_registration_date
+                    FROM vehicles v
+                    LEFT JOIN dealer_vehicles dv
+                        ON v.dealer_vehicle_number = dv.dealer_vehicle_number
+                        AND v.dealer_vehicle_type = dv.dealer_vehicle_type
+                    LEFT JOIN makes m ON v.make_number = m.make_number
+                    LEFT JOIN models mo ON v.make_number = mo.make_number AND v.model_code = mo.model_code
+                    WHERE RIGHT(UPPER(TRIM(v.vin)), 8) IN (""" + placeholders2 + """)
+                """, [v[-8:] if len(v) >= 8 else v for v in short])
+                for row in cur.fetchall():
+                    r = row_to_dict(row, cur) or {}
+                    vin_norm = (r.get('vin_norm') or '').strip()
+                    dtype = (r.get('dealer_vehicle_type') or '').strip().upper()
+                    is_rental = r.get('is_rental_or_school_vehicle') in (True, 't', 1, 'true')
+                    jw = (r.get('pre_owned_car_code') or '').strip().upper()
+                    ez = r.get('first_registration_date')
+                    mobilitaet = (
+                        dtype in ('V', 'D') or dtype == 'T'
+                        or (dtype == 'N' and ez is not None)
+                        or is_rental or (dtype == 'G' and jw == 'M')
+                    )
+                    modell = (r.get('modell') or '').strip()
+                    marke = (r.get('marke') or '').strip()
+                    erstzulassung = (ez.isoformat() if ez else None)
+                    entry = {'modell': modell, 'marke': marke, 'mobilitaet_santander': mobilitaet, 'erstzulassung': erstzulassung}
+                    key8 = vin_norm[-8:] if len(vin_norm) >= 8 else vin_norm
+                    for v in short:
+                        if (len(v) >= 8 and vin_norm.endswith(v[-8:])) or (len(v) < 8 and v == vin_norm[-len(v):]):
+                            out[v] = entry
+                            break
+    except Exception:
+        pass
+    return out
 
 @zins_api.route('/api/zinsen/report', methods=['GET'])
 @login_required
@@ -116,21 +227,62 @@ def _zins_report_impl(c):
             'potenzielle_zinsen_monat': round(potenzielle_zinsen, 2)
         })
 
-    # 4. Santander
+    # 4. Santander (inkl. Kreditrahmen Gesamt vs. Mobilität und Belegung Mobilität)
     c.execute("""
         SELECT SUM(aktueller_saldo) as saldo, SUM(zinsen_letzte_periode) as zinsen, COUNT(*) as anzahl
         FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'
     """)
     row = c.fetchone()
+    santander_limits = {}
+    c.execute("""
+        SELECT ab.regel_key, ab.regel_wert
+        FROM kredit_ausfuehrungsbestimmungen ab
+        JOIN kredit_vertragsart v ON ab.vertragsart_id = v.id
+        WHERE v.anbieter_id = 2 AND ab.regel_key IN ('kreditrahmen_gesamt', 'kreditrahmen_mobilitaet')
+    """)
+    for lim_row in c.fetchall():
+        lr = row_to_dict(lim_row)
+        try:
+            santander_limits[lr['regel_key']] = float(lr['regel_wert'])
+        except (TypeError, ValueError):
+            pass
+    limit_gesamt = santander_limits.get('kreditrahmen_gesamt') or 1500000
+    limit_mobilitaet = santander_limits.get('kreditrahmen_mobilitaet') or 500000
+
+    c.execute("""
+        SELECT SUM(aktueller_saldo) as saldo_mobilitaet, COUNT(*) as anzahl_mobilitaet
+        FROM fahrzeugfinanzierungen
+        WHERE finanzinstitut = 'Santander'
+          AND produkt_kategorie IN ('Mobil/Vermieter', 'Vorführer')
+    """)
+    mob_row = c.fetchone()
+    mob = row_to_dict(mob_row) if mob_row else {}
+    saldo_mobilitaet = float(mob.get('saldo_mobilitaet') or 0)
+    anzahl_mobilitaet = int(mob.get('anzahl_mobilitaet') or 0)
+
     if row:
         r = row_to_dict(row)
         if r['saldo']:
             result['santander'] = {
                 'anzahl': int(r['anzahl'] or 0),
                 'saldo': float(r['saldo'] or 0),
-                'zinsen_monat': float(r['zinsen'] or 0)
+                'zinsen_monat': float(r['zinsen'] or 0),
+                'limit_gesamt': limit_gesamt,
+                'limit_mobilitaet': limit_mobilitaet,
+                'saldo_mobilitaet': round(saldo_mobilitaet, 2),
+                'anzahl_mobilitaet': anzahl_mobilitaet,
             }
             total_zinsen_monat += float(r['zinsen'] or 0)
+        else:
+            result['santander'] = {
+                'anzahl': 0,
+                'saldo': 0,
+                'zinsen_monat': 0,
+                'limit_gesamt': limit_gesamt,
+                'limit_mobilitaet': limit_mobilitaet,
+                'saldo_mobilitaet': round(saldo_mobilitaet, 2),
+                'anzahl_mobilitaet': anzahl_mobilitaet,
+            }
 
     # 5. Hyundai - JETZT MIT ECHTEN ZINSEN AUS DB!
     c.execute("""
@@ -539,15 +691,27 @@ def _umbuchung_empfehlung_impl(c):
     # ============================================
     # FAHRZEUG-UMFINANZIERUNGEN (Stellantis -> Santander)
     # ============================================
+    # Validität: Gesamtrahmen 1,5 Mio (SSOT Modalitäten), Mobilität max. 500k.
+    # SOFORT-Empfehlung: begrenzt durch freien Mobilität-Rahmen (56.304 €).
+    # BALD-Empfehlung: begrenzt durch (Gesamtrahmen - belegt - bereits in SOFORT umfinanzierbar).
 
-    # Santander freies Limit prüfen
-    c.execute("""SELECT gesamt_limit FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Santander'""")
-    row = c.fetchone()
-    if row:
-        r = row_to_dict(row)
-        santander_limit = float(r['gesamt_limit']) if r['gesamt_limit'] else 1500000
+    # Santander Gesamtrahmen 1,5 Mio: primär aus Modalitäten (kredit_ausfuehrungsbestimmungen)
+    c.execute("""
+        SELECT ab.regel_wert FROM kredit_ausfuehrungsbestimmungen ab
+        JOIN kredit_vertragsart v ON ab.vertragsart_id = v.id
+        WHERE v.anbieter_id = 2 AND ab.regel_key = 'kreditrahmen_gesamt'
+    """)
+    row_g = c.fetchone()
+    if row_g:
+        santander_limit = float(row_to_dict(row_g).get('regel_wert') or 1500000)
     else:
-        santander_limit = 1500000
+        c.execute("""SELECT gesamt_limit FROM ek_finanzierung_konditionen WHERE finanzinstitut = 'Santander'""")
+        row = c.fetchone()
+        if row:
+            r = row_to_dict(row)
+            santander_limit = float(r['gesamt_limit']) if r['gesamt_limit'] else 1500000
+        else:
+            santander_limit = 1500000
 
     c.execute("""SELECT SUM(aktueller_saldo) as summe FROM fahrzeugfinanzierungen WHERE finanzinstitut = 'Santander'""")
     row = c.fetchone()
@@ -563,29 +727,7 @@ def _umbuchung_empfehlung_impl(c):
         ORDER BY (alter_tage - zinsfreiheit_tage) DESC
     """)
     stellantis_ueber = rows_to_list(c.fetchall())
-
-    umfinanzierbar = 0
-    if stellantis_ueber and santander_frei > 50000:
-        gesamt_saldo = sum(float(f["aktueller_saldo"] or 0) for f in stellantis_ueber)
-        umfinanzierbar = min(gesamt_saldo, santander_frei)
-        # Stellantis 9,03% vs Santander ~4,5% = 4,53% Ersparnis
-        ersparnis_prozent = 4.53
-        ersparnis_monat = umfinanzierbar * (ersparnis_prozent / 100) / 12
-        empfehlungen.append({
-            'typ': 'fahrzeug_umfinanzierung',
-            'von': 'Stellantis',
-            'nach': 'Santander',
-            'anzahl_fahrzeuge': len(stellantis_ueber),
-            'fahrzeuge': [{"vin": f["vin"], "modell": (f["modell"] or "").strip(), "saldo": float(f["aktueller_saldo"] or 0), "tage_ueber": int(f["tage_ueber"] or 0)} for f in stellantis_ueber],
-            'betrag': round(gesamt_saldo, 2),
-            'santander_frei': round(santander_frei, 2),
-            'beschreibung': f'Umfinanzierung von {len(stellantis_ueber)} Fahrzeugen (über Zinsfreiheit) zu Santander',
-            'ersparnis_monat': round(ersparnis_monat, 2),
-            'ersparnis_jahr': round(ersparnis_monat * 12, 2),
-            'prioritaet': 1
-        })
-
-    # Stellantis bald ablaufend (< 14 Tage)
+    # Stellantis bald ablaufend (VINs für Locosoft vorab)
     c.execute("""
         SELECT vin, modell, aktueller_saldo, (zinsfreiheit_tage - alter_tage) as tage_verbleibend
         FROM fahrzeugfinanzierungen
@@ -595,19 +737,174 @@ def _umbuchung_empfehlung_impl(c):
         ORDER BY (zinsfreiheit_tage - alter_tage) ASC
     """)
     stellantis_bald = rows_to_list(c.fetchall())
+    all_vins = [f.get("vin") for f in stellantis_ueber + stellantis_bald if f.get("vin")]
+    loco_map = _locosoft_fahrzeuge_fuer_vins(all_vins)
+    # Santander Mobilität-Rahmen (500k) und aktuelle Belegung
+    c.execute("""
+        SELECT ab.regel_wert FROM kredit_ausfuehrungsbestimmungen ab
+        JOIN kredit_vertragsart v ON ab.vertragsart_id = v.id
+        WHERE v.anbieter_id = 2 AND ab.regel_key = 'kreditrahmen_mobilitaet'
+    """)
+    row_m = c.fetchone()
+    limit_mobilitaet = float(row_to_dict(row_m).get('regel_wert') or 500000) if row_m else 500000
+    c.execute("""
+        SELECT SUM(aktueller_saldo) as summe FROM fahrzeugfinanzierungen
+        WHERE finanzinstitut = 'Santander' AND produkt_kategorie IN ('Mobil/Vermieter', 'Vorführer')
+    """)
+    r_mob = row_to_dict(c.fetchone()) or {}
+    santander_mobilitaet_belegt = float(r_mob.get('summe') or 0)
+    santander_mobilitaet_frei = max(0, limit_mobilitaet - santander_mobilitaet_belegt)
+
+    def enrich_fahrzeug(f, tage_key='tage_ueber'):
+        vin = f.get("vin") or ""
+        vin_u = vin.strip().upper()
+        loco = loco_map.get(vin_u) or (loco_map.get(vin_u[-8:]) if len(vin_u) >= 8 else None)
+        modell = (f.get("modell") or "").strip()
+        if not modell and loco:
+            modell = loco.get("modell") or ""
+            if loco.get("marke"):
+                modell = (loco["marke"] + " " + modell).strip() or modell
+        mobilitaet = loco.get("mobilitaet_santander", False) if loco else None
+        erstzulassung = loco.get("erstzulassung") if loco else None
+        return {
+            "vin": vin,
+            "modell": modell,
+            "saldo": float(f.get("aktueller_saldo") or 0),
+            tage_key: int(f.get(tage_key) or 0),
+            "mobilitaet_santander": mobilitaet,
+            "erstzulassung": erstzulassung,
+        }
+
+    umfinanzierbar = 0
+    if stellantis_ueber:
+        gesamt_saldo = sum(float(f["aktueller_saldo"] or 0) for f in stellantis_ueber)
+        fahrzeuge_list = [enrich_fahrzeug(f) for f in stellantis_ueber]
+        anzahl_mobilitaet = sum(1 for f in fahrzeuge_list if f.get("mobilitaet_santander") is True)
+        saldo_mobilitaet_empfohlen = sum(f["saldo"] for f in fahrzeuge_list if f.get("mobilitaet_santander") is True)
+        keine_luft_mobilitaet = (santander_mobilitaet_frei <= 0 or (anzahl_mobilitaet > 0 and saldo_mobilitaet_empfohlen > santander_mobilitaet_frei))
+
+        # Vorschlag: Was passt tatsächlich in die Linien (Mobilität + normale Linie), priorisiert nach Sparpotenzial (Zinslast = Saldo × Tage über Zinsfreiheit)
+        def _zinslast(f):
+            return float(f.get('saldo') or 0) * int(f.get('tage_ueber') or 0)
+
+        list_mob = [f for f in fahrzeuge_list if f.get('mobilitaet_santander') is True]
+        list_norm = [f for f in fahrzeuge_list if f.get('mobilitaet_santander') is not True]
+        list_mob.sort(key=_zinslast, reverse=True)
+        list_norm.sort(key=_zinslast, reverse=True)
+
+        empfohlen_mob = []
+        summe_mob = 0
+        cap_mob = min(santander_mobilitaet_frei, santander_frei) if santander_mobilitaet_frei > 0 and santander_frei > 0 else 0
+        for f in list_mob:
+            if summe_mob >= cap_mob:
+                break
+            s = float(f.get('saldo') or 0)
+            if s <= 0:
+                continue
+            if summe_mob + s <= cap_mob:
+                empfohlen_mob.append(f)
+                summe_mob += s
+            else:
+                break
+
+        rest_frei = max(0, santander_frei - summe_mob)
+        empfohlen_norm = []
+        summe_norm = 0
+        for f in list_norm:
+            if summe_norm >= rest_frei:
+                break
+            s = float(f.get('saldo') or 0)
+            if s <= 0:
+                continue
+            if summe_norm + s <= rest_frei:
+                empfohlen_norm.append(f)
+                summe_norm += s
+            else:
+                break
+
+        fahrzeuge_empfohlen = empfohlen_mob + empfohlen_norm
+        summe_empfohlen = summe_mob + summe_norm
+        umfinanzierbar = summe_empfohlen
+        saldo_empfohlen = round(summe_empfohlen, 2)
+
+        # Handlungsempfehlung-Text
+        if STELLANTIS_ALS_SANTANDER_MOBILITAET and santander_mobilitaet_frei <= 0 and not list_norm:
+            handlungsempfehlung = (
+                'Umfinanzierung zu Santander wird nicht empfohlen. '
+                'Der Santander-Mobilität-Rahmen (500.000 €) ist ausgelastet ({:.2f} € belegt, {:.2f} € frei). '
+                'Laut Buchhaltung zählen die gelisteten Fahrzeuge als Mobilität. '
+                'Nächste Schritte: Mobilität-Volumen freigeben (Ablösung/Verkauf) oder Finanzierung bei Stellantis/alternativ prüfen.'
+            ).format(santander_mobilitaet_belegt, santander_mobilitaet_frei)
+        elif umfinanzierbar <= 0:
+            handlungsempfehlung = (
+                'Aktuell passt kein weiteres Fahrzeug in die freien Santander-Linien. '
+                'Gesamtrahmen frei: {:.2f} €, Mobilität-Rahmen frei: {:.2f} €.'
+            ).format(santander_frei, santander_mobilitaet_frei)
+        else:
+            ersparnis_mobilitaet = round(umfinanzierbar * 4.53 / 100 / 12, 2)
+            teile = []
+            if summe_mob > 0:
+                teile.append('{:.0f} € in den Mobilität-Rahmen ({:d} Fahrzeuge)'.format(summe_mob, len(empfohlen_mob)))
+            if summe_norm > 0:
+                teile.append('{:.0f} € in die normale Linie ({:d} Fahrzeuge)'.format(summe_norm, len(empfohlen_norm)))
+            linien_text = ' und '.join(teile) if teile else 'freie Linien'
+            handlungsempfehlung = (
+                'Vorschlag (priorisiert nach Sparpotenzial – höchste Zinslast zuerst): '
+                'In die freien Linien passen {:.2f} € ({:d} Fahrzeuge) – {}. '
+                'Umfinanzierung Stellantis → Santander (9,03 %% → ca. 4,5 %%) ergibt {:.2f} €/Monat Ersparnis. '
+                'Konkret: die unten empfohlenen Fahrzeuge in der angezeigten Reihenfolge umfinanzieren.'
+            ).format(umfinanzierbar, len(fahrzeuge_empfohlen), linien_text, ersparnis_mobilitaet)
+
+        ersparnis_prozent = 4.53
+        ersparnis_monat = umfinanzierbar * (ersparnis_prozent / 100) / 12
+        empfehlungen.append({
+            'typ': 'fahrzeug_umfinanzierung',
+            'von': 'Stellantis',
+            'nach': 'Santander',
+            'anzahl_fahrzeuge': len(stellantis_ueber),
+            'fahrzeuge': fahrzeuge_list,
+            'fahrzeuge_empfohlen': fahrzeuge_empfohlen,
+            'anzahl_empfohlen': len(fahrzeuge_empfohlen),
+            'saldo_empfohlen': saldo_empfohlen,
+            'betrag': round(gesamt_saldo, 2),
+            'betrag_empfohlen': round(umfinanzierbar, 2),
+            'santander_limit': round(santander_limit, 2),
+            'santander_belegt': round(santander_belegt, 2),
+            'santander_frei': round(santander_frei, 2),
+            'santander_limit_mobilitaet': round(limit_mobilitaet, 2),
+            'santander_mobilitaet_belegt': round(santander_mobilitaet_belegt, 2),
+            'santander_mobilitaet_frei': round(santander_mobilitaet_frei, 2),
+            'anzahl_mobilitaet': anzahl_mobilitaet,
+            'keine_luft_mobilitaet': keine_luft_mobilitaet,
+            'empfehlung_nicht_empfohlen': umfinanzierbar <= 0,
+            'beschreibung': f'Umfinanzierung von {len(stellantis_ueber)} Fahrzeugen (über Zinsfreiheit) zu Santander',
+            'handlungsempfehlung': handlungsempfehlung,
+            'ersparnis_monat': round(ersparnis_monat, 2),
+            'ersparnis_jahr': round(ersparnis_monat * 12, 2),
+            'prioritaet': 1,
+            'vorschlag_mobilitaet_anzahl': len(empfohlen_mob),
+            'vorschlag_mobilitaet_saldo': round(summe_mob, 2),
+            'vorschlag_normal_anzahl': len(empfohlen_norm),
+            'vorschlag_normal_saldo': round(summe_norm, 2),
+        })
+        umfinanzierbar = round(umfinanzierbar, 2)
 
     if stellantis_bald:
         gesamt_saldo_bald = sum(float(f["aktueller_saldo"] or 0) for f in stellantis_bald)
         noch_frei = santander_frei - umfinanzierbar
         if noch_frei > 50000:
             ersparnis_monat_bald = min(gesamt_saldo_bald, noch_frei) * (4.53 / 100) / 12
+            fahrzeuge_bald = [enrich_fahrzeug(f, 'tage_verbleibend') for f in stellantis_bald]
             empfehlungen.append({
                 'typ': 'fahrzeug_umfinanzierung_warnung',
                 'von': 'Stellantis',
                 'nach': 'Santander',
                 'anzahl_fahrzeuge': len(stellantis_bald),
-                'fahrzeuge': [{"vin": f["vin"], "modell": (f["modell"] or "").strip(), "saldo": float(f["aktueller_saldo"] or 0), "tage_verbleibend": int(f["tage_verbleibend"] or 0)} for f in stellantis_bald],
+                'fahrzeuge': fahrzeuge_bald,
                 'betrag': round(gesamt_saldo_bald, 2),
+                'betrag_empfohlen': round(min(gesamt_saldo_bald, noch_frei), 2),
+                'santander_limit': round(santander_limit, 2),
+                'santander_belegt': round(santander_belegt, 2),
                 'santander_noch_frei': round(noch_frei, 2),
                 'beschreibung': f'{len(stellantis_bald)} Fahrzeuge mit bald ablaufender Zinsfreiheit (<14 Tage) - Umfinanzierung prüfen',
                 'potenzielle_zinsen_monat': round(gesamt_saldo_bald * (9.03 / 100) / 12, 2),
