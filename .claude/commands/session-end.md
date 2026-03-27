@@ -1,76 +1,86 @@
 # /session-end - Arbeitssession beenden
 
-Beende die aktuelle Session mit Dokumentation und Qualitätscheck.
+Schliesst die Session sauber ab: CONTEXT.md aktualisieren, committen, pushen, Merge-Status pruefen.
 
-## Anweisungen
+## Schritt 1: Was wurde heute gemacht?
 
-1. **Frage nach der TAG-Nummer** falls nicht bekannt
-
-2. **Qualitätscheck für Neuentwicklungen durchführen:**
-   - Prüfe auf Redundanzen (doppelte Dateien, doppelte Funktionen)
-   - Prüfe SSOT-Konformität (verwendet zentrale Funktionen?)
-   - Prüfe Code-Duplikate
-   - Prüfe Konsistenz (DB-Verbindungen, Imports, Patterns)
-   - Dokumentiere gefundene Probleme in SESSION_WRAP_UP
-
-3. **Erstelle SESSION_WRAP_UP_TAG[X].md:**
-   - Was wurde in dieser Session erledigt
-   - Welche Dateien wurden geändert
-   - Qualitätscheck-Ergebnisse (Redundanzen, SSOT-Verletzungen)
-   - Gibt es bekannte Issues
-
-4. **Erstelle TODO_FOR_CLAUDE_SESSION_START_TAG[X+1].md:**
-   - Offene Aufgaben
-   - Nächste Schritte
-   - Qualitätsprobleme die behoben werden sollten
-   - Wichtige Hinweise für die nächste Session
-
-5. **Git Status prüfen:**
-   - Zeige uncommittete Änderungen
-   - Frage ob Commit gewünscht
-
-6. **Server-Sync Reminder:**
-   - Erinnere an eventuell nicht gesyncte Dateien
-
-## Qualitätscheck-Checkliste
-
-### Redundanzen
-- [ ] Gibt es doppelte Dateien? (z.B. `standort_utils.py` in Root und `api/`)
-- [ ] Gibt es doppelte Funktionen? (gleiche Logik an mehreren Stellen)
-- [ ] Gibt es doppelte Mappings/Konstanten? (z.B. `STANDORTE`, `BETRIEB_NAMEN`)
-
-### SSOT-Konformität
-- [ ] Werden zentrale Funktionen verwendet? (`api/standort_utils.py`, `api/db_utils.py`)
-- [ ] Gibt es lokale Implementierungen statt SSOT? (z.B. eigene `get_db()` Funktion)
-- [ ] Werden zentrale Mappings verwendet? (Standort, Betrieb, etc.)
-
-### Code-Duplikate
-- [ ] Gibt es kopierte Code-Blöcke die in Funktionen ausgelagert werden sollten?
-- [ ] Gibt es ähnliche Patterns die vereinheitlicht werden können?
-
-### Konsistenz
-- [ ] DB-Verbindungen: Werden `get_db()`, `get_locosoft_connection()` korrekt verwendet?
-- [ ] Imports: Werden zentrale Utilities importiert?
-- [ ] SQL-Syntax: PostgreSQL-kompatibel? (`%s` statt `?`, `true` statt `1`)
-- [ ] Error-Handling: Konsistentes Pattern?
-
-### Dokumentation
-- [ ] Neue Features dokumentiert?
-- [ ] API-Endpoints dokumentiert?
-- [ ] Breaking Changes dokumentiert?
-
-## Speicherort
-docs/sessions/
-
-## Qualitätscheck-Tools
+Zusammenfassung aus dem Gespraechsverlauf ziehen:
+- Welcher Workstream war aktiv?
+- Welche Features wurden implementiert?
+- Welche Bugs wurden behoben?
+- Welche Dateien wurden geaendert?
 
 ```bash
-# Doppelte Dateien finden
-find . -name "*.py" -type f | sort | uniq -d
-
-# Doppelte Funktionen finden (grep nach Funktionsnamen)
-grep -r "^def " api/ | sort | uniq -d
-
-# SSOT-Verletzungen finden (z.B. lokale get_db)
-grep -r "def get_db" --exclude-dir=api/db_connection.py
+cd /opt/greiner-test && git diff --stat HEAD
+cd /opt/greiner-test && git log --oneline -5
 ```
+
+## Schritt 2: Workstream CONTEXT.md aktualisieren
+
+Datei lesen und aktualisieren:
+
+```
+/opt/greiner-portal/docs/workstreams/[workstream]/CONTEXT.md
+```
+
+Folgende Abschnitte aktualisieren:
+- "Letzter Stand" oder "Aktueller Stand" -- was ist jetzt fertig
+- "Offene Aufgaben" -- was ist noch offen, was ist erledigt (abhaken oder loeschen)
+- "Naechste Schritte" -- konkret, was als naechstes kommt
+- "Bekannte Probleme" -- neue Probleme erwaehnen, geloeste entfernen
+
+Keine neuen SESSION_WRAP_UP-Dateien erstellen. Keine TODO_FOR_CLAUDE-Dateien erstellen.
+
+## Schritt 3: Git Status pruefen
+
+```bash
+cd /opt/greiner-test && git status
+```
+
+Uncommittete Aenderungen aufzeigen. `/commit` anbieten falls noch nicht committed.
+
+## Schritt 4: Push pruefen
+
+```bash
+cd /opt/greiner-test && git status -sb
+```
+
+Wenn lokale Commits noch nicht gepusht: fragen ob push gewuenscht.
+
+```bash
+cd /opt/greiner-test && git push origin develop
+```
+
+## Schritt 5: Merge-Status pruefen
+
+Pruefen ob develop hinter main haengt oder umgekehrt:
+
+```bash
+cd /opt/greiner-test && git log origin/main..HEAD --oneline | head -10
+```
+
+Ausgabe:
+- Wenn Commits vorhanden: "Es gibt [X] Commits in develop die noch nicht in main sind. /deploy ausfuehren wenn bereit."
+- Wenn leer: "develop und main sind synchron."
+
+Pruefen ob Hotfixes in main vorhanden sind die noch nicht in develop sind:
+
+```bash
+cd /opt/greiner-test && git log HEAD..origin/main --oneline | head -5
+```
+
+Wenn Commits vorhanden: "Es gibt Commits in main die noch nicht in develop sind. /sync in /opt/greiner-test/ ausfuehren."
+
+## Schritt 6: Abschluss-Zusammenfassung
+
+Kurze Zusammenfassung ausgeben:
+- Erledigt heute: [Liste]
+- Offen: [Liste]
+- Git: committed / gepusht / deploy ausstehend
+- Naechste Session: [konkreter Einstiegspunkt]
+
+## Nicht tun
+
+- Keine SESSION_WRAP_UP_TAG[X].md Dateien erstellen
+- Keine TODO_FOR_CLAUDE_SESSION_START_TAG[X].md Dateien erstellen
+- Diese Dateien sind veraltet -- der Kontext lebt in CONTEXT.md

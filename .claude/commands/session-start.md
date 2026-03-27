@@ -1,112 +1,73 @@
 # /session-start - Neue Arbeitssession starten
 
-Starte eine neue Arbeitssession mit Kontext aus der letzten Session und Standards für neue Features.
+Laedt den Kontext der letzten Session und bereitet die Arbeit vor.
 
-## Anweisungen
+## Schritt 1: Umgebung pruefen
 
-1. **Lies die Projekt-Dokumentation:**
-   - CLAUDE.md (Hauptkontext)
-   - Server/CLAUDE.md (technische Details)
+```bash
+pwd && git branch --show-current
+```
 
-2. **Finde die letzte Session:**
-   - Suche in `docs/sessions/` nach dem neuesten `SESSION_WRAP_UP_TAG*.md`
-   - Suche nach `TODO_FOR_CLAUDE_SESSION_START_TAG*.md`
+Warnung ausgeben wenn aktuelles Verzeichnis `/opt/greiner-portal/` ist (Production):
+"Achtung: Du arbeitest gerade in der Production-Umgebung (main). Fuer neue Features und normale Entwicklung besser in /opt/greiner-test/ (develop) arbeiten."
 
-3. **Lies beide Dateien** und fasse zusammen:
-   - Was wurde zuletzt gemacht
-   - Was sind die offenen Aufgaben
-   - Gibt es bekannte Probleme
-   - Gibt es Qualitätsprobleme die behoben werden sollten
+## Schritt 2: CLAUDE.md lesen
 
-4. **Bestimme den aktuellen TAG:**
-   - Basierend auf den Session-Dateien
-   - Informiere den User über die aktuelle TAG-Nummer
+`/opt/greiner-portal/CLAUDE.md` lesen -- dort stehen alle Architektur-Regeln, DB-Zugaenge und Standards.
 
-5. **Frage den User:**
-   - Womit sollen wir heute starten?
-   - Gibt es neue Prioritäten?
+## Schritt 3: Workstream-Kontext laden
 
-6. **Erinnere an Standards für neue Features/Änderungen:**
-   - SSOT-Prinzip beachten
-   - Redundanzen vermeiden
-   - Zentrale Funktionen verwenden
+Den User fragen: "An welchem Workstream arbeitest du heute?"
 
-## Standards für neue Features/Änderungen
+Verfuegbare Workstreams: `controlling`, `verkauf`, `werkstatt`, `urlaubsplaner`, `hr`, `teile-lager`, `planung`, `finanzierungen`, `infrastruktur`, `auth-ldap`, `integrations`, `marketing`, `verguetung`
 
-### SSOT-Prinzip (Single Source of Truth)
-**⚠️ WICHTIG:** Immer zentrale Funktionen verwenden!
+Passende CONTEXT.md lesen:
 
-**Standort-Logik:**
-- ✅ Verwende: `api/standort_utils.py`
-- ❌ NICHT: Eigene Standort-Mappings erstellen
+```
+/opt/greiner-portal/docs/workstreams/[workstream]/CONTEXT.md
+```
 
-**DB-Verbindungen:**
-- ✅ Verwende: `api/db_connection.py` → `get_db()`
-- ✅ Verwende: `api/db_utils.py` → `get_locosoft_connection()`
-- ❌ NICHT: Lokale `get_db()` Funktionen erstellen
+Falls kein Workstream angegeben: die juengste git-Aktivitaet pruefen:
 
-**Lagerbestand:**
-- ✅ Verwende: `api/teile_stock_utils.py` (TAG 176)
-- ❌ NICHT: Eigene Lagerbestand-Queries schreiben
+```bash
+cd /opt/greiner-portal && git log --oneline -5
+```
 
-**Betriebs-Mappings:**
-- ✅ Verwende: `api/standort_utils.py` → `BETRIEB_NAMEN`
-- ❌ NICHT: Eigene Mappings in verschiedenen Dateien
+## Schritt 4: Letzten Stand zusammenfassen
 
-### Redundanzen vermeiden
-- [ ] Prüfe ob Funktion bereits existiert (z.B. in `api/db_utils.py`)
-- [ ] Prüfe ob Mapping bereits existiert (z.B. in `api/standort_utils.py`)
-- [ ] Prüfe ob ähnliche Logik bereits vorhanden ist
+Aus der CONTEXT.md ausgeben:
+- Was wurde zuletzt implementiert
+- Welche Aufgaben sind offen
+- Bekannte Probleme oder Blocker
+- Aktuelle Architektur-Entscheidungen
 
-### Code-Duplikate vermeiden
-- [ ] Ähnliche Code-Blöcke in Funktionen auslagern
-- [ ] Gemeinsame Patterns in Utilities verschieben
-- [ ] DRY-Prinzip beachten (Don't Repeat Yourself)
+## Schritt 5: Service-Status kurz pruefen
 
-### Konsistenz
-- [ ] SQL-Syntax: PostgreSQL-kompatibel (`%s`, `true`, `CURRENT_DATE`)
-- [ ] Error-Handling: Konsistentes Pattern (try/except/finally)
-- [ ] Imports: Zentrale Utilities importieren
-- [ ] Logging: `logger = logging.getLogger(__name__)`
+```bash
+sudo -n /usr/bin/systemctl is-active greiner-portal greiner-test celery-worker 2>/dev/null
+```
 
-### Dokumentation
-- [ ] Neue Features dokumentieren
-- [ ] API-Endpoints dokumentieren
-- [ ] Breaking Changes dokumentieren
-- [ ] Beispiele in Code-Kommentaren
+Wenn ein Service nicht laeuft: sofort melden.
 
-### Testing
-- [ ] Service startet ohne Fehler
-- [ ] Keine Warnings in Logs
-- [ ] API-Endpoints funktionieren
-- [ ] Frontend lädt ohne Fehler
+## Schritt 6: Fragen
 
-## Checkliste vor Implementierung
+Den User fragen:
+- Womit sollen wir heute starten?
+- Gibt es neue Anforderungen oder Prioritaeten?
+- Gibt es Fehler oder Probleme die zuerst behoben werden muessen?
 
-**Vor dem Schreiben von Code:**
-1. [ ] Prüfe ob ähnliche Funktionalität bereits existiert
-2. [ ] Prüfe welche zentralen Funktionen verwendet werden sollten
-3. [ ] Prüfe ob Mapping/Konstanten bereits existieren
-4. [ ] Prüfe ob Pattern bereits etabliert ist
+## SSOT-Erinnerung
 
-**Während der Implementierung:**
-1. [ ] Verwende zentrale Funktionen (SSOT)
-2. [ ] Vermeide Code-Duplikate
-3. [ ] Verwende konsistente Patterns
-4. [ ] Dokumentiere wichtige Entscheidungen
+Vor der Implementierung immer pruefen:
 
-**Nach der Implementierung:**
-1. [ ] Qualitätscheck durchführen (Redundanzen, SSOT)
-2. [ ] Service testen
-3. [ ] Logs prüfen
-4. [ ] Dokumentation aktualisieren
+- DB-Verbindungen: `api/db_connection.py` -> `get_db()` (DRIVE), `api/db_utils.py` -> `get_locosoft_connection()` (Locosoft)
+- Standort-Logik: `api/standort_utils.py`
+- TEK-Berechnungen: `api/controlling_data.py` -> `get_tek_data()`
+- Kein SQLite, kein `sqlite3`, keine parallele DB-Logik
+- PostgreSQL-Syntax: `%s`, `true`, `CURRENT_DATE`, `EXTRACT(YEAR FROM ...)`
 
-## Output
-Kurze Zusammenfassung der letzten Session, offenen Punkte und Erinnerung an Standards.
+## Nicht tun
 
-## Relevante Dokumentation
-- `docs/QUALITAETSKONTROLLE_TAG176.md` - Qualitätskontrolle-Beispiel
-- `docs/STANDORT_LOGIK_SSOT.md` - SSOT-Dokumentation
-- `api/standort_utils.py` - SSOT für Standort-Logik
-- `api/db_utils.py` - SSOT für DB-Verbindungen
-- `api/teile_stock_utils.py` - SSOT für Lagerbestand (TAG 176)
+- Keine SESSION_WRAP_UP-Dateien lesen (veraltet, ersetzt durch CONTEXT.md)
+- Keine TODO_FOR_CLAUDE-Dateien anlegen
+- Nicht automatisch Code aendern -- erst verstehen, dann fragen
