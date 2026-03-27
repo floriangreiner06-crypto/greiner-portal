@@ -26,10 +26,10 @@ Wenn ein Feature fertig entwickelt und getestet ist und in Produktion soll:
 
 1. `/deploy` eintippen
 2. Claude fuehrt automatisch durch:
-   - Merged `develop` nach `main`
-   - Synchronisiert `/opt/greiner-test/` nach `/opt/greiner-portal/`
+   - Pusht `develop` nach Remote
+   - Merged `develop` nach `main` (via Git)
    - Startet den Produktions-Service neu
-   - Prueft den Service-Status und zeigt das Ergebnis
+   - Pusht `main` und prueft den Service-Status
 
 **Ergebnis:** Das neue Feature laeuft auf `http://drive` (Produktion, Port 80).
 
@@ -89,10 +89,8 @@ Wenn Florian Aenderungen committed hat und Vanessa mit dem aktuellen Stand arbei
 | `/sync` | Aktualisiert lokalen develop-Stand | Wenn Vanessa Florians neue Commits holen will |
 | `/test` | Startet oder prueft die Test-Instanz auf drive:5002 | Nach groesseren Aenderungen am Backend |
 | `/status` | Zeigt Git-Status, Service-Status und offene TODOs | Zur Orientierung waehrend der Session |
-| `/rollback` | Macht letztes Deployment rueckgaengig | Bei fehlerhaftem Deploy in Produktion |
 | `/logs` | Zeigt aktuelle Service-Logs (greiner-portal, celery) | Bei Fehlern oder unerwartetem Verhalten |
-| `/db` | Oeffnet interaktive DB-Konsole oder fuehrt Migration aus | Bei Schema-Aenderungen oder Debugging |
-| `/context` | Laedt CONTEXT.md des aktuellen Workstreams | Wenn Claude den Fachkontext benoetigt |
+| `/db` | PostgreSQL-Abfragen (erkennt Prod/Dev automatisch) | Bei Daten pruefen oder Debugging |
 
 ---
 
