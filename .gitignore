@@ -81,3 +81,33 @@ config/ldap_credentials.env
 *.broken
 *.before_*
 app.UNUSED_TAG24/
+
+# Virtual Environment
+.venv/
+venv/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+
+# Datenbanken
+*.db
+*.db-shm
+*.db-wal
+
+# Credentials & Secrets
+config/credentials.json
+credentials.json
+docs/CREDENTIALS_AM_SERVER.md
+docs/ANLEITUNG_CREDENTIALS_PUTTY.md
+*.key
+.env
+
+# Runtime
+*.pid
+
+# Temp
+.tmp/
+
+# IDE
+.cursor/
