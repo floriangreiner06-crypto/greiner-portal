@@ -58,6 +58,21 @@
     font-weight: 600;
     background-color: #e9ecef;
 }
+.seller-metrics {
+    display: grid;
+    grid-template-columns: 38px 38px 38px 52px 120px 110px 70px;
+    column-gap: 8px;
+    align-items: center;
+    justify-items: end;
+}
+.seller-metrics.header {
+    color: rgba(255,255,255,.92);
+    font-size: .78rem;
+    font-weight: 600;
+}
+.seller-metrics .center {
+    justify-self: center;
+}
 </style>
 
 <div class="container-fluid mt-4">
@@ -68,6 +83,26 @@
         </div>
     </div>
 
+    <!-- Quick-Buttons (analog Auftragseingang) -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnHeute">
+                    <i class="bi bi-calendar-day"></i> Heute
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnMonat">
+                    <i class="bi bi-calendar-month"></i> Dieser Monat
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnKalenderjahr">
+                    <i class="bi bi-calendar3"></i> Kalenderjahr
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnGeschaeftsjahr">
+                    <i class="bi bi-calendar-range"></i> Geschäftsjahr
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Filter -->
     <div class="row mb-4">
         <div class="col-md-2 col-lg-1">
@@ -75,6 +110,8 @@
             <select id="periodSelect" class="form-select form-select-sm">
                 <option value="month" selected>Monat</option>
                 <option value="day">Tag</option>
+                <option value="calendar_year">Kalenderjahr</option>
+                <option value="fiscal_year">Geschäftsjahr (Sep-Aug)</option>
             </select>
         </div>
         <div class="col-md-2">
@@ -102,27 +139,16 @@
             <label>Jahr:</label>
             <input type="number" id="yearSelect" class="form-control form-control-sm" value="2025" min="2020" max="2030">
         </div>
-        <div class="col-md-2">
-            <label>Standort:</label>
-            <select id="locationSelect" class="form-select form-select-sm">
-                <option value="">Alle Standorte</option>
-                <option value="1">Deggendorf (Opel)</option>
-                <option value="2">Deggendorf (Hyundai)</option>
-                <option value="3">Landau</option>
-            </select>
+        <!-- Standort-Filter Tabs (analog Auftragseingang) -->
+        <div class="col-md-12 mb-3">
+            {% set current_standort = standort %}
+            {% include 'components/standort_filter_tabs.html' %}
         </div>
-        <div class="col-md-2" id="verkauferFilterWrap">
+        <div class="col-md-2">
             <label>Verkäufer:</label>
-            {% if restrict_to_own_salesman and salesman_number %}
-            <div class="form-control-plaintext text-muted small" id="verkauferSelectFixed">
-                <i class="bi bi-person-check"></i> Nur Ihre Daten{% if salesman_name %} ({{ salesman_name }}){% endif %}
-            </div>
-            <input type="hidden" id="verkauferSelect" class="form-select form-select-sm" data-forced="{{ salesman_number }}">
-            {% else %}
-            <select id="verkauferSelect" class="form-select form-select-sm" {% if filter_mode == 'own_default' and salesman_number %}data-default-own="{{ salesman_number }}"{% endif %}>
+            <select id="verkauferSelect" class="form-select form-select-sm">
                 <option value="">Alle Verkäufer</option>
             </select>
-            {% endif %}
         </div>
         <div class="col-md-2">
             <label>VIN-Suche:</label>
@@ -133,6 +159,13 @@
             <button id="loadBtn" class="btn btn-primary btn-sm w-100">
                 <i class="bi bi-search"></i>
             </button>
+        </div>
+    </div>
+
+    <!-- Marken-Zusammenfassung -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div id="markenTableContainer"></div>
         </div>
     </div>
 
@@ -149,6 +182,18 @@
                         <button id="collapseAllBtn" class="btn btn-sm btn-outline-light">
                             <i class="bi bi-chevron-contract"></i> Alle schließen
                         </button>
+                    </div>
+                </div>
+                <div class="px-3 py-1 bg-dark text-white d-flex align-items-center border-top border-secondary">
+                    <div class="flex-grow-1 small fw-semibold">Verkäufer</div>
+                    <div class="seller-metrics header">
+                        <span class="center">NW</span>
+                        <span class="center">TVFW</span>
+                        <span class="center">GW</span>
+                        <span>Gesamt</span>
+                        <span>Umsatz</span>
+                        <span>DB</span>
+                        <span>DB%</span>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -177,18 +222,17 @@
 </div>
 
 <script>
-// Filter-Modus aus Rechteverwaltung: own_only | own_default | all_filterable
-const filterMode = {{ (filter_mode or 'all_filterable')|tojson }};
-const restrictToOwnSalesman = {{ 'true' if restrict_to_own_salesman else 'false' }};
-const forcedSalesmanNumber = {{ (salesman_number or 'null')|tojson }};
-
 // State
 let currentYear = 2025;
 let currentMonth = 11;
 let currentDay = '';
 let currentPeriod = 'month';
-let currentLocation = '';
-let currentVerkaufer = (restrictToOwnSalesman && forcedSalesmanNumber !== null) ? String(forcedSalesmanNumber) : (filterMode === 'own_default' && forcedSalesmanNumber !== null ? String(forcedSalesmanNumber) : '');
+function getStandortFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('standort') || '';
+}
+let currentLocation = getStandortFromURL();
+let currentVerkaufer = '';
 let currentVin = '';
 
 // Helper
@@ -229,16 +273,84 @@ function copyVin(vin, btn) {
     });
 }
 
+function updateQuickButtons(active) {
+    document.getElementById('btnHeute').classList.toggle('btn-primary', active === 'heute');
+    document.getElementById('btnHeute').classList.toggle('btn-outline-primary', active !== 'heute');
+    document.getElementById('btnMonat').classList.toggle('btn-primary', active === 'monat');
+    document.getElementById('btnMonat').classList.toggle('btn-outline-primary', active !== 'monat');
+    document.getElementById('btnKalenderjahr').classList.toggle('btn-primary', active === 'kalenderjahr');
+    document.getElementById('btnKalenderjahr').classList.toggle('btn-outline-primary', active !== 'kalenderjahr');
+    document.getElementById('btnGeschaeftsjahr').classList.toggle('btn-primary', active === 'geschaeftsjahr');
+    document.getElementById('btnGeschaeftsjahr').classList.toggle('btn-outline-primary', active !== 'geschaeftsjahr');
+}
+
 // Event Listeners
 document.getElementById('periodSelect').addEventListener('change', (e) => {
     currentPeriod = e.target.value;
     if (currentPeriod === 'day') {
         document.getElementById('monthSelect').style.display = 'none';
         document.getElementById('daySelect').style.display = 'block';
-    } else {
+    } else if (currentPeriod === 'month') {
         document.getElementById('monthSelect').style.display = 'block';
         document.getElementById('daySelect').style.display = 'none';
+        updateQuickButtons('monat');
+    } else {
+        document.getElementById('monthSelect').style.display = 'none';
+        document.getElementById('daySelect').style.display = 'none';
+        if (currentPeriod === 'calendar_year') updateQuickButtons('kalenderjahr');
+        if (currentPeriod === 'fiscal_year') updateQuickButtons('geschaeftsjahr');
     }
+});
+
+document.getElementById('btnHeute').addEventListener('click', () => {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('periodSelect').value = 'day';
+    currentPeriod = 'day';
+    document.getElementById('daySelect').value = today;
+    currentDay = today;
+    document.getElementById('monthSelect').style.display = 'none';
+    document.getElementById('daySelect').style.display = 'block';
+    updateQuickButtons('heute');
+    loadDetails();
+});
+
+document.getElementById('btnMonat').addEventListener('click', () => {
+    const now = new Date();
+    document.getElementById('periodSelect').value = 'month';
+    currentPeriod = 'month';
+    document.getElementById('monthSelect').value = now.getMonth() + 1;
+    document.getElementById('yearSelect').value = now.getFullYear();
+    currentMonth = now.getMonth() + 1;
+    currentYear = now.getFullYear();
+    document.getElementById('monthSelect').style.display = 'block';
+    document.getElementById('daySelect').style.display = 'none';
+    updateQuickButtons('monat');
+    loadDetails();
+});
+
+document.getElementById('btnKalenderjahr').addEventListener('click', () => {
+    const now = new Date();
+    document.getElementById('periodSelect').value = 'calendar_year';
+    currentPeriod = 'calendar_year';
+    document.getElementById('yearSelect').value = now.getFullYear();
+    currentYear = now.getFullYear();
+    document.getElementById('monthSelect').style.display = 'none';
+    document.getElementById('daySelect').style.display = 'none';
+    updateQuickButtons('kalenderjahr');
+    loadDetails();
+});
+
+document.getElementById('btnGeschaeftsjahr').addEventListener('click', () => {
+    const now = new Date();
+    const fiscalStartYear = (now.getMonth() + 1) >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+    document.getElementById('periodSelect').value = 'fiscal_year';
+    currentPeriod = 'fiscal_year';
+    document.getElementById('yearSelect').value = fiscalStartYear;
+    currentYear = fiscalStartYear;
+    document.getElementById('monthSelect').style.display = 'none';
+    document.getElementById('daySelect').style.display = 'none';
+    updateQuickButtons('geschaeftsjahr');
+    loadDetails();
 });
 
 document.getElementById('monthSelect').addEventListener('change', (e) => {
@@ -251,10 +363,6 @@ document.getElementById('daySelect').addEventListener('change', (e) => {
 
 document.getElementById('yearSelect').addEventListener('change', (e) => {
     currentYear = e.target.value;
-});
-
-document.getElementById('locationSelect').addEventListener('change', (e) => {
-    currentLocation = e.target.value;
 });
 
 document.getElementById('verkauferSelect').addEventListener('change', (e) => {
@@ -289,15 +397,13 @@ document.getElementById('collapseAllBtn').addEventListener('click', () => {
     });
 });
 
-// Load Verkäufer-Liste (nur wenn Filter sichtbar – nicht bei Rolle „verkauf“)
+// Load Verkäufer-Liste
 async function loadVerkauferListe() {
-    if (restrictToOwnSalesman) return;
     try {
         const response = await fetch('/api/verkauf/verkaufer');
         const data = await response.json();
         
         const select = document.getElementById('verkauferSelect');
-        if (select.tagName !== 'SELECT') return;
         select.innerHTML = '<option value="">Alle Verkäufer</option>';
         
         if (data.verkaufer) {
@@ -318,16 +424,15 @@ async function loadDetails() {
     container.innerHTML = '<div class="text-center p-4"><div class="spinner-border"></div></div>';
     
     currentVin = document.getElementById('vinSearch').value.trim();
-    var sel = document.getElementById('verkauferSelect');
-    if (restrictToOwnSalesman && forcedSalesmanNumber !== null) currentVerkaufer = String(forcedSalesmanNumber);
-    else if (sel.tagName === 'SELECT') currentVerkaufer = sel.value;
+    currentLocation = getStandortFromURL();
 
     try {
-        let url = `/api/verkauf/auslieferung/detail?year=${currentYear}`;
+        const isLargePeriod = currentPeriod === 'calendar_year' || currentPeriod === 'fiscal_year';
+        let url = `/api/verkauf/auslieferung/detail?zeitraum=${encodeURIComponent(currentPeriod)}&year=${currentYear}`;
 
         if (currentPeriod === 'month') {
             url += `&month=${currentMonth}`;
-        } else {
+        } else if (currentPeriod === 'day') {
             url += `&day=${currentDay}`;
         }
 
@@ -357,29 +462,31 @@ async function loadDetails() {
         data.verkaufer.forEach((vk, idx) => {
             const dbColor = getDBColor(vk.db_prozent_gesamt);
             const collapseId = `collapse-${idx}`;
+            const headerCollapsedClass = isLargePeriod ? 'collapsed' : '';
+            const collapseShowClass = isLargePeriod ? '' : 'show';
             
             // Header-Zeile (klappbar)
             html += `
                 <div class="accordion-item border-0 border-bottom">
-                    <div class="verkaufer-header collapsed p-3 d-flex align-items-center" 
+                    <div class="verkaufer-header ${headerCollapsedClass} p-3 d-flex align-items-center" 
                          data-bs-toggle="collapse" 
                          data-bs-target="#${collapseId}">
                         <i class="bi bi-chevron-down toggle-icon me-3"></i>
                         <div class="flex-grow-1">
                             <strong>${vk.verkaufer_name || 'Unbekannt'}</strong>
                         </div>
-                        <div class="d-flex align-items-center gap-3">
-                            <span class="badge bg-success" title="Neuwagen">${vk.summe_neu}</span>
-                            <span class="badge bg-warning text-dark" title="Test/Vorführ">${vk.summe_test_vorfuehr}</span>
-                            <span class="badge bg-secondary" title="Gebraucht">${vk.summe_gebraucht}</span>
-                            <strong class="mx-2">${vk.summe_gesamt}</strong>
-                            <span class="text-muted" style="min-width: 100px; text-align: right;">${formatCurrency(vk.umsatz_gesamt)}</span>
-                            <span class="badge bg-${dbColor}" style="min-width: 90px;">${formatCurrency(vk.db_gesamt)}</span>
-                            <span class="badge bg-${dbColor}" style="min-width: 60px;">${formatPercent(vk.db_prozent_gesamt)}</span>
+                        <div class="seller-metrics">
+                            <span class="badge bg-success center" title="Neuwagen">${vk.summe_neu}</span>
+                            <span class="badge bg-warning text-dark center" title="Test/Vorführ">${vk.summe_test_vorfuehr}</span>
+                            <span class="badge bg-secondary center" title="Gebraucht">${vk.summe_gebraucht}</span>
+                            <strong>${vk.summe_gesamt}</strong>
+                            <span class="text-muted">${formatCurrency(vk.umsatz_gesamt)}</span>
+                            <span class="badge bg-${dbColor}">${formatCurrency(vk.db_gesamt)}</span>
+                            <span class="badge bg-${dbColor}">${formatPercent(vk.db_prozent_gesamt)}</span>
                         </div>
                     </div>
                     
-                    <div id="${collapseId}" class="collapse fahrzeug-collapse" data-bs-parent="#verkauferAccordion">
+                    <div id="${collapseId}" class="collapse fahrzeug-collapse ${collapseShowClass}" data-bs-parent="#verkauferAccordion">
                         <div class="fahrzeug-details p-3">
                             <table class="table table-sm table-hover fahrzeug-table">
                                 <thead>
@@ -443,17 +550,63 @@ async function loadDetails() {
                 <div class="flex-grow-1">
                     <strong>GESAMT</strong>
                 </div>
-                <div class="d-flex align-items-center gap-3">
-                    <span class="badge bg-success">${totalNeu}</span>
-                    <span class="badge bg-warning text-dark">${totalTV}</span>
-                    <span class="badge bg-secondary">${totalGW}</span>
-                    <strong class="mx-2">${totalFzg}</strong>
-                    <span style="min-width: 100px; text-align: right;">${formatCurrency(totalUmsatz)}</span>
-                    <span class="badge bg-${totalColor}" style="min-width: 90px;">${formatCurrency(totalDB)}</span>
-                    <span class="badge bg-${totalColor}" style="min-width: 60px;">${formatPercent(totalDBProzent)}</span>
+                <div class="seller-metrics">
+                    <span class="badge bg-success center">${totalNeu}</span>
+                    <span class="badge bg-warning text-dark center">${totalTV}</span>
+                    <span class="badge bg-secondary center">${totalGW}</span>
+                    <strong>${totalFzg}</strong>
+                    <span>${formatCurrency(totalUmsatz)}</span>
+                    <span class="badge bg-${totalColor}">${formatCurrency(totalDB)}</span>
+                    <span class="badge bg-${totalColor}">${formatPercent(totalDBProzent)}</span>
                 </div>
             </div>
         `;
+
+        // Marken-Tabelle oben rendern (NW/VFW/GW + DB + DB/Stück pro Marke)
+        const markenOrder = ['Opel', 'Leapmotor', 'Hyundai'];
+        const markenRows = {};
+        markenOrder.forEach(name => { markenRows[name] = { nw: 0, vfw: 0, gw: 0, summe: 0, db: 0, umsatz: 0 }; });
+
+        data.verkaufer.forEach(vk => {
+            (vk.fahrzeuge || []).forEach(fz => {
+                const m = (fz.marke || '').trim();
+                if (!markenRows[m]) return;
+                const db = fz.deckungsbeitrag || 0;
+                const um = fz.umsatz || 0;
+                if (fz.typ === 'N') { markenRows[m].nw++; markenRows[m].summe++; }
+                else if (fz.typ === 'T' || fz.typ === 'V') { markenRows[m].vfw++; markenRows[m].summe++; }
+                else if (fz.typ === 'G' || fz.typ === 'D') { markenRows[m].gw++; markenRows[m].summe++; }
+                markenRows[m].db += db;
+                markenRows[m].umsatz += um;
+            });
+        });
+
+        let mNw = 0, mVfw = 0, mGw = 0, mDb = 0, mUmsatz = 0;
+        markenOrder.forEach(n => { mNw += markenRows[n].nw; mVfw += markenRows[n].vfw; mGw += markenRows[n].gw; mDb += markenRows[n].db; mUmsatz += markenRows[n].umsatz; });
+        const mSumme = mNw + mVfw + mGw;
+
+        let mHtml = `<div class="card mb-3"><div class="card-header bg-primary text-white"><h5 class="mb-0"><i class="bi bi-bar-chart"></i> Zusammenfassung nach Marke</h5></div><div class="card-body p-0">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr><th>Marke</th><th class="text-center">NW</th><th class="text-center">VFW</th><th class="text-center">GW</th><th class="text-center fw-bold">Summe</th><th class="text-end">DB</th><th class="text-end">DB/Stück</th></tr>
+                </thead><tbody>`;
+        markenOrder.forEach(name => {
+            const r = markenRows[name];
+            const dbProStueck = r.summe > 0 ? r.db / r.summe : 0;
+            const dbColor = r.db >= 0 ? 'text-success' : 'text-danger';
+            mHtml += `<tr><td><strong>${name}</strong></td><td class="text-center">${r.nw}</td><td class="text-center">${r.vfw}</td><td class="text-center">${r.gw}</td><td class="text-center fw-bold">${r.summe}</td><td class="text-end ${dbColor}">${formatCurrency(r.db)}</td><td class="text-end ${dbColor}">${formatCurrency(dbProStueck)}</td></tr>`;
+        });
+        const totalDbProStueck = mSumme > 0 ? mDb / mSumme : 0;
+        const totalDbColor = mDb >= 0 ? 'text-success' : 'text-danger';
+        mHtml += `<tr class="table-dark"><td><strong>Gesamt</strong></td><td class="text-center">${mNw}</td><td class="text-center">${mVfw}</td><td class="text-center">${mGw}</td><td class="text-center fw-bold">${mSumme}</td><td class="text-end">${formatCurrency(mDb)}</td><td class="text-end">${formatCurrency(totalDbProStueck)}</td></tr>`;
+        mHtml += `</tbody></table></div></div>`;
+
+        document.getElementById('markenTableContainer').innerHTML = mHtml;
+
+        const headerActions = document.querySelector('.card-header .d-flex.justify-content-between > div');
+        if (headerActions) {
+            headerActions.style.display = isLargePeriod ? 'block' : 'none';
+        }
 
         container.innerHTML = html;
     } catch (error) {
@@ -463,18 +616,17 @@ async function loadDetails() {
 
 // Initial Load
 document.addEventListener('DOMContentLoaded', () => {
+    // Aktuellen Monat setzen
     const now = new Date();
     currentMonth = now.getMonth() + 1;
     currentYear = now.getFullYear();
     document.getElementById('monthSelect').value = currentMonth;
     document.getElementById('yearSelect').value = currentYear;
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('daySelect').value = today;
+    updateQuickButtons('monat');
     
-    loadVerkauferListe().then(() => {
-        if (filterMode === 'own_default' && forcedSalesmanNumber !== null) {
-            const sel = document.getElementById('verkauferSelect');
-            if (sel && sel.tagName === 'SELECT') sel.value = String(forcedSalesmanNumber);
-        }
-    });
+    loadVerkauferListe();
     loadDetails();
 });
 </script>
