@@ -644,23 +644,62 @@ def get_mehrjahresvergleich(gesellschaft: str = 'autohaus') -> list:
 
     with db_session() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT geschaeftsjahr, stichtag, bilanzsumme, eigenkapital, ek_quote,
-                   umsatz, rohertrag_pct, personalaufwand, abschreibungen,
-                   zinsergebnis, betriebsergebnis, jahresergebnis,
-                   cashflow_geschaeft, cashflow_invest, cashflow_finanz,
-                   finanzmittel_jahresende, verbindlichkeiten, rueckstellungen
-            FROM jahresabschluss_daten
-            WHERE gesellschaft = %s
-            ORDER BY geschaeftsjahr DESC
-        """, (gesellschaft,))
+
+        if gesellschaft == 'gruppe':
+            # Summe aus autohaus + auto pro GJ
+            cursor.execute("""
+                SELECT geschaeftsjahr, stichtag,
+                    SUM(bilanzsumme) as bilanzsumme,
+                    SUM(eigenkapital) as eigenkapital,
+                    NULL as ek_quote,
+                    SUM(umsatz) as umsatz,
+                    NULL as rohertrag_pct,
+                    SUM(personalaufwand) as personalaufwand,
+                    SUM(abschreibungen) as abschreibungen,
+                    SUM(zinsergebnis) as zinsergebnis,
+                    SUM(betriebsergebnis) as betriebsergebnis,
+                    SUM(jahresergebnis) as jahresergebnis,
+                    SUM(cashflow_geschaeft) as cashflow_geschaeft,
+                    SUM(cashflow_invest) as cashflow_invest,
+                    SUM(cashflow_finanz) as cashflow_finanz,
+                    SUM(finanzmittel_jahresende) as finanzmittel_jahresende,
+                    SUM(verbindlichkeiten) as verbindlichkeiten,
+                    SUM(rueckstellungen) as rueckstellungen
+                FROM jahresabschluss_daten
+                WHERE gesellschaft IN ('autohaus', 'auto')
+                GROUP BY geschaeftsjahr, stichtag
+                HAVING COUNT(*) = 2
+                ORDER BY geschaeftsjahr DESC
+            """)
+        else:
+            cursor.execute("""
+                SELECT geschaeftsjahr, stichtag, bilanzsumme, eigenkapital, ek_quote,
+                       umsatz, rohertrag_pct, personalaufwand, abschreibungen,
+                       zinsergebnis, betriebsergebnis, jahresergebnis,
+                       cashflow_geschaeft, cashflow_invest, cashflow_finanz,
+                       finanzmittel_jahresende, verbindlichkeiten, rueckstellungen
+                FROM jahresabschluss_daten
+                WHERE gesellschaft = %s
+                ORDER BY geschaeftsjahr DESC
+            """, (gesellschaft,))
+
         spalten = ['geschaeftsjahr', 'stichtag', 'bilanzsumme', 'eigenkapital', 'ek_quote',
                    'umsatz', 'rohertrag_pct', 'personalaufwand', 'abschreibungen',
                    'zinsergebnis', 'betriebsergebnis', 'jahresergebnis',
                    'cashflow_geschaeft', 'cashflow_invest', 'cashflow_finanz',
                    'finanzmittel_jahresende', 'verbindlichkeiten', 'rueckstellungen']
 
-        return [dict(zip(spalten, row)) for row in cursor.fetchall()]
+        rows = [dict(zip(spalten, row)) for row in cursor.fetchall()]
+
+        # Recalculate EK-Quote for Gruppe (since we SUM'd the components)
+        if gesellschaft == 'gruppe':
+            for row in rows:
+                if row.get('eigenkapital') is not None and row.get('bilanzsumme') and row['bilanzsumme'] != 0:
+                    row['ek_quote'] = row['eigenkapital'] / row['bilanzsumme'] * 100
+                else:
+                    row['ek_quote'] = None
+
+        return rows
 
 
 def get_gesamtbild(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') -> dict:
