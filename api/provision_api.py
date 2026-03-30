@@ -32,6 +32,32 @@ def _may_see_all_verkaufer():
     )
 
 
+def _get_portal_role():
+    """Portal-Rolle des aktuellen Users (portal_role_override > portal_role)."""
+    return (getattr(current_user, 'portal_role_override', '') or
+            getattr(current_user, 'portal_role', '') or '')
+
+
+def _may_endlauf():
+    """Personalbüro / Buchhaltung / Admin dürfen Endlauf setzen."""
+    role = _get_portal_role()
+    return current_user.is_authenticated and (
+        role in ('admin', 'buchhaltung', 'personalbüro') or
+        getattr(current_user, 'has_role', lambda _: False)('admin') or
+        getattr(current_user, 'has_role', lambda _: False)('buchhaltung')
+    )
+
+
+def _may_download_pdf_any():
+    """Admin, VKL, GL, Personalbüro, Buchhaltung dürfen alle PDFs laden.
+    Verkäufer dürfen nur eigene Läufe (VKB-Check separat)."""
+    role = _get_portal_role()
+    return current_user.is_authenticated and (
+        getattr(current_user, 'has_role', lambda _: False)('admin') or
+        role in ('admin', 'verkauf_leitung', 'geschaeftsfuehrung', 'personalbüro', 'buchhaltung')
+    )
+
+
 def _may_manage_config():
     """Nur Admin darf Provisionsarten (provision_config) verwalten."""
     return current_user.is_authenticated and (
@@ -167,7 +193,184 @@ def lauf_detail(lauf_id):
     if not _may_see_all_verkaufer() and my_vkb != vkb:
         return jsonify({'success': False, 'error': 'Kein Zugriff'}), 403
     data['success'] = True
+    if _may_see_all_verkaufer():
+        from api.provision_service import get_aktive_verkaeufer
+        data['aktive_verkaeufer'] = get_aktive_verkaeufer()
     return jsonify(data)
+
+
+# =============================================================================
+# Endlauf, Position bearbeiten/löschen
+# =============================================================================
+
+def _recalc_lauf_sums(cursor, lauf_id):
+    """Summen in provision_laeufe aus Positionen neu berechnen.
+    summe_kat_v bleibt manuell (nicht aus Positionen aggregiert)."""
+    cursor.execute("""
+        UPDATE provision_laeufe SET
+            summe_kat_i   = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'I_neuwagen'), 0),
+            summe_kat_ii  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'II_testwagen'), 0),
+            summe_kat_iii = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'III_gebrauchtwagen'), 0),
+            summe_kat_iv  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'IV_gw_bestand'), 0),
+            summe_gesamt  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s), 0)
+                          + COALESCE(summe_kat_v, 0) + COALESCE(summe_stueckpraemie, 0),
+            aktualisiert_am = NOW()
+        WHERE id = %s
+    """, (lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id))
+
+
+@provision_api.route('/vorlauf/<int:lauf_id>/endlauf', methods=['POST'])
+@login_required
+def endlauf_setzen(lauf_id):
+    """
+    POST /api/provision/vorlauf/<id>/endlauf
+    Setzt Status FREIGEGEBEN → ENDLAUF. Nur Buchhaltung/Personalbüro/Admin.
+    Belegnummer: VK{verkaufer_id}-{YYYY}-{MM}
+    Optional im Body: summe_gesamt, summe_kat_i–v (Korrekturwerte).
+    """
+    if not _may_endlauf():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung für Endlauf.'}), 403
+
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, verkaufer_id, abrechnungsmonat, status
+            FROM provision_laeufe WHERE id = %s
+        """, (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+
+        status = (lauf['status'] or '').upper()
+        if status == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Lauf ist bereits Endlauf (gesperrt).'}), 403
+        if status != 'FREIGEGEBEN':
+            return jsonify({'success': False, 'error': f'Endlauf nur aus Status FREIGEGEBEN möglich (aktuell: {status}).'}), 400
+
+        vkb = lauf['verkaufer_id']
+        monat = lauf['abrechnungsmonat'] or ''
+        belegnummer = f"VK{vkb}-{monat}"
+
+        endlauf_von = getattr(current_user, 'username', None) or getattr(current_user, 'display_name', '') or 'system'
+
+        # Optionale Korrekturwerte aus Body
+        data = request.get_json(silent=True) or {}
+        extra_sets = []
+        extra_params = []
+        for field in ('summe_gesamt', 'summe_kat_i', 'summe_kat_ii', 'summe_kat_iii', 'summe_kat_iv', 'summe_kat_v'):
+            if field in data and data[field] is not None:
+                try:
+                    extra_sets.append(f"{field} = %s")
+                    extra_params.append(float(data[field]))
+                except (TypeError, ValueError):
+                    pass
+
+        extra_sql = (", " + ", ".join(extra_sets)) if extra_sets else ""
+
+        cur.execute(f"""
+            UPDATE provision_laeufe SET
+                status = 'ENDLAUF',
+                endlauf_am = NOW() AT TIME ZONE 'Europe/Berlin',
+                endlauf_von = %s,
+                belegnummer = %s
+                {extra_sql}
+            WHERE id = %s
+        """, [endlauf_von, belegnummer] + extra_params + [lauf_id])
+        conn.commit()
+
+    # PDF generieren (Endlauf)
+    try:
+        from api.provision_pdf import generate_provision_pdf
+        pdf_rel = generate_provision_pdf(lauf_id, typ='endlauf')
+        if pdf_rel:
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("UPDATE provision_laeufe SET pdf_endlauf = %s WHERE id = %s", (pdf_rel, lauf_id))
+                conn.commit()
+    except Exception:
+        pdf_rel = None
+
+    return jsonify({
+        'success': True,
+        'belegnummer': belegnummer,
+        'pdf_endlauf': pdf_rel,
+        'message': f'Endlauf erstellt. Belegnummer: {belegnummer}'
+    })
+
+
+@provision_api.route('/position/<int:pos_id>/bearbeiten', methods=['POST'])
+@login_required
+def position_bearbeiten(pos_id):
+    """
+    POST /api/provision/position/<id>/bearbeiten
+    Body: { "provision_final": 123.45 }
+    Nur VKL/Admin. Nicht bei Status ENDLAUF.
+    """
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin dürfen Positionen bearbeiten.'}), 403
+
+    data = request.get_json() or {}
+    provision_final = data.get('provision_final')
+    if provision_final is None:
+        return jsonify({'success': False, 'error': 'provision_final ist erforderlich.'}), 400
+    try:
+        provision_final = float(provision_final)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'provision_final muss eine Zahl sein.'}), 400
+
+    with db_session() as conn:
+        cur = conn.cursor()
+        # Position + Lauf-Status prüfen
+        cur.execute("""
+            SELECT p.id, p.lauf_id, l.status
+            FROM provision_positionen p
+            JOIN provision_laeufe l ON l.id = p.lauf_id
+            WHERE p.id = %s
+        """, (pos_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Position nicht gefunden.'}), 404
+        if (row['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Endlauf ist gesperrt – keine Änderungen möglich.'}), 403
+
+        lauf_id = row['lauf_id']
+        cur.execute("UPDATE provision_positionen SET provision_final = %s WHERE id = %s", (provision_final, pos_id))
+        _recalc_lauf_sums(cur, lauf_id)
+        conn.commit()
+
+    return jsonify({'success': True, 'message': 'Position aktualisiert.'})
+
+
+@provision_api.route('/position/<int:pos_id>/loeschen', methods=['POST', 'DELETE'])
+@login_required
+def position_loeschen(pos_id):
+    """
+    POST/DELETE /api/provision/position/<id>/loeschen
+    Nur VKL/Admin. Nicht bei Status ENDLAUF.
+    """
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin dürfen Positionen löschen.'}), 403
+
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.id, p.lauf_id, l.status
+            FROM provision_positionen p
+            JOIN provision_laeufe l ON l.id = p.lauf_id
+            WHERE p.id = %s
+        """, (pos_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Position nicht gefunden.'}), 404
+        if (row['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Endlauf ist gesperrt – keine Änderungen möglich.'}), 403
+
+        lauf_id = row['lauf_id']
+        cur.execute("DELETE FROM provision_positionen WHERE id = %s", (pos_id,))
+        _recalc_lauf_sums(cur, lauf_id)
+        conn.commit()
+
+    return jsonify({'success': True, 'message': 'Position gelöscht.'})
 
 
 # =============================================================================

@@ -609,7 +609,7 @@ def get_dashboard_daten(monat: str) -> Dict[str, Any]:
         cur.execute("""
             SELECT id, verkaufer_id, verkaufer_name, abrechnungsmonat, status,
                    summe_kat_i, summe_kat_ii, summe_kat_iii, summe_kat_iv, summe_kat_v, summe_gesamt,
-                   vorlauf_am, pdf_vorlauf
+                   vorlauf_am, pdf_vorlauf, endlauf_am, endlauf_von, belegnummer
             FROM provision_laeufe WHERE abrechnungsmonat = %s ORDER BY verkaufer_name
         """, (monat,))
         laeufe = rows_to_list(cur.fetchall())
@@ -657,15 +657,18 @@ def get_lauf_detail(lauf_id: int) -> Optional[Dict[str, Any]]:
             SELECT id, verkaufer_id, verkaufer_name, abrechnungsmonat, status,
                    summe_kat_i, summe_kat_ii, summe_kat_iii, summe_kat_iv, summe_kat_v,
                    summe_stueckpraemie, summe_gesamt,
-                   vorlauf_am, vorlauf_von, pdf_vorlauf, pdf_endlauf
+                   vorlauf_am, vorlauf_von, pdf_vorlauf, pdf_endlauf,
+                   endlauf_am, endlauf_von, belegnummer
             FROM provision_laeufe WHERE id = %s
         """, (lauf_id,))
         lauf = cur.fetchone()
         if not lauf:
             return None
         cur.execute("""
-            SELECT id, kategorie, vin, modell, fahrzeugart, kaeufer_name, einkaeufer_name, rg_netto, deckungsbeitrag,
-                   provision_final, locosoft_rg_nr, rg_datum, einspruch_flag, einspruch_text
+            SELECT id, kategorie, vin, modell, fahrzeugart, kaeufer_name, einkaeufer_name,
+                   rg_netto, deckungsbeitrag, bemessungsgrundlage, kosten_abzug,
+                   provisionssatz, provision_berechnet, provision_final,
+                   locosoft_rg_nr, rg_datum, einspruch_flag, einspruch_text
             FROM provision_positionen WHERE lauf_id = %s
             ORDER BY CASE kategorie
                 WHEN 'I_neuwagen' THEN 1 WHEN 'II_testwagen' THEN 2
@@ -778,3 +781,18 @@ def delete_vorlauf(lauf_id: int) -> Dict[str, Any]:
         cur.execute("DELETE FROM provision_laeufe WHERE id = %s", (lauf_id,))
         conn.commit()
     return {'success': True}
+
+
+def get_aktive_verkaeufer() -> List[Dict[str, Any]]:
+    """Alle Verkäufer mit provision_aktiv=true für Einkäufer-Dropdown."""
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT locosoft_id,
+                   TRIM(BOTH ' ' FROM COALESCE(TRIM(first_name), '') || ' ' || COALESCE(TRIM(last_name), '')) AS name
+            FROM employees
+            WHERE COALESCE(provision_aktiv, true) = true
+              AND locosoft_id IS NOT NULL
+            ORDER BY last_name, first_name
+        """)
+        return rows_to_list(cur.fetchall())
