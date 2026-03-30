@@ -12,13 +12,15 @@ Läuft als Celery-Task täglich 20:15 Mo-Fr (nach Locosoft-Mirror 19:00).
 SKR51-Mapping:
   810000-819999: werkstatt_erloese    710000-719999: we_werkstatt
   820000-829999: teile_erloese        720000-729999: we_teile
-  830000-839999: sonst_erloese        730000-739999: we_sonstige
+  830000-839999: sonst_erloese        730000-809999: we_sonstige (inkl. produktive Löhne, Fremdleistungen, VFW-Aufwand)
   840000-899999: fz_erloese           400000-449999: personal
-  450000-493999: sonst_aufwand        230000-242999: zinsen (aufwand+ertrag)
+  450000-499999: sonst_aufwand (inkl. 494-499 Fixum/Kulanz/Provisionen)
+  230000-242999: zinsen (aufwand+ertrag)
   200000-229999 + 243000-293999: neutral (aufwand+ertrag)
   190000-193999: entnahmen (Bilanzkonten, nicht GuV)
 
-Ausschluss: document_type='A' (Abschluss), Konten 294000-294999/494000-499999 (kalk.)
+Ausschluss: document_type='A' (Abschluss), Konten 294000-294999 (kalk. Unternehmerlohn/Miete/Zinsen)
+WICHTIG: 494000-499999 werden NICHT ausgeschlossen (Fixum, Kulanz, Provisionen sind echte Kosten)
 ============================================================================
 """
 
@@ -50,9 +52,9 @@ SKR51_BEREICHE = [
     (840000, 899999, 'fz_erloese'),
     (710000, 719999, 'we_werkstatt'),
     (720000, 729999, 'we_teile'),
-    (730000, 739999, 'we_sonstige'),
+    (730000, 809999, 'we_sonstige'),  # inkl. 74xxxx produktive Löhne, 76xxxx VFW-Aufwand
     (400000, 449999, 'personal'),
-    (450000, 493999, 'sonst_aufwand'),
+    (450000, 499999, 'sonst_aufwand'),  # inkl. 494-499 Fixum/Kulanz/Provisionen
 ]
 
 # Separate Behandlung für Zinsen (Aufwand vs. Ertrag) und Neutral
@@ -61,7 +63,7 @@ NEUTRAL_RANGES = [(200000, 229999), (243000, 293999)]
 ENTNAHMEN_RANGE = (190000, 193999)
 
 # Ausschluss
-KALK_RANGES = [(294000, 294999), (494000, 499999)]
+KALK_RANGES = [(294000, 294999)]  # Nur kalk. Unternehmerlohn/Miete/Zinsen (sind immer 0)
 EXCLUDE_DOC_TYPE = 'A'
 
 
@@ -169,7 +171,8 @@ def sync_fibu_guv():
                 LEFT JOIN nominal_accounts n
                     ON j.nominal_account_number = n.nominal_account_number
                     AND n.subsidiary_to_company_ref = 1
-                WHERE j.accounting_date >= %s
+                WHERE j.subsidiary_to_company_ref = 1
+                  AND j.accounting_date >= %s
                   AND j.accounting_date <= %s
                   AND j.document_type != %s
                   AND (
