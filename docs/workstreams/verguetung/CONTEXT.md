@@ -77,6 +77,7 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - Neuwagen-Klassifizierung über dealer_vehicle_type (nicht mehr P1)
 - Berechtigungen auf 3 Personen beschränkt
 - E-Mail-Stubs vorbereitet (PROVISION_EMAIL_ENABLED = False)
+- **Kumulierte Zielprämie (2026-03-30):** Gate = kumuliertes NW-Ziel (Jan bis aktueller Monat) muss erreicht sein, Übererfüllung rein monatlich. Neues DB-Feld `use_kumuliert` in `provision_config`, Checkbox im Config-Modal, Info-Block in Detail-Seite, kompakte Darstellung im PDF. Spec: `docs/superpowers/specs/2026-03-30-kumulierte-zielpraemie-design.md`
 
 ## Offene Punkte / Nächste Schritte
 - E-Mail-Benachrichtigungen aktivieren (nach Testphase)
@@ -85,6 +86,7 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - Lohnbuchhaltung-Export (Phase 3)
 - Werkstatt-Prämien: Konzept in Excel vorhanden, Umsetzung steht aus
 - Jahresprämie: Existiert in HR, Migration geplant
+- Kumulierte Zielprämie: Config-Validität prüfen (gueltig_bis der Zielerfüllung-Zeile muss ganzjährig gelten)
 
 ## Abhängigkeiten
 - werkstatt (TEK-Daten, Stunden, Anwesenheit)
