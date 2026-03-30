@@ -1,37 +1,379 @@
 {% extends "base.html" %}
 {% block title %}Provisionslauf – Greiner DRIVE{% endblock %}
 {% block content %}
-<div class="container-fluid mt-4">
-    <h2><i class="bi bi-receipt"></i> Provisionslauf <span id="laufId">{{ lauf_id }}</span></h2>
-    <div id="loading">Lade…</div>
+<style>
+    /* Layout */
+    .prov-detail-wrapper { padding: 1.25rem 2rem; background: #f8fafc; min-height: calc(100vh - 60px); }
+
+    /* Header */
+    .prov-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; }
+    .prov-header .title-icon {
+        width: 36px; height: 36px; border-radius: 10px; background: #2563eb;
+        display: flex; align-items: center; justify-content: center; margin-right: .75rem; flex-shrink: 0;
+    }
+    .prov-header h2 { font-size: 1.4rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .prov-header .breadcrumb { font-size: .75rem; margin-bottom: .15rem; }
+    .prov-header .breadcrumb a { color: #64748b; text-decoration: none; }
+    .prov-header .breadcrumb a:hover { color: #2563eb; }
+    .prov-header .subtitle { font-size: .82rem; color: #64748b; margin-top: .15rem; }
+    .prov-controls { display: flex; gap: .5rem; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+
+    /* Status badges */
+    .status-badge {
+        display: inline-block; padding: .25rem .75rem; border-radius: 6px;
+        font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .status-vorlauf { background: #fef3c7; color: #92400e; }
+    .status-freigegeben { background: #dbeafe; color: #1e40af; }
+    .status-endlauf { background: #dcfce7; color: #166534; }
+
+    /* KPIs */
+    .kpi-card {
+        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+        overflow: hidden; position: relative; transition: box-shadow .15s;
+    }
+    .kpi-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .kpi-card .kpi-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 12px 0 0 12px; }
+    .kpi-card .card-body { padding: 1rem 1.15rem 1rem 1.4rem; }
+    .kpi-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .kpi-label { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
+    .kpi-value { font-size: 1.45rem; font-weight: 700; line-height: 1.2; color: #1e293b; }
+    .kpi-sub { font-size: .75rem; color: #94a3b8; margin-top: .15rem; }
+
+    /* Accordion */
+    .prov-accordion .accordion-item {
+        border: 1px solid #e2e8f0; border-radius: 12px !important; margin-bottom: .75rem;
+        background: #fff; overflow: hidden;
+    }
+    .prov-accordion .accordion-button {
+        background: #fff; border: none; padding: .85rem 1.25rem; font-size: .9rem;
+        font-weight: 600; color: #1e293b; box-shadow: none !important;
+    }
+    .prov-accordion .accordion-button:not(.collapsed) { background: #f8fafc; }
+    .prov-accordion .accordion-button::after { display: none; }
+    .prov-accordion .accordion-button .chevron {
+        transition: transform .2s; margin-left: auto; color: #94a3b8; font-size: .8rem;
+    }
+    .prov-accordion .accordion-button:not(.collapsed) .chevron { transform: rotate(90deg); }
+    .prov-accordion .accordion-body { padding: 0; }
+    .kat-dot {
+        display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: .5rem; flex-shrink: 0;
+    }
+    .kat-badge {
+        font-size: .72rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-left: .5rem;
+    }
+    .kat-sum { margin-left: auto; padding-right: .5rem; font-size: .9rem; font-weight: 700; color: #1e293b; }
+
+    /* Tables inside accordion */
+    .prov-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .85rem; }
+    .prov-table thead th {
+        font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+        color: #64748b; padding: .6rem .75rem; border-bottom: 1px solid #e2e8f0; background: transparent;
+    }
+    .prov-table tbody td { padding: .6rem .75rem; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
+    .prov-table tbody tr:hover { background: #f8fafc; }
+    .prov-table .text-end { text-align: right; }
+    .prov-table .text-nowrap { white-space: nowrap; }
+
+    /* Buttons */
+    .btn-action {
+        border: 1px solid #e2e8f0; background: #fff; border-radius: 8px; padding: .35rem .75rem;
+        font-size: .82rem; color: #334155; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: .3rem;
+        text-decoration: none;
+    }
+    .btn-action:hover { background: #f1f5f9; color: #1e293b; }
+    .btn-action-primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .btn-action-primary:hover { background: #1d4ed8; color: #fff; }
+    .btn-action-danger { color: #dc2626; border-color: #fecaca; }
+    .btn-action-danger:hover { background: #fef2f2; color: #b91c1c; }
+    .btn-action-success { background: #16a34a; color: #fff; border-color: #16a34a; }
+    .btn-action-success:hover { background: #15803d; color: #fff; }
+
+    /* Endlauf card */
+    .endlauf-card {
+        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+        overflow: hidden; margin-bottom: 1rem;
+    }
+    .endlauf-card .card-header-custom {
+        background: #2563eb; color: #fff; padding: .75rem 1.25rem; font-weight: 700; font-size: .9rem;
+    }
+    .endlauf-card .card-body { padding: 1.25rem; }
+
+    /* Endlauf info */
+    .endlauf-info {
+        border: 1px solid #bbf7d0; border-radius: 12px; background: #f0fdf4;
+        padding: 1rem 1.25rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;
+    }
+    .endlauf-info .belegnummer { font-size: 1.15rem; font-weight: 700; color: #166534; }
+    .endlauf-info .datum { font-size: .82rem; color: #4ade80; }
+
+    /* Edit modal */
+    .modal-edit .form-label { font-size: .78rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+    .modal-edit .readonly-value { font-size: .9rem; font-weight: 600; color: #1e293b; padding: .4rem 0; }
+    .modal-edit .calc-preview {
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+        padding: .75rem 1rem; margin-top: .75rem;
+    }
+    .modal-edit .calc-preview .label { font-size: .7rem; color: #64748b; text-transform: uppercase; }
+    .modal-edit .calc-preview .value { font-size: 1.1rem; font-weight: 700; color: #2563eb; }
+
+    /* RG Link */
+    a.rg-link { color: #2563eb; text-decoration: none; font-weight: 500; }
+    a.rg-link:hover { text-decoration: underline; }
+
+    /* Empty state */
+    .empty-cat { text-align: center; padding: 1.5rem; color: #94a3b8; font-size: .85rem; }
+</style>
+
+<div class="prov-detail-wrapper">
+    <div id="loading" class="text-muted py-4">Lade...</div>
     <div id="error" class="alert alert-danger" style="display: none;"></div>
     <div id="content" style="display: none;">
-        <p><strong>Verkäufer:</strong> <span id="vName"></span> &nbsp; <strong>Monat:</strong> <span id="vMonat"></span> &nbsp; <strong>Status:</strong> <span id="vStatus"></span> &nbsp; <strong>Summe:</strong> <span id="vSumme"></span> €</p>
-        <div class="mb-3">
-            <table class="table table-sm table-bordered w-auto">
-                <thead class="table-light"><tr><th>Kategorie</th><th class="text-end">Summe (€)</th></tr></thead>
-                <tbody>
-                    <tr><td>I. Neuwagen</td><td class="text-end" id="dSumI">–</td></tr>
-                    <tr><td>Ia. Zielprämie Neuwagen</td><td class="text-end" id="dSumStueck">–</td></tr>
-                    <tr><td>II. Testwagen/VFW</td><td class="text-end" id="dSumII">–</td></tr>
-                    <tr><td>III. Gebrauchtwagen</td><td class="text-end" id="dSumIII">–</td></tr>
-                    <tr><td>IV. GW aus Bestand</td><td class="text-end" id="dSumIV">–</td></tr>
-                    <tr><td>V. Zusatzleistungen</td><td class="text-end" id="dSumV">–</td></tr>
-                    <tr class="table-primary fw-bold"><td>Gesamt</td><td class="text-end" id="dSumGesamt">–</td></tr>
-                    <tr class="table-secondary"><td>Kumuliert (laufend)</td><td class="text-end text-nowrap" id="dSumKumuliert">–</td></tr>
-                </tbody>
-            </table>
+
+        <!-- Header -->
+        <div class="prov-header">
+            <div class="d-flex align-items-start">
+                <div class="title-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </div>
+                <div>
+                    <div class="breadcrumb">
+                        <a href="/provision/dashboard">Provisionen</a> &rsaquo; <span id="bcName">Detail</span>
+                    </div>
+                    <h2>Provisionslauf <span id="headerName"></span></h2>
+                    <div class="subtitle">
+                        <span id="headerMonat"></span>
+                        <span id="headerStatus" class="status-badge ms-2"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="prov-controls">
+                <a href="/provision/pdf/{{ lauf_id }}" download class="btn-action" id="btnPdfDownload" style="display:none;">
+                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                </a>
+                <button type="button" id="btnLoeschen" class="btn-action btn-action-danger" style="display:none;">
+                    <i class="bi bi-trash"></i> Vorlauf loschen
+                </button>
+                <a href="/provision/dashboard" class="btn-action">
+                    <i class="bi bi-arrow-left"></i> Dashboard
+                </a>
+            </div>
         </div>
-        <h5>Positionen</h5>
-        <table class="table table-sm table-bordered" id="tabPos">
-            <thead class="table-light"><tr><th>Kat.</th><th>Verkäufer</th><th>Einkäufer</th><th>Käufer</th><th>Modell</th><th>Rg.Nr.</th><th class="text-end">Provision</th></tr></thead>
-            <tbody id="tbodyPos"></tbody>
-            <tfoot id="tfootPos" class="table-light"></tfoot>
-        </table>
-        <p class="mt-2">
-            <a href="/provision/dashboard" class="btn btn-outline-secondary">← Dashboard</a>
-            <button type="button" id="btnLoeschen" class="btn btn-outline-danger ms-2" style="display: none;">Vorlauf löschen</button>
-        </p>
+
+        <!-- Endlauf Info (shown when ENDLAUF) -->
+        <div id="endlaufInfo" style="display: none;" class="endlauf-info">
+            <div>
+                <i class="bi bi-check-circle-fill" style="color:#16a34a; font-size:1.4rem;"></i>
+            </div>
+            <div>
+                <div class="belegnummer" id="endlaufBelegnummer"></div>
+                <div class="datum" id="endlaufDatum"></div>
+            </div>
+            <a href="/provision/pdf/{{ lauf_id }}" download class="btn-action btn-action-success ms-auto" id="btnPdfEndlauf">
+                <i class="bi bi-file-earmark-pdf"></i> PDF herunterladen
+            </a>
+        </div>
+
+        <!-- KPIs -->
+        <div class="row g-3 mb-4" id="kpiRow">
+            <!-- Kat. I -->
+            <div class="col-sm-6 col-lg-2">
+                <div class="card kpi-card h-100">
+                    <div class="kpi-bar" style="background:#2563eb;"></div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <div class="kpi-label" style="color:#2563eb;">Kat. I - NW</div>
+                            <div class="kpi-icon" style="background:#eff6ff;">
+                                <i class="bi bi-car-front" style="color:#2563eb; font-size:1rem;"></i>
+                            </div>
+                        </div>
+                        <div class="kpi-value" id="kpiKatI">--</div>
+                        <div class="kpi-sub" id="kpiKatISub"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Kat. II -->
+            <div class="col-sm-6 col-lg-2">
+                <div class="card kpi-card h-100">
+                    <div class="kpi-bar" style="background:#7c3aed;"></div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <div class="kpi-label" style="color:#7c3aed;">Kat. II - TW</div>
+                            <div class="kpi-icon" style="background:#f5f3ff;">
+                                <i class="bi bi-arrow-repeat" style="color:#7c3aed; font-size:1rem;"></i>
+                            </div>
+                        </div>
+                        <div class="kpi-value" id="kpiKatII">--</div>
+                        <div class="kpi-sub" id="kpiKatIISub"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Kat. III -->
+            <div class="col-sm-6 col-lg-2">
+                <div class="card kpi-card h-100">
+                    <div class="kpi-bar" style="background:#0891b2;"></div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <div class="kpi-label" style="color:#0891b2;">Kat. III - GW</div>
+                            <div class="kpi-icon" style="background:#ecfeff;">
+                                <i class="bi bi-car-front-fill" style="color:#0891b2; font-size:1rem;"></i>
+                            </div>
+                        </div>
+                        <div class="kpi-value" id="kpiKatIII">--</div>
+                        <div class="kpi-sub" id="kpiKatIIISub"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Kat. IV -->
+            <div class="col-sm-6 col-lg-2">
+                <div class="card kpi-card h-100">
+                    <div class="kpi-bar" style="background:#ea580c;"></div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <div class="kpi-label" style="color:#ea580c;">Kat. IV - Bestand</div>
+                            <div class="kpi-icon" style="background:#fff7ed;">
+                                <i class="bi bi-box-seam" style="color:#ea580c; font-size:1rem;"></i>
+                            </div>
+                        </div>
+                        <div class="kpi-value" id="kpiKatIV">--</div>
+                        <div class="kpi-sub" id="kpiKatIVSub"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Stuckpramie -->
+            <div class="col-sm-6 col-lg-2">
+                <div class="card kpi-card h-100">
+                    <div class="kpi-bar" style="background:#ca8a04;"></div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <div class="kpi-label" style="color:#ca8a04;">Stueckpramie</div>
+                            <div class="kpi-icon" style="background:#fefce8;">
+                                <i class="bi bi-trophy" style="color:#ca8a04; font-size:1rem;"></i>
+                            </div>
+                        </div>
+                        <div class="kpi-value" id="kpiStueck">--</div>
+                        <div class="kpi-sub">Zielpramie NW</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Gesamt -->
+            <div class="col-sm-6 col-lg-2">
+                <div class="card kpi-card h-100">
+                    <div class="kpi-bar" style="background:#16a34a;"></div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <div class="kpi-label" style="color:#16a34a;">Gesamt</div>
+                            <div class="kpi-icon" style="background:#f0fdf4;">
+                                <i class="bi bi-cash-stack" style="color:#16a34a; font-size:1rem;"></i>
+                            </div>
+                        </div>
+                        <div class="kpi-value" id="kpiGesamt">--</div>
+                        <div class="kpi-sub">Alle Kategorien</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Accordion Categories -->
+        <div class="accordion prov-accordion" id="katAccordion"></div>
+
+        <!-- Endlauf Form (shown when FREIGEGEBEN + permission) -->
+        <div id="endlaufBereich" style="display: none;" class="endlauf-card mt-3">
+            <div class="card-header-custom">
+                <i class="bi bi-check-circle me-2"></i>Endlauf erstellen
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Belegnummer-Vorschau: <strong id="belegnummerVorschau"></strong></p>
+                <div class="row g-2 mb-3">
+                    <div class="col-md-2"><label class="form-label small">Summe Kat. I</label><input type="number" step="0.01" class="form-control form-control-sm" id="efSumI"></div>
+                    <div class="col-md-2"><label class="form-label small">Summe Kat. II</label><input type="number" step="0.01" class="form-control form-control-sm" id="efSumII"></div>
+                    <div class="col-md-2"><label class="form-label small">Summe Kat. III</label><input type="number" step="0.01" class="form-control form-control-sm" id="efSumIII"></div>
+                    <div class="col-md-2"><label class="form-label small">Summe Kat. IV</label><input type="number" step="0.01" class="form-control form-control-sm" id="efSumIV"></div>
+                    <div class="col-md-2"><label class="form-label small">Summe Kat. V</label><input type="number" step="0.01" class="form-control form-control-sm" id="efSumV"></div>
+                    <div class="col-md-2"><label class="form-label small fw-bold">Gesamt</label><input type="number" step="0.01" class="form-control form-control-sm fw-bold" id="efSumGesamt"></div>
+                </div>
+                <button type="button" id="btnEndlauf" class="btn-action btn-action-primary">
+                    <i class="bi bi-check-circle"></i> Endlauf erstellen
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal: Position bearbeiten -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content modal-edit">
+            <div class="modal-header py-2" style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                <h5 class="modal-title" id="editModalLabel" style="font-size:.95rem; font-weight:700;">Position bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schliessen"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editPosId">
+                <input type="hidden" id="editOriginalEinkaeufer">
+                <!-- Read-only info -->
+                <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <div class="form-label">Modell</div>
+                        <div class="readonly-value" id="editModell">--</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-label">Kaufer</div>
+                        <div class="readonly-value" id="editKaeufer">--</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-label">Rg.Nr.</div>
+                        <div class="readonly-value" id="editRgNr">--</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-label">Kategorie</div>
+                        <div class="readonly-value" id="editKategorie">--</div>
+                    </div>
+                </div>
+                <hr style="border-color:#e2e8f0;">
+                <!-- Editable fields -->
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label" for="editBemessungsgrundlage">Bemessungsgrundlage</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" class="form-control" id="editBemessungsgrundlage" placeholder="0.00">
+                            <span class="input-group-text">&euro;</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="editProvisionssatz">Provisionssatz</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" class="form-control" id="editProvisionssatz" placeholder="0.00">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Live calc preview -->
+                <div class="calc-preview">
+                    <div class="label">Berechnet</div>
+                    <div class="value" id="editCalcPreview">0,00 &euro;</div>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label" for="editProvisionFinal">Provision final (manuell uberschreibbar)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="number" step="0.01" class="form-control" id="editProvisionFinal" placeholder="0.00">
+                        <span class="input-group-text">&euro;</span>
+                    </div>
+                </div>
+                <!-- Einkaufer dropdown (Kat. IV only) -->
+                <div id="editEinkaeuferWrap" style="display:none;" class="mt-3">
+                    <label class="form-label" for="editEinkaeufer">Einkaufer</label>
+                    <select class="form-select form-select-sm" id="editEinkaeufer"></select>
+                </div>
+            </div>
+            <div class="modal-footer py-2" style="border-top:1px solid #e2e8f0;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btnEditSave">
+                    <i class="bi bi-check-lg"></i> Speichern
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -44,11 +386,11 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schliessen"></button>
             </div>
             <div class="modal-body">
-                <div id="provision-modal-loading" class="text-muted py-3">Lade…</div>
+                <div id="provision-modal-loading" class="text-muted py-3">Lade...</div>
                 <div id="provision-modal-content" style="display: none;">
                     <p class="mb-2"><strong>Kunde:</strong> <span id="provision-modal-kunde"></span> <span id="provision-modal-customer-nr" class="text-muted small"></span></p>
                     <p class="mb-3"><strong>Rechnung:</strong> <span id="provision-modal-rg-nr"></span> vom <span id="provision-modal-rg-datum"></span></p>
-                    <p class="mb-3"><strong>Auftrag:</strong> <span id="provision-modal-auftrag">–</span></p>
+                    <p class="mb-3"><strong>Auftrag:</strong> <span id="provision-modal-auftrag">--</span></p>
                     <div id="provision-modal-rechnungen-wrap" class="mb-3" style="display: none;">
                         <h6 class="mb-2">Rechnungskopf (loco_invoices)</h6>
                         <div id="provision-modal-rechnungen"></div>
@@ -92,18 +434,66 @@
         </div>
     </div>
 </div>
+
 <script>
 (function(){
     var id = {{ lauf_id }};
-    var L=document.getElementById('loading'), E=document.getElementById('error'), C=document.getElementById('content');
+    var pvUserCanEndlauf = {% if current_user.portal_role in ('admin', 'buchhaltung', 'personalbüro') %}true{% else %}false{% endif %};
+    var pvUserCanPdf = {% if current_user.portal_role in ('admin', 'verkauf', 'verkauf_leitung', 'geschaeftsfuehrung', 'personalbüro', 'buchhaltung') %}true{% else %}false{% endif %};
+    var pvUserCanEdit = {% if current_user.portal_role in ('admin', 'verkauf_leitung', 'geschaeftsfuehrung') %}true{% else %}false{% endif %};
+
+    var L = document.getElementById('loading');
+    var E = document.getElementById('error');
+    var C = document.getElementById('content');
+
+    // Cached data
+    var laufData = null;
+    var posData = [];
+    var aktiveVkData = [];
+
+    var MO = ['Januar','Februar','Marz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+
+    var katOrder = ['I_neuwagen', 'II_testwagen', 'III_gebrauchtwagen', 'IV_gw_bestand'];
+    var katLabel = {
+        'I_neuwagen':        'I. Neuwagen',
+        'II_testwagen':      'II. Testwagen / VFW',
+        'III_gebrauchtwagen':'III. Gebrauchtwagen',
+        'IV_gw_bestand':     'IV. GW aus Bestand'
+    };
+    var katColor = {
+        'I_neuwagen':        '#2563eb',
+        'II_testwagen':      '#7c3aed',
+        'III_gebrauchtwagen':'#0891b2',
+        'IV_gw_bestand':     '#ea580c'
+    };
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
     function fmtEuro(v) {
-        if (v == null || isNaN(v)) return '–';
+        if (v == null || isNaN(v)) return '--';
         return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
+    }
+    function fmtNum(v) {
+        if (v == null || v === '' || isNaN(v)) return '--';
+        return Number(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function fmtPct(v) {
+        if (v == null || isNaN(v)) return '--';
+        return (Number(v) * 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
     }
     function escapeHtml(s) {
         if (s == null) return '';
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
+    function monatLabel(m) {
+        if (!m || m.length !== 7) return m || '';
+        return MO[parseInt(m.substr(5, 2), 10) - 1] + ' ' + m.substr(0, 4);
+    }
+
+    // =========================================================================
+    // Rechnung Modal
+    // =========================================================================
     function openRechnungModal(invoice, date) {
         if (!invoice || !date) return;
         var modalEl = document.getElementById('provision-rechnung-modal');
@@ -119,11 +509,11 @@
             .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 loadingEl.style.display = 'none';
-                document.getElementById('provision-modal-kunde').textContent = data.kunde || '–';
+                document.getElementById('provision-modal-kunde').textContent = data.kunde || '--';
                 document.getElementById('provision-modal-customer-nr').textContent = data.customer_number != null ? '(Nr. ' + data.customer_number + ')' : '';
-                document.getElementById('provision-modal-rg-nr').textContent = data.invoice_number || '–';
-                document.getElementById('provision-modal-rg-datum').textContent = data.invoice_date || '–';
-                document.getElementById('provision-modal-auftrag').textContent = '–';
+                document.getElementById('provision-modal-rg-nr').textContent = data.invoice_number || '--';
+                document.getElementById('provision-modal-rg-datum').textContent = data.invoice_date || '--';
+                document.getElementById('provision-modal-auftrag').textContent = '--';
 
                 var wrap = document.getElementById('provision-modal-rechnungen-wrap');
                 var div = document.getElementById('provision-modal-rechnungen');
@@ -140,9 +530,9 @@
                     }
                     wrap.style.display = 'block';
                     div.innerHTML = data.rechnungen.map(function(inv) {
-                        var parts = ['Typ ' + (inv.invoice_type || '–'), 'Brutto ' + fmtEuro(inv.total_gross), 'Netto ' + fmtEuro(inv.total_net)];
+                        var parts = ['Typ ' + (inv.invoice_type || '--'), 'Brutto ' + fmtEuro(inv.total_gross), 'Netto ' + fmtEuro(inv.total_net)];
                         if (inv.order_number != null) parts.push('Auftrag ' + inv.order_number);
-                        return '<p class="small mb-1">' + parts.join(' · ') + '</p>';
+                        return '<p class="small mb-1">' + parts.join(' &middot; ') + '</p>';
                     }).join('');
                 } else {
                     wrap.style.display = 'none';
@@ -168,6 +558,10 @@
                 if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
     }
+
+    // =========================================================================
+    // Auftrag Modal
+    // =========================================================================
     function openAuftragModal(auftragNr) {
         if (!auftragNr) return;
         var modalEl = document.getElementById('provision-auftrag-modal');
@@ -194,64 +588,374 @@
                 bodyEl.innerHTML = '<div class="alert alert-danger mb-0">Fehler: ' + escapeHtml(err.message || 'Unbekannt') + '</div>';
             });
     }
-    fetch('/api/provision/lauf/'+id,{credentials:'same-origin'}).then(function(r){return r.json();})
-    .then(function(d){
-        L.style.display='none';
-        if(!d.success){ E.textContent=d.error||'Fehler'; E.style.display='block'; return; }
-        C.style.display='block';
-        var l=d.lauf;
-        document.getElementById('vName').textContent=l.verkaufer_name||'-';
-        document.getElementById('vMonat').textContent=l.abrechnungsmonat||'-';
-        document.getElementById('vStatus').textContent=l.status||'-';
-        document.getElementById('vSumme').textContent=l.summe_gesamt!=null?Number(l.summe_gesamt).toLocaleString('de-DE',{minimumFractionDigits:2}):'-';
-        function fmt(v){ return v!=null&&v!=='' ? Number(v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) : '–'; }
-        document.getElementById('dSumI').textContent=fmt(l.summe_kat_i)+' €';
-        document.getElementById('dSumStueck').textContent=fmt(l.summe_stueckpraemie)+' €';
-        document.getElementById('dSumII').textContent=fmt(l.summe_kat_ii)+' €';
-        document.getElementById('dSumIII').textContent=fmt(l.summe_kat_iii)+' €';
-        document.getElementById('dSumIV').textContent=fmt(l.summe_kat_iv)+' €';
-        document.getElementById('dSumV').textContent=fmt(l.summe_kat_v)+' €';
-        document.getElementById('dSumGesamt').textContent=fmt(l.summe_gesamt)+' €';
-        var sI=Number(l.summe_kat_i)||0,sS=Number(l.summe_stueckpraemie)||0,sII=Number(l.summe_kat_ii)||0,sIII=Number(l.summe_kat_iii)||0,sIV=Number(l.summe_kat_iv)||0,sV=Number(l.summe_kat_v)||0;
-        var k1=sI,k1a=k1+sS,k2=k1a+sII,k3=k2+sIII,k4=k3+sIV,k5=k4+sV;
-        document.getElementById('dSumKumuliert').textContent='I: '+fmt(k1)+' € · I+Ia: '+fmt(k1a)+' € · I+Ia+II: '+fmt(k2)+' € · I+Ia+II+III: '+fmt(k3)+' € · I+Ia+II+III+IV: '+fmt(k4)+' € · Gesamt: '+fmt(k5)+' €';
-        var katOrder = ['I_neuwagen','II_testwagen','III_gebrauchtwagen','IV_gw_bestand'];
-        var katLabel = {'I_neuwagen':'I. Neuwagen','II_testwagen':'II. Testwagen/VFW','III_gebrauchtwagen':'III. Gebrauchtwagen','IV_gw_bestand':'IV. GW aus Bestand'};
-        var katSumKey = {'I_neuwagen':'summe_kat_i','II_testwagen':'summe_kat_ii','III_gebrauchtwagen':'summe_kat_iii','IV_gw_bestand':'summe_kat_iv'};
-        var tb=document.getElementById('tbodyPos'); tb.innerHTML='';
-        var pos = d.positionen||[];
-        var byKat = {};
-        pos.forEach(function(p){ var k=p.kategorie||''; if(!byKat[k]) byKat[k]=[]; byKat[k].push(p); });
-        katOrder.forEach(function(kat){
-            var rows = byKat[kat];
-            if(!rows||rows.length===0) return;
-            tb.innerHTML+='<tr class="table-secondary fw-bold"><td>'+ (katLabel[kat]||kat) +'</td><td colspan="6"></td></tr>';
-            rows.forEach(function(p){
-                var prov = p.provision_final!=null ? Number(p.provision_final).toLocaleString('de-DE',{minimumFractionDigits:2})+' €' : '–';
-                var rgNr = p.locosoft_rg_nr || '–';
-                var rgDatum = p.rg_datum || '';
-                var rgHtml = (p.locosoft_rg_nr && rgDatum) ? '<a href="#" class="provision-rg-link" data-invoice="' + escapeHtml(p.locosoft_rg_nr) + '" data-date="' + escapeHtml(rgDatum) + '">' + escapeHtml(rgNr) + '</a>' : escapeHtml(rgNr);
-                tb.innerHTML+='<tr><td></td><td>'+(l.verkaufer_name||'–')+'</td><td>'+(p.einkaeufer_name||'–')+'</td><td>'+(p.kaeufer_name||'–')+'</td><td>'+(p.modell||'–')+'</td><td>'+rgHtml+'</td><td class="text-end">'+prov+'</td></tr>';
+
+    // =========================================================================
+    // Edit Modal Logic
+    // =========================================================================
+    function recalcEditPreview() {
+        var bemessungsgrundlage = parseFloat(document.getElementById('editBemessungsgrundlage').value) || 0;
+        var satzPct = parseFloat(document.getElementById('editProvisionssatz').value) || 0;
+        var satz = satzPct / 100;
+        var berechnet = bemessungsgrundlage * satz;
+        document.getElementById('editCalcPreview').textContent = fmtEuro(berechnet);
+        document.getElementById('editProvisionFinal').value = berechnet.toFixed(2);
+    }
+
+    document.getElementById('editBemessungsgrundlage').addEventListener('input', recalcEditPreview);
+    document.getElementById('editProvisionssatz').addEventListener('input', recalcEditPreview);
+
+    function openEditModal(pos) {
+        document.getElementById('editPosId').value = pos.id;
+        document.getElementById('editModell').textContent = pos.modell || '--';
+        document.getElementById('editKaeufer').textContent = pos.kaeufer_name || '--';
+        document.getElementById('editRgNr').textContent = pos.locosoft_rg_nr || '--';
+        document.getElementById('editKategorie').textContent = katLabel[pos.kategorie] || pos.kategorie || '--';
+
+        var bemGrdl = pos.bemessungsgrundlage != null ? Number(pos.bemessungsgrundlage) : 0;
+        var satz = pos.provisionssatz != null ? Number(pos.provisionssatz) : 0;
+        var provFinal = pos.provision_final != null ? Number(pos.provision_final) : 0;
+
+        document.getElementById('editBemessungsgrundlage').value = bemGrdl.toFixed(2);
+        document.getElementById('editProvisionssatz').value = (satz * 100).toFixed(2);
+        document.getElementById('editProvisionFinal').value = provFinal.toFixed(2);
+
+        // Calc preview
+        var berechnet = bemGrdl * satz;
+        document.getElementById('editCalcPreview').textContent = fmtEuro(berechnet);
+
+        // Einkaufer dropdown (only for Kat. IV)
+        var einkaeuferWrap = document.getElementById('editEinkaeuferWrap');
+        var einkaeuferSel = document.getElementById('editEinkaeufer');
+        if (pos.kategorie === 'IV_gw_bestand' && aktiveVkData.length > 0) {
+            einkaeuferWrap.style.display = 'block';
+            var currentEinkaeufer = pos.einkaeufer_name || '';
+            einkaeuferSel.innerHTML = '<option value="">-- Kein Einkaufer --</option>';
+            aktiveVkData.forEach(function(vk) {
+                var sel = '';
+                if (String(vk.locosoft_id) === String(pos.einkaeufer_id) || vk.name === currentEinkaeufer) {
+                    sel = ' selected';
+                }
+                einkaeuferSel.innerHTML += '<option value="' + vk.locosoft_id + '"' + sel + '>' + escapeHtml(vk.name) + ' (' + vk.locosoft_id + ')</option>';
             });
-            var sumVal = l[katSumKey[kat]];
-            tb.innerHTML+='<tr class="table-light fw-bold"><td colspan="6" class="text-end">Summe '+ (katLabel[kat]||kat) +'</td><td class="text-end">'+ (sumVal!=null ? Number(sumVal).toLocaleString('de-DE',{minimumFractionDigits:2})+' €' : '–') +'</td></tr>';
+            document.getElementById('editOriginalEinkaeufer').value = einkaeuferSel.value;
+        } else {
+            einkaeuferWrap.style.display = 'none';
+            document.getElementById('editOriginalEinkaeufer').value = '';
+        }
+
+        var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('editModal'));
+        modal.show();
+    }
+
+    // Save edit
+    document.getElementById('btnEditSave').addEventListener('click', function() {
+        var posId = document.getElementById('editPosId').value;
+        var btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Speichern...';
+
+        var bemGrdl = parseFloat(document.getElementById('editBemessungsgrundlage').value);
+        var satzPct = parseFloat(document.getElementById('editProvisionssatz').value);
+        var provFinal = parseFloat(document.getElementById('editProvisionFinal').value);
+
+        var payload = {};
+        if (!isNaN(bemGrdl)) payload.bemessungsgrundlage = bemGrdl;
+        if (!isNaN(satzPct)) payload.provisionssatz = satzPct / 100;
+        if (!isNaN(provFinal)) payload.provision_final = provFinal;
+
+        var einkaeuferWrap = document.getElementById('editEinkaeuferWrap');
+        var einkaeuferSel = document.getElementById('editEinkaeufer');
+        var originalEinkaeufer = document.getElementById('editOriginalEinkaeufer').value;
+        var einkaeuferChanged = einkaeuferWrap.style.display !== 'none' && einkaeuferSel.value !== originalEinkaeufer;
+
+        // Step 1: Save position edits
+        fetch('/api/provision/position/' + posId + '/bearbeiten', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (!res.success) {
+                alert(res.error || 'Fehler beim Speichern');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg"></i> Speichern';
+                return;
+            }
+
+            // Step 2: If Einkaufer changed, reassign
+            if (einkaeuferChanged && einkaeuferSel.value) {
+                return fetch('/api/provision/position/' + posId + '/reassign-einkaeufer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ neuer_einkaeufer_id: parseInt(einkaeuferSel.value, 10) })
+                })
+                .then(function(r2) { return r2.json(); })
+                .then(function(res2) {
+                    if (!res2.success) {
+                        alert('Position gespeichert, aber Einkaufer-Zuweisung fehlgeschlagen: ' + (res2.error || 'Fehler'));
+                    }
+                    window.location.reload();
+                });
+            } else {
+                window.location.reload();
+            }
+        })
+        .catch(function(err) {
+            alert('Fehler: ' + (err.message || 'Unbekannt'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Speichern';
         });
-        tb.querySelectorAll('.provision-rg-link').forEach(function(a){
-            a.addEventListener('click', function(ev){
+    });
+
+    // =========================================================================
+    // Build Accordion
+    // =========================================================================
+    function buildAccordion(lauf, positionen, pvEditable) {
+        var byKat = {};
+        positionen.forEach(function(p) {
+            var k = p.kategorie || '';
+            if (!byKat[k]) byKat[k] = [];
+            byKat[k].push(p);
+        });
+
+        var katSumKey = {
+            'I_neuwagen':        'summe_kat_i',
+            'II_testwagen':      'summe_kat_ii',
+            'III_gebrauchtwagen':'summe_kat_iii',
+            'IV_gw_bestand':     'summe_kat_iv'
+        };
+
+        var acc = document.getElementById('katAccordion');
+        var html = '';
+
+        katOrder.forEach(function(kat, idx) {
+            var rows = byKat[kat] || [];
+            var count = rows.length;
+            var sumVal = lauf[katSumKey[kat]];
+            var color = katColor[kat] || '#64748b';
+            var label = katLabel[kat] || kat;
+            var isKatIV = (kat === 'IV_gw_bestand');
+
+            html += '<div class="accordion-item">';
+            html += '<h2 class="accordion-header" id="heading' + idx + '">';
+            html += '<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse' + idx + '" aria-expanded="false" aria-controls="collapse' + idx + '">';
+            html += '<span class="kat-dot" style="background:' + color + ';"></span>';
+            html += '<span>' + escapeHtml(label) + '</span>';
+            html += '<span class="kat-badge" style="background:' + color + '22; color:' + color + ';">' + count + ' Fzg.</span>';
+            html += '<span class="kat-sum">' + fmtEuro(sumVal) + '</span>';
+            html += '<span class="chevron"><i class="bi bi-chevron-right"></i></span>';
+            html += '</button></h2>';
+
+            html += '<div id="collapse' + idx + '" class="accordion-collapse collapse" aria-labelledby="heading' + idx + '" data-bs-parent="#katAccordion">';
+            html += '<div class="accordion-body">';
+
+            if (count === 0) {
+                html += '<div class="empty-cat">Keine Positionen in dieser Kategorie</div>';
+            } else {
+                html += '<div class="table-responsive">';
+                html += '<table class="prov-table">';
+                html += '<thead><tr>';
+                html += '<th>Modell</th><th>Kaufer</th>';
+                if (isKatIV) html += '<th>Einkaufer</th>';
+                html += '<th>Rg.Nr.</th><th class="text-end">Bemessungsgrdl.</th><th class="text-end">Provision</th>';
+                if (pvEditable) html += '<th style="width:60px;"></th>';
+                html += '</tr></thead><tbody>';
+
+                rows.forEach(function(p) {
+                    var provFinal = p.provision_final != null ? fmtEuro(p.provision_final) : '--';
+                    var bemGrdl = p.bemessungsgrundlage != null ? fmtEuro(p.bemessungsgrundlage) : '--';
+                    var rgNr = p.locosoft_rg_nr || '--';
+                    var rgDatum = p.rg_datum || '';
+                    var rgHtml = (p.locosoft_rg_nr && rgDatum)
+                        ? '<a href="#" class="rg-link provision-rg-link" data-invoice="' + escapeHtml(p.locosoft_rg_nr) + '" data-date="' + escapeHtml(rgDatum) + '">' + escapeHtml(rgNr) + '</a>'
+                        : escapeHtml(rgNr);
+
+                    html += '<tr>';
+                    html += '<td>' + escapeHtml(p.modell || '--') + '</td>';
+                    html += '<td>' + escapeHtml(p.kaeufer_name || '--') + '</td>';
+                    if (isKatIV) html += '<td>' + escapeHtml(p.einkaeufer_name || '--') + '</td>';
+                    html += '<td>' + rgHtml + '</td>';
+                    html += '<td class="text-end text-nowrap">' + bemGrdl + '</td>';
+                    html += '<td class="text-end text-nowrap fw-semibold">' + provFinal + '</td>';
+
+                    if (pvEditable) {
+                        var posJson = escapeHtml(JSON.stringify(p));
+                        html += '<td class="text-end text-nowrap">';
+                        html += '<button class="btn btn-sm btn-outline-primary pv-edit-btn" data-pos=\'' + JSON.stringify(p).replace(/'/g, '&#39;') + '\' title="Bearbeiten"><i class="bi bi-pencil"></i></button>';
+                        html += '</td>';
+                    }
+                    html += '</tr>';
+                });
+
+                html += '</tbody></table></div>';
+            }
+
+            html += '</div></div></div>';
+        });
+
+        acc.innerHTML = html;
+
+        // Bind RG links
+        acc.querySelectorAll('.provision-rg-link').forEach(function(a) {
+            a.addEventListener('click', function(ev) {
                 ev.preventDefault();
                 openRechnungModal(this.getAttribute('data-invoice'), this.getAttribute('data-date'));
             });
         });
-        document.getElementById('tfootPos').innerHTML='<tr class="table-primary fw-bold"><td colspan="6" class="text-end">Gesamtsumme</td><td class="text-end">'+fmt(l.summe_gesamt)+' €</td></tr>';
-        if ((l.status||'').toUpperCase() === 'VORLAUF') {
-            var btn = document.getElementById('btnLoeschen');
-            btn.style.display = 'inline-block';
-            btn.onclick = function(){ if(!confirm('Vorlauf wirklich löschen?')) return; btn.disabled=true;
-                fetch('/api/provision/vorlauf/'+id+'/loeschen',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json();})
-                .then(function(res){ if(res.success) window.location.href='/provision/dashboard'; else { alert(res.error||'Fehler'); btn.disabled=false; }});
+
+        // Bind edit buttons
+        if (pvEditable) {
+            acc.querySelectorAll('.pv-edit-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    try {
+                        var pos = JSON.parse(this.getAttribute('data-pos'));
+                        openEditModal(pos);
+                    } catch(e) {
+                        console.error('Failed to parse position data', e);
+                    }
+                });
+            });
+        }
+    }
+
+    // =========================================================================
+    // Main Data Load
+    // =========================================================================
+    fetch('/api/provision/lauf/' + id, { credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        L.style.display = 'none';
+        if (!d.success) {
+            E.textContent = d.error || 'Fehler';
+            E.style.display = 'block';
+            return;
+        }
+        C.style.display = 'block';
+
+        var l = d.lauf;
+        laufData = l;
+        posData = d.positionen || [];
+        aktiveVkData = d.aktive_verkaeufer || [];
+
+        var statusUpper = (l.status || '').toUpperCase();
+        var pvEditable = statusUpper !== 'ENDLAUF' && pvUserCanEdit;
+
+        // Header
+        document.getElementById('bcName').textContent = l.verkaufer_name || 'Detail';
+        document.getElementById('headerName').textContent = l.verkaufer_name ? '- ' + l.verkaufer_name : '';
+        document.getElementById('headerMonat').textContent = monatLabel(l.abrechnungsmonat);
+
+        var statusEl = document.getElementById('headerStatus');
+        statusEl.textContent = statusUpper;
+        if (statusUpper === 'VORLAUF') statusEl.className = 'status-badge status-vorlauf ms-2';
+        else if (statusUpper === 'FREIGEGEBEN') statusEl.className = 'status-badge status-freigegeben ms-2';
+        else if (statusUpper === 'ENDLAUF') statusEl.className = 'status-badge status-endlauf ms-2';
+
+        // Count vehicles per category
+        var countByKat = {};
+        posData.forEach(function(p) {
+            var k = p.kategorie || '';
+            countByKat[k] = (countByKat[k] || 0) + 1;
+        });
+
+        // KPIs
+        document.getElementById('kpiKatI').textContent = fmtEuro(l.summe_kat_i);
+        document.getElementById('kpiKatISub').textContent = (countByKat['I_neuwagen'] || 0) + ' Fahrzeuge';
+        document.getElementById('kpiKatII').textContent = fmtEuro(l.summe_kat_ii);
+        document.getElementById('kpiKatIISub').textContent = (countByKat['II_testwagen'] || 0) + ' Fahrzeuge';
+        document.getElementById('kpiKatIII').textContent = fmtEuro(l.summe_kat_iii);
+        document.getElementById('kpiKatIIISub').textContent = (countByKat['III_gebrauchtwagen'] || 0) + ' Fahrzeuge';
+        document.getElementById('kpiKatIV').textContent = fmtEuro(l.summe_kat_iv);
+        document.getElementById('kpiKatIVSub').textContent = (countByKat['IV_gw_bestand'] || 0) + ' Fahrzeuge';
+        document.getElementById('kpiStueck').textContent = fmtEuro(l.summe_stueckpraemie);
+        document.getElementById('kpiGesamt').textContent = fmtEuro(l.summe_gesamt);
+
+        // Build accordion
+        buildAccordion(l, posData, pvEditable);
+
+        // Vorlauf loschen button
+        if (statusUpper === 'VORLAUF') {
+            var btnDel = document.getElementById('btnLoeschen');
+            btnDel.style.display = 'inline-flex';
+            btnDel.onclick = function() {
+                if (!confirm('Vorlauf wirklich loschen?')) return;
+                btnDel.disabled = true;
+                fetch('/api/provision/vorlauf/' + id + '/loeschen', { method: 'POST', credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res.success) window.location.href = '/provision/dashboard';
+                    else { alert(res.error || 'Fehler'); btnDel.disabled = false; }
+                });
             };
         }
-    }).catch(function(err){ L.style.display='none'; E.textContent=err.message; E.style.display='block'; });
+
+        // Endlauf form (FREIGEGEBEN + permission)
+        if (statusUpper === 'FREIGEGEBEN' && pvUserCanEndlauf) {
+            var ef = document.getElementById('endlaufBereich');
+            ef.style.display = 'block';
+            document.getElementById('belegnummerVorschau').textContent = 'VK' + (l.verkaufer_id || '') + '-' + (l.abrechnungsmonat || '');
+            document.getElementById('efSumI').value = l.summe_kat_i || 0;
+            document.getElementById('efSumII').value = l.summe_kat_ii || 0;
+            document.getElementById('efSumIII').value = l.summe_kat_iii || 0;
+            document.getElementById('efSumIV').value = l.summe_kat_iv || 0;
+            document.getElementById('efSumV').value = l.summe_kat_v || 0;
+            document.getElementById('efSumGesamt').value = l.summe_gesamt || 0;
+            document.getElementById('btnEndlauf').onclick = function() {
+                if (!confirm('Endlauf wirklich erstellen? Der Lauf wird danach gesperrt.')) return;
+                this.disabled = true;
+                var body = {
+                    summe_gesamt: parseFloat(document.getElementById('efSumGesamt').value),
+                    summe_kat_i: parseFloat(document.getElementById('efSumI').value),
+                    summe_kat_ii: parseFloat(document.getElementById('efSumII').value),
+                    summe_kat_iii: parseFloat(document.getElementById('efSumIII').value),
+                    summe_kat_iv: parseFloat(document.getElementById('efSumIV').value),
+                    summe_kat_v: parseFloat(document.getElementById('efSumV').value)
+                };
+                fetch('/api/provision/vorlauf/' + id + '/endlauf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(body)
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res.success) {
+                        alert('Endlauf erstellt: ' + (res.belegnummer || ''));
+                        window.location.reload();
+                    } else {
+                        alert(res.error || 'Fehler');
+                        document.getElementById('btnEndlauf').disabled = false;
+                    }
+                });
+            };
+        }
+
+        // Endlauf info (ENDLAUF)
+        if (statusUpper === 'ENDLAUF') {
+            document.getElementById('endlaufInfo').style.display = 'flex';
+            document.getElementById('endlaufBelegnummer').textContent = l.belegnummer || '--';
+            document.getElementById('endlaufDatum').textContent = l.endlauf_am
+                ? 'Abgerechnet am ' + new Date(l.endlauf_am).toLocaleDateString('de-DE') + (l.endlauf_von ? ' von ' + l.endlauf_von : '')
+                : '';
+            if (!pvUserCanPdf) document.getElementById('btnPdfEndlauf').style.display = 'none';
+            // Hide lower PDF button when Endlauf has its own
+            document.getElementById('btnPdfDownload').style.display = 'none';
+        } else if (pvUserCanPdf) {
+            document.getElementById('btnPdfDownload').style.display = 'inline-flex';
+        } else {
+            document.getElementById('btnPdfDownload').style.display = 'none';
+        }
+
+    })
+    .catch(function(err) {
+        L.style.display = 'none';
+        E.textContent = err.message;
+        E.style.display = 'block';
+    });
 })();
 </script>
 {% endblock %}
