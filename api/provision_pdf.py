@@ -287,7 +287,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
         kat_hdr = Table([
             [Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge)</font>',
                         ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)),
-             Paragraph(f'<b>{_fmt_eur(kat_sum)}</b>', td_rb)]
+             Paragraph(f'<b>Gesamt: {_fmt_eur(kat_sum)}</b>', td_rb)]
         ], colWidths=[12.5 * cm, 3 * cm])
         kat_hdr.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
