@@ -605,33 +605,84 @@ def get_eigenkapital_entwicklung(geschaeftsjahr: str = None, gesellschaft: str =
 
 
 def get_prognose(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') -> dict:
-    """Lineare Hochrechnung auf 12 Monate.
-
-    Args:
-        geschaeftsjahr: z.B. '2025/26' (default: aktuelles GJ)
-        gesellschaft: 'autohaus', 'auto' oder 'gruppe'
-    """
+    """Saisonale Hochrechnung basierend auf Vorjahres-Verteilung."""
     if not geschaeftsjahr:
         geschaeftsjahr = _aktuelles_gj()
 
     guv = get_guv_daten(geschaeftsjahr, gesellschaft=gesellschaft)
-    # Fahrzeugverkauf hat keine gesellschaft-Spalte → zeigt Gesamtunternehmen
+    vj = _vorjahres_gj(geschaeftsjahr)
+    guv_vj = get_guv_daten(vj, gesellschaft=gesellschaft)
     verkauf = get_verkauf_daten(geschaeftsjahr)
 
     anz_monate = guv['kumuliert'].get('anzahl_monate', 0)
     if anz_monate == 0:
         return {'hinweis': 'Noch keine Daten für Hochrechnung'}
 
-    faktor = 12 / anz_monate
+    # VJ: gleicher Zeitraum (Sep-Feb) vs. Gesamtjahr
+    vj_kum = guv['vj_kumuliert']
+    vj_gesamt_monate = guv_vj['kumuliert']  # Full year VJ (12 months if available)
+    vj_gesamt_anzahl = vj_gesamt_monate.get('anzahl_monate', 0)
 
-    return {
-        'methode': 'linear',
+    result = {
+        'methode': 'saisonal',
         'basis_monate': anz_monate,
-        'umsatz_prognose': round(guv['kumuliert']['erloese'] * faktor),
-        'ebit_prognose': round(guv['kumuliert']['ebit'] * faktor),
-        'ebt_prognose': round(guv['kumuliert']['ebt'] * faktor),
-        'fz_stueck_prognose': round(verkauf['kumuliert']['stueck'] * faktor),
+        'vj_monate': vj_gesamt_anzahl,
+        'vj_gj': vj,
     }
+
+    # Saisonale Hochrechnung pro Kennzahl
+    for feld in ['erloese', 'ebit', 'ebt']:
+        aktuell = guv['kumuliert'].get(feld, 0)
+        vj_zeitraum = vj_kum.get(feld, 0)  # VJ same period
+        vj_gesamt = vj_gesamt_monate.get(feld, 0)  # VJ full year
+
+        if vj_gesamt_anzahl >= 12 and vj_zeitraum != 0:
+            vj_rest = vj_gesamt - vj_zeitraum  # VJ remaining months
+
+            # Verhältnis aktuell / VJ gleicher Zeitraum
+            ratio = aktuell / vj_zeitraum
+            # Prognose = aktuell + (VJ-Rest × Verhältnis)
+            prognose = aktuell + (vj_rest * ratio)
+        else:
+            # Kein vollständiges VJ → Fallback linear
+            prognose = aktuell * 12 / anz_monate if anz_monate > 0 else 0
+
+        result[f'{feld}_prognose'] = round(prognose)
+        result[f'{feld}_aktuell'] = aktuell
+        result[f'{feld}_vj_zeitraum'] = vj_zeitraum
+        result[f'{feld}_vj_gesamt'] = vj_gesamt
+
+    # Aliasse für Rückwärtskompatibilität mit Template
+    result['umsatz_prognose'] = result['erloese_prognose']
+
+    # Fz-Stück Prognose (gleiche Methode)
+    fz_aktuell = verkauf['kumuliert'].get('stueck', 0)
+    fz_vj = verkauf.get('vj_kumuliert', {}).get('stueck', 0)
+    # VJ full year Fz-Stück
+    vj_start, vj_ende = _gj_start_ende(vj)
+    from api.db_utils import db_session
+    with db_session() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM sales
+            WHERE out_invoice_date >= %s AND out_invoice_date <= %s AND out_invoice_date IS NOT NULL
+        """, (vj_start, vj_ende))
+        fz_vj_gesamt = cursor.fetchone()[0] or 0
+
+    if fz_vj_gesamt > 0 and fz_vj > 0:
+        ratio = fz_aktuell / fz_vj
+        fz_rest = fz_vj_gesamt - fz_vj
+        result['fz_stueck_prognose'] = round(fz_aktuell + fz_rest * ratio)
+    elif anz_monate > 0:
+        result['fz_stueck_prognose'] = round(fz_aktuell * 12 / anz_monate)
+    else:
+        result['fz_stueck_prognose'] = 0
+
+    result['fz_stueck_aktuell'] = fz_aktuell
+    result['fz_vj_zeitraum'] = fz_vj
+    result['fz_vj_gesamt'] = fz_vj_gesamt
+
+    return result
 
 
 def get_mehrjahresvergleich(gesellschaft: str = 'autohaus') -> list:

@@ -318,7 +318,7 @@
     <!-- ===== SECTION 7: PROGNOSE ===== -->
     <div class="section-card">
         <div class="section-header collapsed" onclick="toggleSection('secPrognose')">
-            <span><i class="bi bi-magic me-2 text-danger"></i>Prognose (lineare Hochrechnung)</span>
+            <span><i class="bi bi-magic me-2 text-danger"></i>Saisonale Hochrechnung (Basis VJ-Verteilung)</span>
             <i class="bi bi-chevron-down chevron"></i>
         </div>
         <div class="section-body" id="secPrognose" style="display:none;">
@@ -799,6 +799,11 @@ function renderPrognose(prog) {
         return;
     }
 
+    const vjLabel = prog.vj_gj ? `VJ ${prog.vj_gj}` : 'VJ';
+    const methodeLabel = prog.methode === 'saisonal'
+        ? `Basis: ${prog.basis_monate || '?'} Monate, saisonal (${vjLabel})`
+        : `Basis: ${prog.basis_monate || '?'} Monate, linear`;
+
     const karten = [
         { label: 'Umsatz-Prognose', val: fmtTeur(prog.umsatz_prognose * 1000), icon: 'bi-graph-up', color: '#16a34a' },
         { label: 'EBIT-Prognose',   val: fmtTeur(prog.ebit_prognose * 1000),   icon: 'bi-cash-stack', color: '#2563eb' },
@@ -813,7 +818,7 @@ function renderPrognose(prog) {
             <div class="card p-3 h-100" style="border-left: 4px solid ${k.color};">
                 <div class="text-muted small"><i class="bi ${k.icon} me-1"></i>${k.label}</div>
                 <div class="fw-bold fs-5 mt-1">${k.val}</div>
-                <div class="text-muted" style="font-size:.75rem;">Basis: ${prog.basis_monate || '?'} Monate, linear</div>
+                <div class="text-muted" style="font-size:.75rem;">${methodeLabel}</div>
             </div>
         </div>`;
     });
