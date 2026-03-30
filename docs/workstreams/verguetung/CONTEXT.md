@@ -13,18 +13,20 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - Monatliche Team-Berechnung
 - Datenquelle: werkstatt DB (times, orders, labours, absence_calendar)
 
-### 2. Verkäufer-Provisionen (Phase 1+2 live, Workflow live, Phase 3 offen)
+### 2. Verkäufer-Provisionen (Phase 1+2 live, Workflow live)
 - Live-Preview, Vorlauf, Dashboard, Vorlauf-Detail
-- Kategorien I–IV mit Bemessungsgrundlage (rg_netto/db), Min/Max-Grenzen
+- Kategorien I–IV mit Bemessungsgrundlage, Min/Max-Grenzen
+- Neuwagen-Klassifizierung über dealer_vehicle_type (N=NW, T/V=TW, D/G=GW)
 - Endlauf-Workflow (GENEHMIGT → ENDLAUF), Belegnummer VK{id}-{YYYY}-{MM}
 - PDF-Generierung (ReportLab) mit Deckblatt + Detail + Jahresübersicht
-- Position bearbeiten/löschen mit automatischer Summen-Neuberechnung
-- Dashboard-Redesign (Sidebar, moderne Tabellen)
+- Position bearbeiten/löschen mit Min/Max-Clamping aus provision_config
 - Detail-Redesign (Accordion, Edit-Modal mit Berechnungszeile, Einkäufer-Umzuweisung)
 - Zusatzleistungen (Kat. V) CRUD mit Modal (Bank, Name, Datum, Betrag)
+- TW/VFW-Prämie (manuell editierbar, eigenes Stückzahl-Feld)
 - 5-Stufen-Workflow: VORLAUF → ZUR_PRUEFUNG → FREIGEGEBEN → GENEHMIGT → ENDLAUF
 - Einspruch/Ablehnung mit Pflicht-Begründung
-- Status-Tooltips mit Zeitstempeln
+- Status-Tooltips mit Zeitstempeln und Namen
+- Vorbesitzer bei GW aus Bestand (aus Locosoft dealer_vehicles → customers_suppliers)
 - Datenquelle: Locosoft sales/Deckungsbeitrag, SSOT: `api/provision_service.py`
 
 ### 3. Jahresprämie (Migration aus HR-Workstream)
@@ -33,64 +35,60 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 
 ## Module & Dateien
 ### APIs
-- `api/provision_api.py` — REST-Endpunkte (Live-Preview, Vorlauf, Endlauf, Position bearbeiten/löschen, Workflow, Zusatzleistungen CRUD, Config)
-- `api/provision_service.py` — SSOT Berechnungslogik (berechne_live_provision, create_vorlauf, get_dashboard_daten, get_lauf_detail, get_aktive_verkaeufer)
+- `api/provision_api.py` — REST-Endpunkte (Live-Preview, Vorlauf, Endlauf, Workflow, Positionen, Zusatzleistungen, Prämien, Config)
+- `api/provision_service.py` — SSOT Berechnungslogik (berechne_live_provision, create_vorlauf, get_dashboard_daten, get_lauf_detail, get_aktive_verkaeufer, _get_vorbesitzer_fuer_vins)
 - `api/provision_pdf.py` — PDF-Generierung (ReportLab, A4, Deckblatt + Detail + Jahresübersicht)
-- api/praemien_api.py (Werkstatt-Prämien, geplant)
-- api/jahrespraemie_api.py (Migration aus HR)
 ### Routes
 - `routes/provision_routes.py` — HTML-Views (Meine Provision, Dashboard, Detail, PDF-Download)
 ### Templates
-- `templates/provision/provision_dashboard.html` — VKL-Dashboard (Sidebar, Läufe/Verkäufer-Tabellen, Status-Badges mit Tooltips)
-- `templates/provision/provision_detail.html` — Lauf-Detail (Accordion, Edit-Modal, Einspruch-Modal, Workflow-Buttons, Zusatzleistungen, Summentabelle)
-- templates/verguetung/werkstatt_praemien.html (geplant)
-### Celery Tasks (geplant)
-- monatliche Prämienberechnung Werkstatt
-### Scripts
-- Import Locosoft CSV (geplant)
+- `templates/provision/provision_dashboard.html` — VKL-Dashboard (Sidebar, Status-Badges mit Tooltips)
+- `templates/provision/provision_detail.html` — Lauf-Detail (Accordion, Edit-Modal, Einspruch-Modal, Workflow-Buttons, Zusatzleistungen, Summentabelle mit editierbaren Prämien)
 
 ## DB-Tabellen (PostgreSQL drive_portal)
 - `provision_config` — Provisionsarten (Kategorien, Sätze, Min/Max, Zielprämie)
-- `provision_laeufe` — Läufe pro Verkäufer/Monat (Status, Summen, Belegnummer, PDF-Pfade, Workflow-Felder, Einspruch-Felder)
-- `provision_positionen` — Einzelpositionen pro Lauf (Fahrzeug, Provision, Einspruch)
+- `provision_laeufe` — Läufe pro Verkäufer/Monat (Status, Summen, Workflow-Felder, Einspruch, TW-Prämie, Belegnummer, PDF-Pfade)
+- `provision_positionen` — Einzelpositionen pro Lauf (Fahrzeug, Provision, Vorbesitzer, Einspruch)
 - `provision_zusatzleistungen` — Kat. V Finanzdienstleistungen (Bank, Name, Datum, Betrag)
-- praemien_config (KPI-Schwellwerte, Stufen, Beträge pro Gruppe — geplant)
-- praemien_berechnungen (monatliche Ergebnisse pro Mitarbeiter — geplant)
+
+## Fahrzeug-Klassifizierung (SSOT)
+Über `dealer_vehicle_type` aus Locosoft (Kommissionsnummer):
+- **N** → Kat. I (Neuwagen) — Erstzulassung auf Kunde
+- **T, V** → Kat. II (Testwagen/VFW) — war auf Autohaus zugelassen
+- **D, G** → Kat. III (Gebrauchtwagen)
+- Zusätzlich: Fahrzeuge > 365 Tage nach Erstzulassung → Kat. III
+- P1-Memo wird NICHT mehr für Klassifizierung verwendet
+
+## Berechtigungen
+### Vollzugriff (Dashboard, alle Läufe, Bearbeiten)
+- Florian Greiner, Peter Greiner, Vanessa Groll (username-basiert in `_PROVISION_VOLLZUGRIFF_USERS`)
+### Genehmiger
+- Anton Süß, Florian Greiner + Vanessa Groll (temporär für Testphase)
+### Verkäufer
+- Sehen nur eigene Provision über "Meine Provision"
+- Können bei ZUR_PRUEFUNG freigeben oder Einspruch einlegen
 
 ## Aktueller Stand (erledigt am 2026-03-30)
-- Provisionsabrechnung Phase 1+2: Live-Preview, Vorlauf, Dashboard, Detail, Kat I–IV, Bemessungsgrundlage, Min/Max, Locosoft Memo P1, VFW/NW > 1 Jahr → GW-Regel, DB2-Operatoren
-- Endlauf-Workflow: GENEHMIGT → ENDLAUF, Belegnummer, automatische PDF-Generierung
-- Position bearbeiten (Provisionssatz, Bemessungsgrundlage, Provision final) mit Min/Max-Clamping aus provision_config
-- Position löschen mit automatischer Summen-Neuberechnung
-- Detail-Seite Redesign: Accordion-Kategorien, Edit-Modal mit Berechnungszeile, Einkäufer-Dropdown
-- Einkäufer-Umzuweisung bei GW aus Bestand (Position wird verschoben + Summen neu berechnet)
-- Bei Auswahl VKL/GL als Einkäufer: Position wird gelöscht (kein Provisions-Lauf vorhanden)
-- Zusatzleistungen (Kat. V) CRUD: Modal mit Bank/Name/Datum/Betrag, summe_kat_v automatisch berechnet
-- Summentabelle unter Accordion: alle Kategorien I-V + Zielprämie + Gesamt
-- 5-Stufen-Workflow: VORLAUF → ZUR_PRUEFUNG → FREIGEGEBEN → GENEHMIGT → ENDLAUF
-- Einspruch (Verkäufer) und Ablehnung (Genehmiger) mit Pflicht-Begründung, zurück auf VORLAUF
-- Status-Tooltips mit Zeitstempel und Name (nicht E-Mail) bei Mouseover (Detail + Dashboard)
-- PDF komplett überarbeitet: Deckblatt (Zusammenfassung) + Detail-Positionen + Kat V + Jahresübersicht
-- PDF Design: Clean/modern mit blauer Akzentfarbe, Helvetica, graue Zebra-Zeilen, Gesamt pro Kategorie
-- Berechtigungen: Vollzugriff nur Florian Greiner, Peter Greiner, Vanessa Groll (username-basiert)
-- Genehmiger: Anton Süß, Florian Greiner + Vanessa Groll (temporär für Testphase)
-- E-Mail-Stubs vorbereitet (PROVISION_EMAIL_ENABLED = False), aktivierbar nach Testphase
+- Provisionsabrechnung Phase 1+2 komplett
+- Detail-Seite Redesign: Accordion, Edit-Modal, Einkäufer-Umzuweisung, Vorbesitzer bei Kat IV
+- Zusatzleistungen (Kat. V) CRUD mit Modal
+- TW/VFW-Prämie manuell editierbar (Stückzahl + Betrag)
+- 5-Stufen-Workflow mit Einspruch/Ablehnung (Pflicht-Begründung)
+- PDF: Deckblatt + Detail + Kat V + Jahresübersicht, Vorbesitzer bei GW Bestand
+- Neuwagen-Klassifizierung über dealer_vehicle_type (nicht mehr P1)
+- Berechtigungen auf 3 Personen beschränkt
+- E-Mail-Stubs vorbereitet (PROVISION_EMAIL_ENABLED = False)
 
 ## Offene Punkte / Nächste Schritte
-- E-Mail-Benachrichtigungen aktivieren (nach Testphase, Flag umschalten)
-- Einspruch-Workflow: Verkäufer kann Einspruch gegen Position einlegen, VKL bearbeitet
-- Phase 3: Lohnbuchhaltung-Export
-- Abweichung Kraus Jan 2026 (230,61 €) mit Buchhaltung klären
-- GW-Bestand DB2 Abgleich mit Referenzabrechnung
-- Belegnummer Uniqueness: Kein DB-Constraint; durch ENDLAUF-Sperre im Endpunkt verhindert
-- Rolle `personalbüro` im LDAP noch nicht eingeführt; Fallback über `buchhaltung`
-- Vanessa Groll als Genehmigerin ist temporär (für Testphase) — nach Go-Live entfernen
-- Test mit Anton (Verkaufsleiter) geplant
+- E-Mail-Benachrichtigungen aktivieren (nach Testphase)
+- Vanessa Groll als Genehmigerin ist temporär — nach Go-Live entfernen
+- Test mit Anton Süß (Verkaufsleiter) geplant
+- Lohnbuchhaltung-Export (Phase 3)
 - Werkstatt-Prämien: Konzept in Excel vorhanden, Umsetzung steht aus
 - Jahresprämie: Existiert in HR, Migration geplant
 
 ## Abhängigkeiten
 - werkstatt (TEK-Daten, Stunden, Anwesenheit)
-- verkauf (Deckungsbeitrag, Aufträge für Provisionen, SSOT: `api/provision_service.py`)
+- verkauf (Deckungsbeitrag, Aufträge für Provisionen)
 - hr (Mitarbeiter-Stammdaten, Funktionen/Gruppen)
 - controlling (Kostenauswirkung, Reporting)
+- locosoft (dealer_vehicles für Vorbesitzer, vehicles für Klassifizierung)
