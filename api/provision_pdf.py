@@ -288,11 +288,12 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
             [Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge)</font>',
                         ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)),
              Paragraph(f'<b>Gesamt: {_fmt_eur(kat_sum)}</b>', td_rb)]
-        ], colWidths=[12.5 * cm, 4 * cm])
+        ], colWidths=[12.5 * cm, 3 * cm])
         kat_hdr.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 1),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (-1, 0), (-1, 0), 4),
         ]))
         kat_elements.append(kat_hdr)
 
@@ -339,11 +340,12 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
             [Paragraph(f'<b>V. Zusatzleistungen</b>  <font size="8" color="#334155">({len(zl)} Positionen)</font>',
                         ParagraphStyle('ZH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)),
              Paragraph(f'<b>Gesamt: {_fmt_eur(zl_sum)}</b>', td_rb)]
-        ], colWidths=[12.5 * cm, 4 * cm])
+        ], colWidths=[12 * cm, 3.5 * cm])
         zl_hdr.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 1),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (-1, 0), (-1, 0), 4),
         ]))
         zl_elements.append(zl_hdr)
 
