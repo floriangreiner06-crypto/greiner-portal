@@ -25,7 +25,8 @@ def api_gesamtbild():
 
     from api.ertragsvorschau_data import get_gesamtbild
     gj = request.args.get('gj')
-    return jsonify(get_gesamtbild(gj))
+    gesellschaft = request.args.get('gesellschaft', 'autohaus')
+    return jsonify(get_gesamtbild(gj, gesellschaft=gesellschaft))
 
 
 @ertragsvorschau_api.route('/guv')
@@ -36,7 +37,8 @@ def api_guv():
 
     from api.ertragsvorschau_data import get_guv_daten
     gj = request.args.get('gj')
-    return jsonify(get_guv_daten(gj))
+    gesellschaft = request.args.get('gesellschaft', 'autohaus')
+    return jsonify(get_guv_daten(gj, gesellschaft=gesellschaft))
 
 
 @ertragsvorschau_api.route('/verkauf')
@@ -58,7 +60,8 @@ def api_service():
 
     from api.ertragsvorschau_data import get_service_daten
     gj = request.args.get('gj')
-    return jsonify(get_service_daten(gj))
+    gesellschaft = request.args.get('gesellschaft', 'autohaus')
+    return jsonify(get_service_daten(gj, gesellschaft=gesellschaft))
 
 
 @ertragsvorschau_api.route('/standzeiten')
@@ -79,7 +82,8 @@ def api_eigenkapital():
 
     from api.ertragsvorschau_data import get_eigenkapital_entwicklung
     gj = request.args.get('gj')
-    return jsonify(get_eigenkapital_entwicklung(gj))
+    gesellschaft = request.args.get('gesellschaft', 'autohaus')
+    return jsonify(get_eigenkapital_entwicklung(gj, gesellschaft=gesellschaft))
 
 
 @ertragsvorschau_api.route('/mehrjahresvergleich')
@@ -89,7 +93,8 @@ def api_mehrjahresvergleich():
         return jsonify({'error': 'Kein Zugriff'}), 403
 
     from api.ertragsvorschau_data import get_mehrjahresvergleich
-    return jsonify(get_mehrjahresvergleich())
+    gesellschaft = request.args.get('gesellschaft', 'autohaus')
+    return jsonify(get_mehrjahresvergleich(gesellschaft=gesellschaft))
 
 
 @ertragsvorschau_api.route('/prognose')
@@ -100,7 +105,8 @@ def api_prognose():
 
     from api.ertragsvorschau_data import get_prognose
     gj = request.args.get('gj')
-    return jsonify(get_prognose(gj))
+    gesellschaft = request.args.get('gesellschaft', 'autohaus')
+    return jsonify(get_prognose(gj, gesellschaft=gesellschaft))
 
 
 @ertragsvorschau_api.route('/jahresabschluss/verfuegbar')
@@ -126,7 +132,8 @@ def api_ja_import():
         return jsonify({'error': 'Pfad fehlt'}), 400
 
     user = getattr(current_user, 'username', 'unknown')
-    result = import_jahresabschluss(pfad, importiert_von=user)
+    gesellschaft = request.json.get('gesellschaft', 'autohaus')
+    result = import_jahresabschluss(pfad, gesellschaft=gesellschaft, importiert_von=user)
 
     if 'error' in result:
         return jsonify(result), 400
