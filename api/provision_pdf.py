@@ -288,7 +288,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
             [Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge)</font>',
                         ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)),
              Paragraph(f'<b>Gesamt: {_fmt_eur(kat_sum)}</b>', td_rb)]
-        ], colWidths=[11 * cm, 5.5 * cm])
+        ], colWidths=[12.5 * cm, 4 * cm])
         kat_hdr.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 1),
@@ -332,9 +332,20 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
     # V. Zusatzleistungen
     zl = zusatzleistungen or []
     if zl:
-        elements.append(HRFlowable(width='100%', thickness=2, color=ACCENT, spaceAfter=2))
-        elements.append(Paragraph(f'<b>V. Zusatzleistungen</b>  <font size="8" color="#334155">({len(zl)} Positionen)</font>',
-                        ParagraphStyle('ZH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceBefore=1, spaceAfter=4)))
+        zl_sum = sum(float(z.get('provision_verkaufer') or 0) for z in zl)
+        zl_elements = []
+        zl_elements.append(HRFlowable(width='100%', thickness=2, color=ACCENT, spaceAfter=2))
+        zl_hdr = Table([
+            [Paragraph(f'<b>V. Zusatzleistungen</b>  <font size="8" color="#334155">({len(zl)} Positionen)</font>',
+                        ParagraphStyle('ZH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)),
+             Paragraph(f'<b>Gesamt: {_fmt_eur(zl_sum)}</b>', td_rb)]
+        ], colWidths=[12.5 * cm, 4 * cm])
+        zl_hdr.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        zl_elements.append(zl_hdr)
 
         zl_widths = [4 * cm, 5 * cm, 3 * cm, 3.5 * cm]
         zl_data = [[Paragraph('BANK', th), Paragraph('NAME', th), Paragraph('DATUM', th), Paragraph('PROVISION', th_r)]]
@@ -363,7 +374,9 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
             else:
                 zl_cmds.append(('BACKGROUND', (0, i), (-1, i), BG_LIGHT))
         t_zl.setStyle(TableStyle(zl_cmds))
-        elements.append(KeepTogether([t_zl, Spacer(1, 0.4 * cm)]))
+        zl_elements.append(t_zl)
+        zl_elements.append(Spacer(1, 0.4 * cm))
+        elements.append(KeepTogether(zl_elements))
 
     # Jahresuebersicht
     if jahresuebersicht:
