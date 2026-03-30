@@ -499,15 +499,14 @@ def get_eigenkapital_entwicklung(geschaeftsjahr: str = None) -> dict:
 
         ek_letzter_ja = ja_row[0] if ja_row else None
 
-        # Laufendes Ergebnis (EBT aus GuV)
-        cursor.execute("""
-            SELECT SUM(betrag_cent)
-            FROM fibu_guv_monatswerte
-            WHERE geschaeftsjahr = %s
-              AND bereich NOT IN ('entnahmen')
-        """, (geschaeftsjahr,))
-        ebt_row = cursor.fetchone()
-        laufendes_ergebnis = round((ebt_row[0] or 0) / 100) if ebt_row else 0
+        # Laufendes Ergebnis: bereinigten EBT aus GuV verwenden (unvollst. Monat korrigiert)
+        pass  # wird unten aus get_guv_daten geholt
+
+    guv = get_guv_daten(geschaeftsjahr)
+    laufendes_ergebnis = guv['kumuliert'].get('ebt', 0)
+
+    with db_session() as conn:
+        cursor = conn.cursor()
 
         # Entnahmen
         cursor.execute("""

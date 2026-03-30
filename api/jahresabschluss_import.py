@@ -256,8 +256,18 @@ def _gj_aus_dateiname(dateiname: str) -> Optional[str]:
     """Extrahiert das Geschäftsjahr aus dem Dateinamen.
 
     'Autohaus Greiner GmbH & Co. KG JA 2025 signiert.pdf' → '2024/25'
+    'Autohaus Greiner GmbH & Co. KG JA 31.08.2024.pdf' → '2023/24'
+    'AH Greiner GmbH & Co. KG JA 2022.pdf' → '2021/22'
     Die Jahreszahl im Dateinamen ist das END-Jahr des GJ.
     """
+    # Format "JA 31.08.2024" (Datumsformat)
+    match = re.search(r'JA\s+\d{2}\.\d{2}\.(\d{4})', dateiname)
+    if match:
+        end_jahr = int(match.group(1))
+        start_jahr = end_jahr - 1
+        return f"{start_jahr}/{str(end_jahr)[-2:]}"
+
+    # Format "JA 2025" (Jahreszahl)
     match = re.search(r'JA\s+(\d{4})', dateiname)
     if not match:
         return None
@@ -370,34 +380,51 @@ def get_verfuegbare_jahresabschluesse() -> list:
     if not os.path.exists(BUCHHALTUNG_PFAD):
         return ergebnis
 
-    # Alle Abschluss-Verzeichnisse scannen
+    # Alle Abschluss-Verzeichnisse scannen (verschiedene Unterordner-Namen)
+    raw_ordner_namen = ['Abschlüsse RAW', 'Jahresabschlüsse RAW', 'Jahresabschlüsse RAW Partner', 'RAW-Bilanzen']
+
     for ordner in sorted(os.listdir(BUCHHALTUNG_PFAD)):
         if not ordner.startswith('Abschluss '):
             continue
 
-        raw_pfad = os.path.join(BUCHHALTUNG_PFAD, ordner, 'Abschlüsse RAW')
-        if not os.path.exists(raw_pfad):
-            continue
+        ordner_pfad = os.path.join(BUCHHALTUNG_PFAD, ordner)
 
-        for datei in os.listdir(raw_pfad):
-            if not datei.startswith('Autohaus Greiner') or not datei.endswith('.pdf'):
-                continue
-            if 'JA' not in datei:
-                continue
+        # Suche in allen bekannten RAW-Unterordnern + direkt im Hauptordner
+        # Auch Ordnernamen mit Präfix "Abschluss YYYY YYYY" prüfen
+        such_pfade = [ordner_pfad] + [os.path.join(ordner_pfad, rn) for rn in raw_ordner_namen]
+        # Ordner wie "Abschluss 2021 2022 Jahresabschlüsse RAW"
+        such_pfade.append(os.path.join(ordner_pfad, ordner + ' Jahresabschlüsse RAW'))
 
-            gj = _gj_aus_dateiname(datei)
-            if not gj:
+        for such_pfad in such_pfade:
+            if not os.path.exists(such_pfad) or not os.path.isdir(such_pfad):
                 continue
 
-            vollpfad = os.path.join(raw_pfad, datei)
+            for datei in os.listdir(such_pfad):
+                if not datei.endswith('.pdf'):
+                    continue
+                # "Autohaus Greiner" oder "AH Greiner" (ältere Benennung)
+                if not (datei.startswith('Autohaus Greiner') or datei.startswith('AH Greiner')):
+                    continue
+                if 'JA' not in datei:
+                    continue
 
-            ergebnis.append({
-                'geschaeftsjahr': gj,
-                'dateiname': datei,
-                'pfad': vollpfad,
-                'importiert': False,
-                'importiert_am': None
-            })
+                gj = _gj_aus_dateiname(datei)
+                if not gj:
+                    continue
+
+                # Duplikate vermeiden (gleiches GJ aus verschiedenen Ordnern)
+                if any(e['geschaeftsjahr'] == gj for e in ergebnis):
+                    continue
+
+                vollpfad = os.path.join(such_pfad, datei)
+
+                ergebnis.append({
+                    'geschaeftsjahr': gj,
+                    'dateiname': datei,
+                    'pfad': vollpfad,
+                    'importiert': False,
+                    'importiert_am': None
+                })
 
     # Import-Status aus DB prüfen
     with db_session() as conn:
