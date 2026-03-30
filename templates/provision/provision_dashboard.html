@@ -1,114 +1,391 @@
 {% extends "base.html" %}
 {% block title %}Provisions-Dashboard – Greiner DRIVE{% endblock %}
 {% block content %}
-<div class="container-fluid mt-4">
-    <h2><i class="bi bi-cash-stack"></i> Provisions-Dashboard (VKL)</h2>
-    <p class="text-muted">Läufe pro Monat, Vorlauf erstellen.</p>
-    <div class="row mb-3">
-        <div class="col-md-3">
-            <label class="form-label">Monat</label>
-            <input type="month" id="monatSelect" class="form-control" value="{{ default_monat }}">
-        </div>
+<style>
+    /* Layout */
+    .prov-wrapper { display: flex; min-height: calc(100vh - 60px); }
+    .prov-sidebar {
+        width: 200px; min-width: 200px; background: #fff; border-right: 1px solid #e2e8f0;
+        padding: 1.25rem 0; font-size: .85rem; flex-shrink: 0;
+    }
+    .prov-sidebar .sidebar-title {
+        font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
+        color: #64748b; padding: 0 1rem .5rem;
+    }
+    .prov-sidebar .year-group { margin-bottom: .25rem; }
+    .prov-sidebar .year-toggle {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: .35rem 1rem; cursor: pointer; color: #334155; font-weight: 600; font-size: .85rem;
+    }
+    .prov-sidebar .year-toggle:hover { background: #f1f5f9; }
+    .prov-sidebar .month-list { list-style: none; padding: 0; margin: 0; }
+    .prov-sidebar .month-list li {
+        padding: .3rem 1rem .3rem 1.5rem; cursor: pointer; display: flex; justify-content: space-between;
+        align-items: center; color: #475569; font-size: .82rem;
+    }
+    .prov-sidebar .month-list li:hover { background: #f1f5f9; }
+    .prov-sidebar .month-list li.active {
+        border-left: 3px solid #2563eb; background: #eff6ff; color: #1e40af; font-weight: 600;
+        padding-left: calc(1.5rem - 3px);
+    }
+    .prov-sidebar .month-list li .badge-check { color: #16a34a; font-size: .75rem; }
+    .prov-sidebar .month-list li .badge-aktuell {
+        font-size: .6rem; background: #dbeafe; color: #2563eb; padding: 1px 6px; border-radius: 4px; font-weight: 600;
+    }
+    .prov-main { flex: 1; padding: 1.25rem 2rem; background: #f8fafc; overflow-y: auto; }
+
+    /* Header */
+    .prov-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; }
+    .prov-header .title-icon {
+        width: 36px; height: 36px; border-radius: 10px; background: #2563eb;
+        display: flex; align-items: center; justify-content: center; margin-right: .75rem; flex-shrink: 0;
+    }
+    .prov-header h2 { font-size: 1.4rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .prov-header .breadcrumb { font-size: .75rem; margin-bottom: .15rem; }
+    .prov-header .breadcrumb a { color: #64748b; text-decoration: none; }
+    .prov-header .breadcrumb a:hover { color: #2563eb; }
+    .prov-header .subtitle { font-size: .82rem; color: #64748b; margin-top: .15rem; }
+    .prov-controls { display: flex; gap: .5rem; align-items: center; flex-shrink: 0; }
+    .prov-controls .month-nav {
+        display: flex; align-items: center; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff;
+    }
+    .prov-controls .month-nav button {
+        border: none; background: none; padding: .35rem .6rem; color: #64748b; cursor: pointer; font-size: .9rem;
+    }
+    .prov-controls .month-nav button:hover { color: #1e293b; }
+    .prov-controls .month-nav span { padding: 0 .5rem; font-weight: 600; font-size: .85rem; color: #1e293b; white-space: nowrap; }
+    .btn-export {
+        border: 1px solid #e2e8f0; background: #fff; border-radius: 8px; padding: .4rem .9rem;
+        font-size: .82rem; color: #334155; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: .35rem;
+    }
+    .btn-export:hover { background: #f1f5f9; }
+    .btn-neuer-endlauf {
+        background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: .4rem 1rem;
+        font-size: .82rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: .3rem;
+    }
+    .btn-neuer-endlauf:hover { background: #15803d; }
+
+    /* KPIs */
+    .kpi-card {
+        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+        overflow: hidden; position: relative; transition: box-shadow .15s;
+    }
+    .kpi-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .kpi-card .kpi-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 12px 0 0 12px; }
+    .kpi-card .card-body { padding: 1.1rem 1.25rem 1.1rem 1.5rem; }
+    .kpi-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .kpi-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
+    .kpi-value { font-size: 1.65rem; font-weight: 700; line-height: 1.2; color: #1e293b; }
+
+    /* Section headers */
+    .section-bar {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        padding: .85rem 1.25rem; margin-bottom: 1rem;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .section-bar h5 { margin: 0; font-weight: 700; font-size: 1rem; color: #1e293b; }
+    .section-label {
+        font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+        color: #64748b; padding: .5rem 0; border-bottom: 1px solid #e2e8f0; margin-bottom: 0;
+    }
+
+    /* Tables */
+    .prov-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .85rem; }
+    .prov-table thead th {
+        font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+        color: #64748b; padding: .6rem .75rem; border-bottom: 1px solid #e2e8f0; background: transparent;
+    }
+    .prov-table tbody td { padding: .7rem .75rem; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
+    .prov-table tbody tr:hover { background: #f8fafc; }
+    .prov-table .name-cell { font-weight: 600; color: #1e293b; }
+    .badge-abteilung { background: #dbeafe; color: #2563eb; font-size: .7rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .badge-status-offen { color: #ca8a04; font-size: .78rem; font-weight: 600; }
+    .badge-status-offen svg { vertical-align: -2px; margin-right: 2px; }
+    .empty-state { text-align: center; padding: 2.5rem 1rem; color: #94a3b8; }
+    .empty-state svg { margin-bottom: .5rem; }
+</style>
+
+<div class="prov-wrapper">
+    <!-- Sidebar -->
+    <div class="prov-sidebar" id="provSidebar">
+        <div class="sidebar-title">Provisionsarchiv</div>
+        <div id="sidebarContent"></div>
     </div>
-    <div id="loading" style="display: none;">Lade…</div>
-    <div id="error" class="alert alert-danger" style="display: none;"></div>
-    <div id="content" style="display: none;">
-        <!-- KPIs -->
-        <div class="row g-3 mb-4" id="kpiRow">
-            <div class="col-sm-6 col-lg-3">
-                <div class="card border-primary h-100">
-                    <div class="card-body">
-                        <div class="text-muted small text-uppercase">Provisionen Gesamt</div>
-                        <div class="fs-4 fw-bold text-primary" id="kpiProvision">–</div>
-                        <div class="small text-muted" id="kpiProvisionSub">–</div>
-                    </div>
+
+    <!-- Main -->
+    <div class="prov-main">
+        <!-- Hidden month input -->
+        <input type="month" id="monatSelect" style="display:none;" value="{{ default_monat }}">
+
+        <!-- Header -->
+        <div class="prov-header">
+            <div class="d-flex align-items-start">
+                <div class="title-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </div>
+                <div>
+                    <div class="breadcrumb"><a href="/verkauf/dashboard">Verkauf</a> &rsaquo; Provisionen</div>
+                    <h2>Provisions-Dashboard (VKL)</h2>
+                    <div class="subtitle">Läufe pro Monat verwalten, Vorläufe erstellen und freigeben</div>
                 </div>
             </div>
-            <div class="col-sm-6 col-lg-3">
-                <div class="card border-info h-100">
-                    <div class="card-body">
-                        <div class="text-muted small text-uppercase">Fahrzeuge</div>
-                        <div class="fs-4 fw-bold text-info" id="kpiFahrzeuge">–</div>
-                        <div class="small text-muted">ausgeliefert</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-sm-6 col-lg-3">
-                <div class="card border-success h-100">
-                    <div class="card-body">
-                        <div class="text-muted small text-uppercase">Abgeschlossen</div>
-                        <div class="fs-4 fw-bold text-success" id="kpiAbgeschlossen">–</div>
-                        <div class="small text-muted">Endläufe erstellt</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-sm-6 col-lg-3">
-                <div class="card border-warning h-100">
-                    <div class="card-body">
-                        <div class="text-muted small text-uppercase">Offen</div>
-                        <div class="fs-4 fw-bold text-warning" id="kpiOffen">–</div>
-                        <div class="small text-muted">noch zu bearbeiten</div>
-                    </div>
+            <div class="prov-controls">
+                <div class="month-nav">
+                    <button id="btnPrevMonth" title="Vorheriger Monat">&lsaquo;</button>
+                    <span id="monthNavLabel">–</span>
+                    <button id="btnNextMonth" title="Nächster Monat">&rsaquo;</button>
                 </div>
             </div>
         </div>
-        <h5>Läufe</h5>
-        <table class="table table-sm table-bordered" id="tabLaeufe">
-            <thead class="table-light"><tr><th>Verkäufer</th><th>Status</th><th>Summe</th><th>Aktionen</th></tr></thead>
-            <tbody></tbody>
-        </table>
-        <h5 class="mt-4">Verkäufer (Vorlauf erstellen)</h5>
-        <table class="table table-sm table-bordered" id="tabVk">
-            <thead class="table-light"><tr><th>VKB</th><th>Name</th><th></th></tr></thead>
-            <tbody></tbody>
-        </table>
+
+        <div id="loading" class="text-muted py-4">Lade…</div>
+        <div id="error" class="alert alert-danger" style="display: none;"></div>
+        <div id="content" style="display: none;">
+            <!-- KPIs -->
+            <div class="row g-3 mb-4" id="kpiRow">
+                <div class="col-sm-6 col-lg-3">
+                    <div class="card kpi-card h-100">
+                        <div class="kpi-bar" style="background:#2563eb;"></div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="kpi-label" style="color:#2563eb;">Provisionen Gesamt</div>
+                                <div class="kpi-icon" style="background:#eff6ff;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><path d="M6 16h.01"/><path d="M10 16h4"/></svg>
+                                </div>
+                            </div>
+                            <div class="kpi-value" id="kpiProvision">–</div>
+                            <div class="small text-muted mt-1" id="kpiProvisionSub">–</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="card kpi-card h-100">
+                        <div class="kpi-bar" style="background:#7c3aed;"></div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="kpi-label" style="color:#7c3aed;">Fahrzeuge</div>
+                                <div class="kpi-icon" style="background:#f5f3ff;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#7c3aed"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
+                                </div>
+                            </div>
+                            <div class="kpi-value" id="kpiFahrzeuge">–</div>
+                            <div class="small text-muted mt-1">ausgeliefert</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="card kpi-card h-100">
+                        <div class="kpi-bar" style="background:#16a34a;"></div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="kpi-label" style="color:#16a34a;">Abgeschlossen</div>
+                                <div class="kpi-icon" style="background:#f0fdf4;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2 4-4"/></svg>
+                                </div>
+                            </div>
+                            <div class="kpi-value" id="kpiAbgeschlossen">–</div>
+                            <div class="small text-muted mt-1">Endläufe erstellt</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="card kpi-card h-100">
+                        <div class="kpi-bar" style="background:#ca8a04;"></div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="kpi-label" style="color:#ca8a04;">Offen</div>
+                                <div class="kpi-icon" style="background:#fefce8;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>
+                                </div>
+                            </div>
+                            <div class="kpi-value" id="kpiOffen">–</div>
+                            <div class="small text-muted mt-1">noch zu bearbeiten</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Läufe Section -->
+            <div class="section-bar" id="laeufeBar">
+                <div>
+                    <h5 id="laeufeTitle">Läufe</h5>
+                    <div class="small text-muted">Übersicht aller aktiven und abgeschlossenen Provisionsläufe</div>
+                </div>
+            </div>
+
+            <!-- Aktive Läufe -->
+            <div class="section-label" id="labelAktiveLaeufe">AKTIVE LÄUFE (0)</div>
+            <div id="laeufeContent"></div>
+
+            <!-- Verkäufer -->
+            <div class="section-label mt-4" id="labelVk">VERKÄUFER — VORLAUF ERSTELLEN (0)</div>
+            <table class="prov-table" id="tabVk">
+                <thead><tr><th style="width:80px">VKB</th><th>Verkäufer</th><th>Abteilung</th><th>Vorläufe</th><th>Status</th><th class="text-end">Aktion</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
     </div>
 </div>
+
 <script>
 (function(){
-    var M=document.getElementById('monatSelect'), L=document.getElementById('loading'), E=document.getElementById('error'), C=document.getElementById('content');
+    var M = document.getElementById('monatSelect');
+    var L = document.getElementById('loading'), E = document.getElementById('error'), C = document.getElementById('content');
+    var MO = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+
+    function monatLabel(m) {
+        if (!m || m.length !== 7) return m || '';
+        return MO[parseInt(m.substr(5,2),10)-1] + ' ' + m.substr(0,4);
+    }
+
+    function shiftMonth(m, delta) {
+        var y = parseInt(m.substr(0,4),10), mo = parseInt(m.substr(5,2),10) + delta;
+        if (mo < 1) { mo = 12; y--; } else if (mo > 12) { mo = 1; y++; }
+        return y + '-' + (mo < 10 ? '0' : '') + mo;
+    }
+
+    // Month navigation
+    document.getElementById('btnPrevMonth').onclick = function(){ M.value = shiftMonth(M.value, -1); load(); };
+    document.getElementById('btnNextMonth').onclick = function(){ M.value = shiftMonth(M.value, 1); load(); };
+
+    // Sidebar
+    function buildSidebar(currentMonat, laeufe) {
+        var now = new Date();
+        var currentY = now.getFullYear(), currentM = now.getMonth() + 1;
+        var html = '';
+        for (var yr = currentY; yr >= 2024; yr--) {
+            var open = (M.value.substr(0,4) === String(yr));
+            html += '<div class="year-group">';
+            html += '<div class="year-toggle" data-year="'+yr+'">'+yr+' <span style="font-size:.7rem;">'+( open ? '&#9660;' : '&#9654;')+'</span></div>';
+            html += '<ul class="month-list" style="'+(open ? '' : 'display:none;')+'">';
+            var maxM = (yr === currentY) ? currentM : 12;
+            for (var mo = maxM; mo >= 1; mo--) {
+                var key = yr + '-' + (mo < 10 ? '0' : '') + mo;
+                var isActive = (key === currentMonat);
+                var isCurrent = (yr === currentY && mo === currentM);
+                var hasEndlauf = (laeufe||[]).some(function(l){ return l.abrechnungsmonat === key && (l.status||'').toUpperCase() === 'ENDLAUF'; });
+                var cls = isActive ? ' class="active"' : '';
+                html += '<li'+cls+' data-monat="'+key+'">';
+                html += MO[mo-1] + ' ' + yr;
+                html += '<span>';
+                if (isCurrent) html += '<span class="badge-aktuell">Aktuell</span> ';
+                if (hasEndlauf) html += '<span class="badge-check">✓</span>';
+                html += '</span></li>';
+            }
+            html += '</ul></div>';
+        }
+        document.getElementById('sidebarContent').innerHTML = html;
+        // Events
+        document.querySelectorAll('.year-toggle').forEach(function(el){
+            el.onclick = function(){
+                var ul = this.nextElementSibling;
+                var open = ul.style.display !== 'none';
+                ul.style.display = open ? 'none' : '';
+                this.querySelector('span').innerHTML = open ? '&#9654;' : '&#9660;';
+            };
+        });
+        document.querySelectorAll('.month-list li').forEach(function(el){
+            el.onclick = function(){ M.value = this.getAttribute('data-monat'); load(); };
+        });
+    }
+
+    function fmtEuro(v) {
+        if (v == null || isNaN(v)) return '–';
+        return Number(v).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+    }
+
     function load(){
-        var monat=M.value; if(!monat) return;
-        L.style.display='block'; E.style.display='none';
-        fetch('/api/provision/dashboard?monat='+encodeURIComponent(monat),{credentials:'same-origin'}).then(function(r){return r.json();})
+        var monat = M.value; if (!monat) return;
+        L.style.display = 'block'; E.style.display = 'none';
+        document.getElementById('monthNavLabel').textContent = monatLabel(monat);
+
+        fetch('/api/provision/dashboard?monat='+encodeURIComponent(monat), {credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
         .then(function(d){
-            L.style.display='none';
-            if(!d.success){ E.textContent=d.error||'Fehler'; E.style.display='block'; C.style.display='none'; return; }
-            C.style.display='block';
+            L.style.display = 'none';
+            if (!d.success) { E.textContent = d.error || 'Fehler'; E.style.display = 'block'; C.style.display = 'none'; return; }
+            C.style.display = 'block';
+
+            // KPIs
             var kpis = d.kpis || {};
-            document.getElementById('kpiProvision').textContent = (kpis.provision_gesamt != null ? Number(kpis.provision_gesamt).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00') + ' €';
-            document.getElementById('kpiProvisionSub').textContent = d.monat ? (d.monat.replace(/-/g, ' ').replace(/(\d{4}) (\d{2})/, function(_,y,m){ var mo=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']; return mo[parseInt(m,10)-1]+' '+y; })) : '';
+            document.getElementById('kpiProvision').textContent = fmtEuro(kpis.provision_gesamt);
+            document.getElementById('kpiProvisionSub').textContent = monatLabel(d.monat);
             document.getElementById('kpiFahrzeuge').textContent = kpis.fahrzeuge != null ? Number(kpis.fahrzeuge) : '0';
             document.getElementById('kpiAbgeschlossen').textContent = kpis.abgeschlossen != null ? Number(kpis.abgeschlossen) : '0';
             document.getElementById('kpiOffen').textContent = kpis.offen != null ? Number(kpis.offen) : '0';
-            var tb=document.querySelector('#tabLaeufe tbody'); tb.innerHTML='';
-            (d.laeufe||[]).forEach(function(l){
-                var status=(l.status||'').toUpperCase();
-                var delBtn= status==='VORLAUF' ? ' <button class="btn btn-sm btn-outline-danger ms-1" data-lauf-id="'+l.id+'" title="Vorlauf löschen">Löschen</button>' : '';
-                tb.innerHTML+='<tr><td>'+(l.verkaufer_name||'-')+'</td><td>'+(l.status||'-')+'</td><td>'+(l.summe_gesamt!=null?Number(l.summe_gesamt).toLocaleString('de-DE',{minimumFractionDigits:2}):'-')+' €</td><td><a href="/provision/detail/'+l.id+'">Detail</a>'+delBtn+'</td></tr>';
-            });
-            var ids=(d.laeufe||[]).map(function(l){return l.verkaufer_id;});
-            tb=document.querySelector('#tabVk tbody'); tb.innerHTML='';
-            (d.verkaeufer||[]).forEach(function(v){
-                var vkb=v.salesman_number||v.vkb||'-', name=v.name||'-';
-                var btn=ids.indexOf(vkb)===-1?'<button class="btn btn-sm btn-primary" data-vkb="'+vkb+'">Vorlauf</button>':'<span class="text-muted">vorhanden</span>';
-                tb.innerHTML+='<tr><td>'+vkb+'</td><td>'+name+'</td><td>'+btn+'</td></tr>';
+
+            // Läufe title
+            document.getElementById('laeufeTitle').textContent = 'Läufe — ' + monatLabel(d.monat);
+
+            // Sidebar
+            buildSidebar(monat, d.laeufe || []);
+
+            // Aktive Läufe
+            var laeufe = d.laeufe || [];
+            var aktivCount = laeufe.length;
+            document.getElementById('labelAktiveLaeufe').textContent = 'AKTIVE LÄUFE (' + aktivCount + ')';
+
+            var statusBadge = { 'VORLAUF': 'bg-secondary', 'ZUR_PRUEFUNG': 'bg-warning text-dark', 'FREIGEGEBEN': 'bg-info text-dark', 'GENEHMIGT': 'bg-primary', 'ENDLAUF': 'bg-success' };
+            var lc = document.getElementById('laeufeContent');
+
+            if (aktivCount === 0) {
+                lc.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg><br>Keine aktiven Läufe für ' + monatLabel(monat) + '</div>';
+            } else {
+                var html = '<table class="prov-table"><thead><tr><th>Verkäufer</th><th>Status</th><th>Belegnummer</th><th class="text-end">Summe</th><th class="text-end">Aktionen</th></tr></thead><tbody>';
+                laeufe.forEach(function(l){
+                    var status = (l.status||'').toUpperCase();
+                    var badge = '<span class="badge '+(statusBadge[status]||'bg-secondary')+'">'+status+'</span>';
+                    var beleg = l.belegnummer ? '<span style="color:#2563eb;font-weight:500;">'+l.belegnummer+'</span>' : '<span class="text-muted">—</span>';
+                    var delBtn = status === 'VORLAUF' ? ' <button class="btn btn-sm btn-outline-danger ms-1" data-lauf-id="'+l.id+'">Löschen</button>' : '';
+                    var pdfLink = status === 'ENDLAUF' ? ' <span style="color:#cbd5e1;margin:0 4px;">|</span><a href="/provision/pdf/'+l.id+'" download style="color:#2563a8;font-weight:600;">PDF</a>' : '';
+                    html += '<tr><td class="name-cell">'+(l.verkaufer_name||'-')+'</td><td>'+badge+'</td><td>'+beleg+'</td><td class="text-end fw-semibold">'+fmtEuro(l.summe_gesamt)+'</td><td class="text-end"><a href="/provision/detail/'+l.id+'" style="color:#2563eb;font-weight:500;">Detail</a>'+pdfLink+delBtn+'</td></tr>';
+                });
+                html += '</tbody></table>';
+                lc.innerHTML = html;
+                // Delete handlers
+                lc.querySelectorAll('[data-lauf-id]').forEach(function(btn){
+                    btn.onclick = function(){
+                        var id = parseInt(this.getAttribute('data-lauf-id'),10);
+                        if (!confirm('Vorlauf wirklich löschen?')) return;
+                        this.disabled = true;
+                        fetch('/api/provision/vorlauf/'+id+'/loeschen',{method:'POST',credentials:'same-origin'})
+                        .then(function(r){return r.json();})
+                        .then(function(res){ if(res.success) load(); else{ alert(res.error||'Fehler'); btn.disabled=false; }});
+                    };
+                });
+            }
+
+            // Verkäufer
+            var vkIds = laeufe.map(function(l){ return l.verkaufer_id; });
+            var verkaeufer = d.verkaeufer || [];
+            document.getElementById('labelVk').textContent = 'VERKÄUFER — VORLAUF ERSTELLEN (' + verkaeufer.length + ')';
+            var tb = document.querySelector('#tabVk tbody'); tb.innerHTML = '';
+            verkaeufer.forEach(function(v){
+                var vkb = v.salesman_number || v.vkb || '-';
+                var name = v.name || '-';
+                var hasLauf = vkIds.indexOf(vkb) !== -1;
+                var vorlaufCol = hasLauf ? '<span style="color:#2563eb;">1</span>' : '<span class="text-muted">—</span>';
+                var statusCol = hasLauf
+                    ? '<span style="color:#16a34a;font-weight:600;font-size:.78rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Vorhanden</span>'
+                    : '<span class="badge-status-offen"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.17a2 2 0 0 0-.59-1.41L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22"/><path d="M7 2v4.17a2 2 0 0 0 .59 1.41L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2"/></svg> Offen</span>';
+                var actionCol = hasLauf
+                    ? '<span class="text-muted small">—</span>'
+                    : '<button class="btn btn-sm text-white fw-semibold" style="background:#16a34a;border-radius:6px;font-size:.78rem;" data-vkb="'+vkb+'">Vorlauf erstellen</button>';
+                tb.innerHTML += '<tr><td>'+vkb+'</td><td class="name-cell">'+name+'</td><td><span class="badge-abteilung">Verkauf</span></td><td>'+vorlaufCol+'</td><td>'+statusCol+'</td><td class="text-end">'+actionCol+'</td></tr>';
             });
             tb.querySelectorAll('[data-vkb]').forEach(function(b){
-                b.onclick=function(){ var v=parseInt(this.getAttribute('data-vkb'),10), m=M.value; this.disabled=true;
+                b.onclick = function(){
+                    var v = parseInt(this.getAttribute('data-vkb'),10), m = M.value;
+                    this.disabled = true; this.textContent = 'Erstelle…';
                     fetch('/api/provision/vorlauf-erstellen',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({verkaufer_id:v,monat:m})})
-                    .then(function(r){return r.json();}).then(function(res){if(res.success) load(); else{ alert(res.error); b.disabled=false; }});
-                };
-            });
-            document.querySelectorAll('#tabLaeufe [data-lauf-id]').forEach(function(btn){
-                btn.onclick=function(){ var id=parseInt(this.getAttribute('data-lauf-id'),10); if(!confirm('Vorlauf wirklich löschen?')) return; this.disabled=true;
-                    fetch('/api/provision/vorlauf/'+id+'/loeschen',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json();})
-                    .then(function(res){ if(res.success) load(); else{ alert(res.error||'Fehler'); btn.disabled=false; }});
+                    .then(function(r){return r.json();}).then(function(res){ if(res.success) load(); else{ alert(res.error); b.disabled=false; b.textContent='Vorlauf erstellen'; }});
                 };
             });
         }).catch(function(err){ L.style.display='none'; E.textContent=err.message; E.style.display='block'; });
     }
-    M.addEventListener('change',load); load();
+
+    M.addEventListener('change', load);
+    load();
 })();
 </script>
 {% endblock %}
