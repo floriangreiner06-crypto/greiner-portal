@@ -107,6 +107,7 @@ def get_sales_for_provision(vkb: int, monat: str) -> List[Dict[str, Any]]:
         cur = conn.cursor()
         cur.execute("""
             SELECT s.vin, s.out_invoice_number, s.out_invoice_date, s.out_sale_type,
+                   s.dealer_vehicle_type,
                    s.model_description, s.netto_vk_preis, s.deckungsbeitrag,
                    s.first_registration_date,
                    TRIM(BOTH ', ' FROM (COALESCE(TRIM(c.family_name), '') || ', ' || COALESCE(TRIM(c.first_name), ''))) AS kaeufer_name,
@@ -301,6 +302,11 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
     for r in rows:
         typ = (r.get('out_sale_type') or '').strip().upper() or None
         kat = TYP_TO_KAT.get(typ, 'III_gebrauchtwagen')
+        # Neuwagen-Korrektur: Nur dealer_vehicle_type='N' ist ein echter Neuwagen (Erstzulassung auf Kunde).
+        # Alle anderen (D, G, T, V) bei out_sale_type F → waren auf Autohaus zugelassen → Kat. II (TW/VFW)
+        dvt = (r.get('dealer_vehicle_type') or '').strip().upper()
+        if kat == 'I_neuwagen' and dvt and dvt != 'N':
+            kat = 'II_testwagen'
         # VFW/NW älter als 1 Jahr nach EZ → unter GW führen und abrechnen (gleicher Satz, Kategorie III)
         ez = r.get('first_registration_date')
         inv = r.get('out_invoice_date')
