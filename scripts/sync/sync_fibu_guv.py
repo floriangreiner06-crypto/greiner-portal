@@ -146,81 +146,89 @@ def sync_fibu_guv():
 
     gesamt_zeilen = 0
 
+    UNTERNEHMEN = [
+        (1, 'autohaus'),  # Autohaus Greiner, Opel/Leapmotor
+        (2, 'auto'),      # Auto Greiner, Hyundai
+    ]
+
     try:
         loco_cursor = loco_conn.cursor()
 
-        for gj in geschaeftsjahre:
-            # GJ-Zeitraum berechnen
-            teile = gj.split('/')
-            start_jahr = int(teile[0])
-            ende_jahr = start_jahr + 1
-            gj_start = f"{start_jahr}-09-01"
-            gj_ende = f"{ende_jahr}-08-31"
+        for (subsidiary_id, gesellschaft) in UNTERNEHMEN:
+            logger.info(f"--- Synchronisiere Gesellschaft: {gesellschaft} (subsidiary_id={subsidiary_id}) ---")
 
-            logger.info(f"Query Locosoft für GJ {gj} ({gj_start} bis {gj_ende})")
+            for gj in geschaeftsjahre:
+                # GJ-Zeitraum berechnen
+                teile = gj.split('/')
+                start_jahr = int(teile[0])
+                ende_jahr = start_jahr + 1
+                gj_start = f"{start_jahr}-09-01"
+                gj_ende = f"{ende_jahr}-08-31"
 
-            # Alle GuV-Buchungen + Entnahmen für dieses GJ
-            sql = """
-                SELECT
-                    EXTRACT(YEAR FROM j.accounting_date)::int AS jahr,
-                    EXTRACT(MONTH FROM j.accounting_date)::int AS monat,
-                    j.nominal_account_number AS konto,
-                    j.debit_or_credit,
-                    SUM(j.posted_value) AS summe_cent
-                FROM journal_accountings j
-                LEFT JOIN nominal_accounts n
-                    ON j.nominal_account_number = n.nominal_account_number
-                    AND n.subsidiary_to_company_ref = 1
-                WHERE j.subsidiary_to_company_ref = 1
-                  AND j.accounting_date >= %s
-                  AND j.accounting_date <= %s
-                  AND j.document_type != %s
-                  AND (
-                      (n.is_profit_loss_account = 'J')
-                      OR (j.nominal_account_number >= 190000 AND j.nominal_account_number <= 193999)
-                  )
-                GROUP BY 1, 2, 3, 4
-                ORDER BY 1, 2, 3
-            """
+                logger.info(f"Query Locosoft für GJ {gj} ({gj_start} bis {gj_ende})")
 
-            loco_cursor.execute(sql, (gj_start, gj_ende, EXCLUDE_DOC_TYPE))
-            rows = loco_cursor.fetchall()
-            logger.info(f"  {len(rows)} aggregierte Zeilen aus Locosoft")
+                # Alle GuV-Buchungen + Entnahmen für dieses GJ
+                sql = """
+                    SELECT
+                        EXTRACT(YEAR FROM j.accounting_date)::int AS jahr,
+                        EXTRACT(MONTH FROM j.accounting_date)::int AS monat,
+                        j.nominal_account_number AS konto,
+                        j.debit_or_credit,
+                        SUM(j.posted_value) AS summe_cent
+                    FROM journal_accountings j
+                    LEFT JOIN nominal_accounts n
+                        ON j.nominal_account_number = n.nominal_account_number
+                        AND n.subsidiary_to_company_ref = %s
+                    WHERE j.subsidiary_to_company_ref = %s
+                      AND j.accounting_date >= %s
+                      AND j.accounting_date <= %s
+                      AND j.document_type != %s
+                      AND (
+                          (n.is_profit_loss_account = 'J')
+                          OR (j.nominal_account_number >= 190000 AND j.nominal_account_number <= 193999)
+                      )
+                    GROUP BY 1, 2, 3, 4
+                    ORDER BY 1, 2, 3
+                """
 
-            # Aggregieren nach (GJ, Monat, Bereich)
-            aggregiert = {}
-            for row in rows:
-                jahr, monat, konto, dc, summe_cent = row
+                loco_cursor.execute(sql, (subsidiary_id, subsidiary_id, gj_start, gj_ende, EXCLUDE_DOC_TYPE))
+                rows = loco_cursor.fetchall()
+                logger.info(f"  {len(rows)} aggregierte Zeilen aus Locosoft")
 
-                bereich = _bereich_fuer_konto(konto, dc)
-                if bereich is None:
-                    continue
+                # Aggregieren nach (GJ, Monat, Bereich)
+                aggregiert = {}
+                for row in rows:
+                    jahr, monat, konto, dc, summe_cent = row
 
-                # Vorzeichen: Haben = positiv, Soll = negativ
-                betrag = summe_cent if dc == 'H' else -summe_cent
+                    bereich = _bereich_fuer_konto(konto, dc)
+                    if bereich is None:
+                        continue
 
-                key = (gj, monat, bereich)
-                aggregiert[key] = aggregiert.get(key, 0) + betrag
+                    # Vorzeichen: Haben = positiv, Soll = negativ
+                    betrag = summe_cent if dc == 'H' else -summe_cent
 
-            logger.info(f"  {len(aggregiert)} Bereich-Monat-Kombinationen")
+                    key = (gj, monat, bereich)
+                    aggregiert[key] = aggregiert.get(key, 0) + betrag
 
-            # UPSERT ins Portal (direkte Verbindung umgeht dotenv-Konflikte)
-            portal_conn = _get_portal_connection()
-            try:
-                portal_cursor = portal_conn.cursor()
+                logger.info(f"  {len(aggregiert)} Bereich-Monat-Kombinationen")
 
-                for (gj_key, monat, bereich), betrag_cent in aggregiert.items():
-                    portal_cursor.execute("""
-                        INSERT INTO fibu_guv_monatswerte (geschaeftsjahr, monat, bereich, betrag_cent, synced_at)
-                        VALUES (%s, %s, %s, %s, NOW())
-                        ON CONFLICT (geschaeftsjahr, monat, bereich)
-                        DO UPDATE SET betrag_cent = EXCLUDED.betrag_cent, synced_at = NOW()
-                    """, (gj_key, monat, bereich, betrag_cent))
+                # UPSERT ins Portal (direkte Verbindung umgeht dotenv-Konflikte)
+                portal_conn = _get_portal_connection()
+                try:
+                    portal_cursor = portal_conn.cursor()
 
-                portal_conn.commit()
-                gesamt_zeilen += len(aggregiert)
-            finally:
-                portal_conn.close()
+                    for (gj_key, monat, bereich), betrag_cent in aggregiert.items():
+                        portal_cursor.execute("""
+                            INSERT INTO fibu_guv_monatswerte (geschaeftsjahr, monat, bereich, betrag_cent, gesellschaft, synced_at)
+                            VALUES (%s, %s, %s, %s, %s, NOW())
+                            ON CONFLICT (geschaeftsjahr, monat, bereich, gesellschaft)
+                            DO UPDATE SET betrag_cent = EXCLUDED.betrag_cent, synced_at = NOW()
+                        """, (gj_key, monat, bereich, betrag_cent, gesellschaft))
+
+                    portal_conn.commit()
+                    gesamt_zeilen += len(aggregiert)
+                finally:
+                    portal_conn.close()
 
     finally:
         loco_conn.close()
