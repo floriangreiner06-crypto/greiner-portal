@@ -33,14 +33,23 @@ from datetime import datetime, date
 sys.path.insert(0, '/opt/greiner-test')
 sys.path.insert(0, '/opt/greiner-portal')
 
-# Portal-Datenbank Konfiguration (direkte psycopg2 Verbindung für Scripts)
-_PORTAL_DB = {
-    'host': '127.0.0.1',
-    'port': 5432,
-    'dbname': 'drive_portal_dev',
-    'user': 'drive_user',
-    'password': 'DrivePortal2024',
-}
+# Portal-Datenbanken (beide werden synchronisiert)
+_PORTAL_DBS = [
+    {
+        'host': '127.0.0.1',
+        'port': 5432,
+        'dbname': 'drive_portal',
+        'user': 'drive_user',
+        'password': 'DrivePortal2024',
+    },
+    {
+        'host': '127.0.0.1',
+        'port': 5432,
+        'dbname': 'drive_portal_dev',
+        'user': 'drive_user',
+        'password': 'DrivePortal2024',
+    },
+]
 
 logger = logging.getLogger('sync_fibu_guv')
 
@@ -110,13 +119,19 @@ def _bereich_fuer_konto(konto: int, debit_or_credit: str) -> str:
     return None
 
 
-def _get_portal_connection():
-    """Direkte psycopg2-Verbindung zur Portal-Datenbank.
+def _get_portal_connections():
+    """Direkte psycopg2-Verbindungen zu BEIDEN Portal-Datenbanken (Prod + Dev).
 
     Umgeht load_dotenv-Überschreibung in db_connection.py beim Aufruf als Script.
-    Im Celery-Kontext wird db_session() über die App-Umgebung korrekt konfiguriert.
+    Beide DBs werden parallel gehalten weil db_connection.py hardcoded /opt/greiner-portal/.env lädt.
     """
-    return psycopg2.connect(**_PORTAL_DB)
+    conns = []
+    for db_config in _PORTAL_DBS:
+        try:
+            conns.append(psycopg2.connect(**db_config))
+        except Exception as e:
+            logger.warning(f"Kann nicht zu {db_config['dbname']} verbinden: {e}")
+    return conns
 
 
 def sync_fibu_guv():
@@ -212,23 +227,23 @@ def sync_fibu_guv():
 
                 logger.info(f"  {len(aggregiert)} Bereich-Monat-Kombinationen")
 
-                # UPSERT ins Portal (direkte Verbindung umgeht dotenv-Konflikte)
-                portal_conn = _get_portal_connection()
-                try:
-                    portal_cursor = portal_conn.cursor()
+                # UPSERT in BEIDE Portal-DBs (Prod + Dev)
+                for portal_conn in _get_portal_connections():
+                    try:
+                        portal_cursor = portal_conn.cursor()
 
-                    for (gj_key, monat, bereich), betrag_cent in aggregiert.items():
-                        portal_cursor.execute("""
-                            INSERT INTO fibu_guv_monatswerte (geschaeftsjahr, monat, bereich, betrag_cent, gesellschaft, synced_at)
-                            VALUES (%s, %s, %s, %s, %s, NOW())
-                            ON CONFLICT (geschaeftsjahr, monat, bereich, gesellschaft)
-                            DO UPDATE SET betrag_cent = EXCLUDED.betrag_cent, synced_at = NOW()
-                        """, (gj_key, monat, bereich, betrag_cent, gesellschaft))
+                        for (gj_key, monat, bereich), betrag_cent in aggregiert.items():
+                            portal_cursor.execute("""
+                                INSERT INTO fibu_guv_monatswerte (geschaeftsjahr, monat, bereich, betrag_cent, gesellschaft, synced_at)
+                                VALUES (%s, %s, %s, %s, %s, NOW())
+                                ON CONFLICT (geschaeftsjahr, monat, bereich, gesellschaft)
+                                DO UPDATE SET betrag_cent = EXCLUDED.betrag_cent, synced_at = NOW()
+                            """, (gj_key, monat, bereich, betrag_cent, gesellschaft))
 
-                    portal_conn.commit()
-                    gesamt_zeilen += len(aggregiert)
-                finally:
-                    portal_conn.close()
+                        portal_conn.commit()
+                    finally:
+                        portal_conn.close()
+                gesamt_zeilen += len(aggregiert)
 
     finally:
         loco_conn.close()
