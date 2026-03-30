@@ -381,6 +381,94 @@ def position_loeschen(pos_id):
     return jsonify({'success': True, 'message': 'Position gelöscht.'})
 
 
+@provision_api.route('/position/<int:pos_id>/reassign-einkaeufer', methods=['POST'])
+@login_required
+def position_reassign_einkaeufer(pos_id):
+    """
+    POST /api/provision/position/<id>/reassign-einkaeufer
+    Body: { "neuer_einkaeufer_id": 2008 }
+    Verschiebt eine GW-aus-Bestand-Position zu einem anderen Verkäufer.
+    Nur VKL/Admin. Nicht bei ENDLAUF.
+    Voraussetzung: Ziel-Verkäufer hat bereits einen Vorlauf für denselben Monat.
+    """
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin dürfen Einkäufer umzuweisen.'}), 403
+
+    data = request.get_json() or {}
+    neuer_einkaeufer_id = data.get('neuer_einkaeufer_id')
+    if neuer_einkaeufer_id is None:
+        return jsonify({'success': False, 'error': 'neuer_einkaeufer_id ist erforderlich.'}), 400
+    try:
+        neuer_einkaeufer_id = int(neuer_einkaeufer_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'neuer_einkaeufer_id muss eine Zahl sein.'}), 400
+
+    with db_session() as conn:
+        cur = conn.cursor()
+
+        # 1. Position + aktueller Lauf laden
+        cur.execute("""
+            SELECT p.id, p.lauf_id, p.kategorie, p.einkaeufer_name,
+                   l.status, l.verkaufer_id, l.abrechnungsmonat
+            FROM provision_positionen p
+            JOIN provision_laeufe l ON l.id = p.lauf_id
+            WHERE p.id = %s
+        """, (pos_id,))
+        pos = cur.fetchone()
+        if not pos:
+            return jsonify({'success': False, 'error': 'Position nicht gefunden.'}), 404
+        if (pos['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Endlauf ist gesperrt – keine Änderungen möglich.'}), 403
+        if pos['kategorie'] != 'IV_gw_bestand':
+            return jsonify({'success': False, 'error': 'Einkäufer-Umzuweisung nur für Kategorie IV (GW aus Bestand).'}), 400
+
+        alter_lauf_id = pos['lauf_id']
+        monat = pos['abrechnungsmonat']
+
+        # 2. Ziel-Lauf des neuen Einkäufers finden
+        cur.execute("""
+            SELECT id, status FROM provision_laeufe
+            WHERE verkaufer_id = %s AND abrechnungsmonat = %s
+        """, (neuer_einkaeufer_id, monat))
+        ziel_lauf = cur.fetchone()
+        if not ziel_lauf:
+            return jsonify({
+                'success': False,
+                'error': f'Kein Vorlauf für Verkäufer {neuer_einkaeufer_id} im Monat {monat} vorhanden. Bitte erst einen Vorlauf erstellen.'
+            }), 400
+        if (ziel_lauf['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Der Ziel-Lauf ist bereits Endlauf (gesperrt).'}), 403
+
+        ziel_lauf_id = ziel_lauf['id']
+
+        # 3. Neuen Einkäufer-Namen ermitteln
+        cur.execute("""
+            SELECT TRIM(BOTH ' ' FROM COALESCE(TRIM(first_name), '') || ' ' || COALESCE(TRIM(last_name), '')) AS name
+            FROM employees WHERE locosoft_id = %s
+        """, (neuer_einkaeufer_id,))
+        emp = cur.fetchone()
+        neuer_name = (emp['name'] if emp else f'VKB {neuer_einkaeufer_id}').strip()
+
+        # 4. Position verschieben: lauf_id ändern + einkaeufer_name aktualisieren
+        cur.execute("""
+            UPDATE provision_positionen
+            SET lauf_id = %s, einkaeufer_name = %s
+            WHERE id = %s
+        """, (ziel_lauf_id, neuer_name, pos_id))
+
+        # 5. Summen beider Läufe neu berechnen
+        _recalc_lauf_sums(cur, alter_lauf_id)
+        _recalc_lauf_sums(cur, ziel_lauf_id)
+        conn.commit()
+
+    return jsonify({
+        'success': True,
+        'neuer_lauf_id': ziel_lauf_id,
+        'neuer_einkaeufer_name': neuer_name,
+        'message': f'Position an {neuer_name} (Lauf {ziel_lauf_id}) übertragen.'
+    })
+
+
 # =============================================================================
 # Admin: Provisionsarten (provision_config) verwalten – nur Admin
 # =============================================================================
