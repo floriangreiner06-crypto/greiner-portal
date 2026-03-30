@@ -276,6 +276,32 @@ def _gj_aus_dateiname(dateiname: str) -> Optional[str]:
     return f"{start_jahr}/{str(end_jahr)[-2:]}"
 
 
+def _gj_aus_zusammenfuehrung(dateiname: str) -> Optional[str]:
+    """Extrahiert das Geschäftsjahr aus einem Zusammenführung-Dateinamen.
+
+    'Zusammenführung 2021.pdf'                           → '2020/21'
+    'Zusammenführung 2022.pdf'                           → '2021/22'
+    'Zusammenführung AH Greiner und Auto Greiner 2023.pdf' → '2022/23'
+    'Zusammenführung Vermögensgegenstände 2025.pdf'      → '2024/25'
+    'Zusammenführung der Vermögensgegenstände 31.08.2024.pdf' → '2023/24'
+    """
+    # Format mit Datum "31.08.2024"
+    match = re.search(r'\d{2}\.\d{2}\.(\d{4})', dateiname)
+    if match:
+        end_jahr = int(match.group(1))
+        start_jahr = end_jahr - 1
+        return f"{start_jahr}/{str(end_jahr)[-2:]}"
+
+    # Format mit Jahreszahl am Ende (z.B. "... 2025.pdf", "... 2023 signiert.pdf")
+    match = re.search(r'(\d{4})', dateiname)
+    if match:
+        end_jahr = int(match.group(1))
+        start_jahr = end_jahr - 1
+        return f"{start_jahr}/{str(end_jahr)[-2:]}"
+
+    return None
+
+
 def _stichtag_aus_gj(gj: str) -> date:
     """Berechnet den Bilanzstichtag (31.08.) aus dem GJ.
 
@@ -286,7 +312,7 @@ def _stichtag_aus_gj(gj: str) -> date:
     return date(start_jahr + 1, 8, 31)
 
 
-def import_jahresabschluss(dateipfad: str, importiert_von: str = 'system') -> dict:
+def import_jahresabschluss(dateipfad: str, gesellschaft: str = 'autohaus', importiert_von: str = 'system') -> dict:
     """Importiert einen Jahresabschluss aus einem RAW-Partner PDF.
 
     Returns: Dict mit importierten Werten + Zusammenfassung.
@@ -295,7 +321,10 @@ def import_jahresabschluss(dateipfad: str, importiert_von: str = 'system') -> di
         return {'error': f'Datei nicht gefunden: {dateipfad}'}
 
     dateiname = os.path.basename(dateipfad)
-    gj = _gj_aus_dateiname(dateiname)
+    if gesellschaft == 'gruppe':
+        gj = _gj_aus_zusammenfuehrung(dateiname)
+    else:
+        gj = _gj_aus_dateiname(dateiname)
     if not gj:
         return {'error': f'Geschäftsjahr nicht aus Dateiname erkennbar: {dateiname}'}
 
@@ -329,8 +358,8 @@ def import_jahresabschluss(dateipfad: str, importiert_von: str = 'system') -> di
         cursor = conn.cursor()
 
         # UPSERT
-        felder = ['geschaeftsjahr', 'stichtag', 'quelldatei', 'importiert_von']
-        werte = [gj, stichtag, dateiname, importiert_von]
+        felder = ['geschaeftsjahr', 'gesellschaft', 'stichtag', 'quelldatei', 'importiert_von']
+        werte = [gj, gesellschaft, stichtag, dateiname, importiert_von]
 
         db_felder = [
             'bilanzsumme', 'anlagevermoegen', 'umlaufvermoegen', 'eigenkapital',
@@ -347,12 +376,12 @@ def import_jahresabschluss(dateipfad: str, importiert_von: str = 'system') -> di
 
         placeholders = ', '.join(['%s'] * len(felder))
         spalten = ', '.join(felder)
-        update_clause = ', '.join([f"{f} = EXCLUDED.{f}" for f in felder if f != 'geschaeftsjahr'])
+        update_clause = ', '.join([f"{f} = EXCLUDED.{f}" for f in felder if f not in ('geschaeftsjahr', 'gesellschaft')])
 
         sql = f"""
             INSERT INTO jahresabschluss_daten ({spalten})
             VALUES ({placeholders})
-            ON CONFLICT (geschaeftsjahr) DO UPDATE SET {update_clause}, importiert_am = NOW()
+            ON CONFLICT (geschaeftsjahr, gesellschaft) DO UPDATE SET {update_clause}, importiert_am = NOW()
         """
 
         cursor.execute(sql, werte)
@@ -360,13 +389,14 @@ def import_jahresabschluss(dateipfad: str, importiert_von: str = 'system') -> di
 
     zusammenfassung = {
         'geschaeftsjahr': gj,
+        'gesellschaft': gesellschaft,
         'stichtag': str(stichtag),
         'quelldatei': dateiname,
         'werte': daten,
         'anzahl_werte': len(daten)
     }
 
-    logger.info(f"  JA {gj} importiert: {len(daten)} Werte (EK: {daten.get('eigenkapital')} TEUR, Ergebnis: {daten.get('jahresergebnis')} TEUR)")
+    logger.info(f"  JA {gj} [{gesellschaft}] importiert: {len(daten)} Werte (EK: {daten.get('eigenkapital')} TEUR, Ergebnis: {daten.get('jahresergebnis')} TEUR)")
 
     return zusammenfassung
 
@@ -402,24 +432,37 @@ def get_verfuegbare_jahresabschluesse() -> list:
             for datei in os.listdir(such_pfad):
                 if not datei.endswith('.pdf'):
                     continue
-                # "Autohaus Greiner" oder "AH Greiner" (ältere Benennung)
-                if not (datei.startswith('Autohaus Greiner') or datei.startswith('AH Greiner')):
-                    continue
-                if 'JA' not in datei:
+
+                # Bestimme Gesellschaft anhand des Dateinamens
+                gesellschaft = None
+                if datei.startswith('Autohaus Greiner') or datei.startswith('AH Greiner'):
+                    gesellschaft = 'autohaus'
+                elif datei.startswith('Auto Greiner'):
+                    gesellschaft = 'auto'
+                elif 'Zusammenführung' in datei or 'Zusammenfuehrung' in datei:
+                    gesellschaft = 'gruppe'
+                else:
+                    continue  # Datei gehört nicht zu unseren Gesellschaften
+
+                if 'JA' not in datei and gesellschaft != 'gruppe':
                     continue
 
-                gj = _gj_aus_dateiname(datei)
+                if gesellschaft == 'gruppe':
+                    gj = _gj_aus_zusammenfuehrung(datei)
+                else:
+                    gj = _gj_aus_dateiname(datei)
                 if not gj:
                     continue
 
-                # Duplikate vermeiden (gleiches GJ aus verschiedenen Ordnern)
-                if any(e['geschaeftsjahr'] == gj for e in ergebnis):
+                # Duplikate vermeiden (gleiches GJ + Gesellschaft aus verschiedenen Ordnern)
+                if any(e['geschaeftsjahr'] == gj and e.get('gesellschaft') == gesellschaft for e in ergebnis):
                     continue
 
                 vollpfad = os.path.join(such_pfad, datei)
 
                 ergebnis.append({
                     'geschaeftsjahr': gj,
+                    'gesellschaft': gesellschaft,
                     'dateiname': datei,
                     'pfad': vollpfad,
                     'importiert': False,
@@ -429,13 +472,14 @@ def get_verfuegbare_jahresabschluesse() -> list:
     # Import-Status aus DB prüfen
     with db_session() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT geschaeftsjahr, importiert_am FROM jahresabschluss_daten")
-        importiert = {row[0]: row[1] for row in cursor.fetchall()}
+        cursor.execute("SELECT geschaeftsjahr, gesellschaft, importiert_am FROM jahresabschluss_daten")
+        importiert = {(row[0], row[1]): row[2] for row in cursor.fetchall()}
 
     for eintrag in ergebnis:
-        if eintrag['geschaeftsjahr'] in importiert:
+        key = (eintrag['geschaeftsjahr'], eintrag.get('gesellschaft', 'autohaus'))
+        if key in importiert:
             eintrag['importiert'] = True
-            eintrag['importiert_am'] = str(importiert[eintrag['geschaeftsjahr']])
+            eintrag['importiert_am'] = str(importiert[key])
 
     return sorted(ergebnis, key=lambda x: x['geschaeftsjahr'], reverse=True)
 
@@ -447,7 +491,7 @@ def import_alle_jahresabschluesse(importiert_von: str = 'system') -> list:
 
     for ja in verfuegbar:
         if not ja['importiert']:
-            result = import_jahresabschluss(ja['pfad'], importiert_von)
+            result = import_jahresabschluss(ja['pfad'], gesellschaft=ja.get('gesellschaft', 'autohaus'), importiert_von=importiert_von)
             ergebnisse.append(result)
 
     return ergebnisse
