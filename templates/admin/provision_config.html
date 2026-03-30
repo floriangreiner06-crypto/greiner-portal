@@ -150,6 +150,11 @@
                                 <label class="form-check-label" for="edit-use-zielpraemie">Zielprämie (NW)</label>
                             </div>
                             <small class="text-muted">Ziel aus Verkäufer-Zielplanung; Prämie bei Zielerreichung + Übererfüllung.</small>
+                            <div class="form-check ms-4 mt-1" id="kumuliert-wrapper" style="display:none;">
+                                <input class="form-check-input" type="checkbox" id="edit-use-kumuliert" name="use_kumuliert">
+                                <label class="form-check-label" for="edit-use-kumuliert">Kumulierte Zielerreichung</label>
+                                <br><small class="text-muted">Monatsziel muss kumuliert (Jan bis aktueller Monat) erreicht sein.</small>
+                            </div>
                         </div>
                         <div class="col-md-4 mb-2">
                             <label class="form-label">Zielerreichung €</label>
@@ -331,6 +336,13 @@
         return div.innerHTML;
     }
 
+    function toggleKumuliert() {
+        var show = document.getElementById('edit-use-zielpraemie').checked;
+        document.getElementById('kumuliert-wrapper').style.display = show ? 'block' : 'none';
+        if (!show) document.getElementById('edit-use-kumuliert').checked = false;
+    }
+    document.getElementById('edit-use-zielpraemie').addEventListener('change', toggleKumuliert);
+
     function openEdit(id) {
         if (id) {
             modalEditTitle.textContent = 'Provisionsart bearbeiten';
@@ -374,6 +386,8 @@
             if (selAbzug) selAbzug.value = 'minus';
             if (selKomp) selKomp.value = 'plus';
             document.getElementById('edit-use-zielpraemie').checked = false;
+            document.getElementById('edit-use-kumuliert').checked = false;
+            toggleKumuliert();
             document.getElementById('edit-zielerreichung-betrag').value = '';
             document.getElementById('edit-zielpraemie-fallback').value = '';
             document.getElementById('edit-zielpraemie-basis').value = 'auslieferung';
@@ -407,6 +421,8 @@
         document.getElementById('edit-zielerreichung-betrag').value = item.zielerreichung_betrag != null ? item.zielerreichung_betrag : '';
         document.getElementById('edit-zielpraemie-fallback').value = item.zielpraemie_fallback_ziel != null ? item.zielpraemie_fallback_ziel : '';
         document.getElementById('edit-zielpraemie-basis').value = item.zielpraemie_basis || 'auslieferung';
+        document.getElementById('edit-use-kumuliert').checked = !!item.use_kumuliert;
+        toggleKumuliert();
         document.getElementById('edit-memo-p1-kategorie').value = item.memo_p1_kategorie || '';
         var db2Section = document.getElementById('db2-section');
         if (db2Section) db2Section.style.display = (item.kategorie === 'IV_gw_bestand') ? 'block' : 'none';
@@ -429,6 +445,7 @@
             gw_bestand_operator_komponenten: (document.getElementById('edit-gw-operator-komponenten') || {}).value || 'plus',
             gueltig_bis: document.getElementById('edit-gueltig-bis').value.trim() || null,
             use_zielpraemie: document.getElementById('edit-use-zielpraemie').checked,
+            use_kumuliert: document.getElementById('edit-use-kumuliert').checked,
             zielerreichung_betrag: document.getElementById('edit-zielerreichung-betrag').value.trim() || null,
             zielpraemie_fallback_ziel: document.getElementById('edit-zielpraemie-fallback').value.trim() || null,
             zielpraemie_basis: document.getElementById('edit-zielpraemie-basis').value || 'auslieferung',
