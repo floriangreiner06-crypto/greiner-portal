@@ -768,7 +768,7 @@
                 html += '<table class="prov-table">';
                 html += '<thead><tr>';
                 html += '<th>Modell</th><th>Käufer</th>';
-                if (isKatIV) html += '<th>Einkäufer</th><th>Vorbesitzer</th>';
+                if (isKatIV) html += '<th>Vorbesitzer</th><th>Einkäufer</th>';
                 html += '<th>Rg.Nr.</th><th class="text-end">Bemessungsgrdl.</th><th class="text-end">Provision</th>';
                 if (pvEditable) html += '<th style="width:60px;"></th>';
                 html += '</tr></thead><tbody>';
@@ -785,7 +785,7 @@
                     html += '<tr>';
                     html += '<td>' + escapeHtml(p.modell || '--') + '</td>';
                     html += '<td>' + escapeHtml(p.kaeufer_name || '--') + '</td>';
-                    if (isKatIV) html += '<td>' + escapeHtml(p.einkaeufer_name || '--') + '</td><td>' + escapeHtml(p.vorbesitzer_name || '--') + '</td>';
+                    if (isKatIV) html += '<td>' + escapeHtml(p.vorbesitzer_name || '--') + '</td><td>' + escapeHtml(p.einkaeufer_name || '--') + '</td>';
                     html += '<td>' + rgHtml + '</td>';
                     html += '<td class="text-end text-nowrap">' + bemGrdl + '</td>';
                     html += '<td class="text-end text-nowrap fw-semibold">' + provFinal + '</td>';
