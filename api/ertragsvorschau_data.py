@@ -172,15 +172,15 @@ def get_guv_daten(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') ->
             monate.append(m)
 
     # Unvollständigen letzten Monat erkennen
-    # Wenn Personalaufwand des letzten Monats < 50% des Ø der Vormonate → unvollständig
+    # Regel: Wenn der letzte Datenmonat = aktueller Kalendermonat → immer unvollständig
+    # (Lohn/Gehalt wird erst zum Monatsende/Anfang nächster Monat gebucht)
     # Unvollständiger Monat wird in der Tabelle ANGEZEIGT aber aus der KUMULIERUNG AUSGESCHLOSSEN
-    if len(monate) >= 2:
-        vormonate = monate[:-1]
+    if monate:
         letzter = monate[-1]
-        avg_personal = sum(abs(m.get('personal', 0)) for m in vormonate) / len(vormonate)
-        if avg_personal > 0 and abs(letzter.get('personal', 0)) < avg_personal * 0.5:
+        heute = date.today()
+        if letzter['jahr'] == heute.year and letzter['monat'] == heute.month:
             monate[-1]['unvollstaendig'] = True
-            logger.info(f"  Monat {letzter['label']} als unvollständig markiert (Personal {letzter['personal']} vs. Ø {round(avg_personal)}) — nicht in Kumulierung")
+            logger.info(f"  Monat {letzter['label']} als unvollständig markiert (laufender Monat) — nicht in Kumulierung")
 
     # Kumuliert: NUR abgeschlossene Monate (ohne unvollständigen letzten Monat)
     kum_felder = ['erloese', 'we', 'rohertrag', 'personal', 'sonst_aufwand', 'ebit', 'zinsen', 'ebt',
