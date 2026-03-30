@@ -151,19 +151,19 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     def summary_row(accent_color, title, stueck, bezeichnung, provision):
         """Kompakte Kategorie-Zeile mit farbigem Akzent links."""
         data = [[
-            Paragraph('', lbl),  # Akzent-Platzhalter
             Paragraph(f'<b>{title}</b>', lbl_b),
             Paragraph(f'{stueck} Stk.', lbl),
             Paragraph(bezeichnung, lbl),
             Paragraph(_fmt_eur(provision), val_r),
         ]]
-        t = Table(data, colWidths=[3 * mm, 5.5 * cm, 1.8 * cm, 5 * cm, 4 * cm])
+        t = Table(data, colWidths=[5.5 * cm, 2 * cm, 5.5 * cm, 3.5 * cm])
         t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, 0), accent_color),
+            ('LINEBEFORE', (0, 0), (0, 0), 3, accent_color),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 7),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
-            ('LINEBELOW', (1, 0), (-1, 0), 0.5, BORDER),
+            ('LEFTPADDING', (0, 0), (0, 0), 8),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.5, BORDER),
         ]))
         return t, float(provision) if provision else 0
 
