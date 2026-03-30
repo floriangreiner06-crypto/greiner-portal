@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Ertragsvorschau — JA-Import{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-badge-imported { background: #d1fae5; color: #065f46; font-size: .78rem; border-radius: 12px; padding: 2px 10px; }
+    .status-badge-pending  { background: #fef9c3; color: #713f12; font-size: .78rem; border-radius: 12px; padding: 2px 10px; }
+    .ja-table th { background: #f1f5f9; font-weight: 600; white-space: nowrap; }
+    .ja-table td { white-space: nowrap; vertical-align: middle; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width: 960px;">
+
+    <!-- Header -->
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1 class="h2 mb-1">
+                <i class="bi bi-upload me-2 text-secondary"></i>Ertragsvorschau — JA-Import
+            </h1>
+            <p class="text-muted mb-0">Jahresabschluss-PDFs einlesen und in die Datenbank importieren.</p>
+        </div>
+        <div class="col-auto">
+            <a href="/controlling/ertragsvorschau/" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-arrow-left me-1"></i>Zurück zum Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Alert -->
+    <div id="importAlert" class="d-none mb-3"></div>
+
+    <!-- Alle importieren -->
+    <div class="card mb-4">
+        <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+                <h6 class="mb-1 fw-semibold">Alle verfügbaren JAs importieren</h6>
+                <p class="text-muted small mb-0">Importiert alle noch nicht importierten Jahresabschluss-PDFs in einem Schritt.</p>
+            </div>
+            <button class="btn btn-primary" id="btnImportAlle" onclick="importAlle()">
+                <i class="bi bi-cloud-upload me-1"></i>Alle importieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="tableLoading" class="text-center py-4">
+        <div class="spinner-border text-secondary" role="status"></div>
+        <div class="text-muted mt-2">Lade verfügbare Jahresabschlüsse…</div>
+    </div>
+
+    <!-- JA-Tabelle -->
+    <div id="jaTableContainer" class="d-none">
+        <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <span class="fw-semibold">Verfügbare Jahresabschlüsse</span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="ladeListe()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover ja-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>GJ</th>
+                            <th>Dateiname</th>
+                            <th>Status</th>
+                            <th>Importiert am</th>
+                            <th>Importiert von</th>
+                            <th class="text-end">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jaTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+        <p class="text-muted small mt-2" id="jaCount"></p>
+    </div>
+
+    <!-- Empty state -->
+    <div id="jaEmpty" class="d-none">
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>Keine Jahresabschluss-PDFs im Import-Verzeichnis gefunden.
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function ladeListe() {
+    document.getElementById('tableLoading').classList.remove('d-none');
+    document.getElementById('jaTableContainer').classList.add('d-none');
+    document.getElementById('jaEmpty').classList.add('d-none');
+
+    try {
+        const resp = await fetch('/api/ertragsvorschau/jahresabschluss/verfuegbar');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const daten = await resp.json();
+
+        if (!daten || daten.length === 0) {
+            document.getElementById('jaEmpty').classList.remove('d-none');
+            return;
+        }
+
+        const body = document.getElementById('jaTableBody');
+        let html = '';
+        daten.forEach(ja => {
+            const status = ja.importiert
+                ? '<span class="status-badge-imported"><i class="bi bi-check-circle me-1"></i>Importiert</span>'
+                : '<span class="status-badge-pending"><i class="bi bi-clock me-1"></i>Nicht importiert</span>';
+            const importiertAm = ja.importiert_am ? new Date(ja.importiert_am).toLocaleString('de-DE') : '—';
+            const importiertVon = ja.importiert_von || '—';
+            const btnDisabled = ja.importiert ? 'disabled' : '';
+            const btnVariant = ja.importiert ? 'outline-secondary' : 'outline-primary';
+            const dateiname = ja.pfad ? ja.pfad.split('/').pop() : '—';
+
+            html += `<tr>
+                <td><strong>${ja.geschaeftsjahr || '—'}</strong></td>
+                <td class="text-muted small" title="${ja.pfad || ''}">${dateiname}</td>
+                <td>${status}</td>
+                <td class="text-muted small">${importiertAm}</td>
+                <td class="text-muted small">${importiertVon}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-${btnVariant}" ${btnDisabled}
+                        onclick="importEinzeln(${JSON.stringify(ja.pfad)}, this)">
+                        <i class="bi bi-upload me-1"></i>Importieren
+                    </button>
+                </td>
+            </tr>`;
+        });
+        body.innerHTML = html;
+
+        const count = daten.length;
+        const imported = daten.filter(j => j.importiert).length;
+        document.getElementById('jaCount').textContent =
+            `${count} JA gefunden — ${imported} importiert, ${count - imported} ausstehend.`;
+
+        document.getElementById('jaTableContainer').classList.remove('d-none');
+    } catch(e) {
+        zeigeAlert('danger', 'Fehler beim Laden der Liste: ' + e.message);
+    } finally {
+        document.getElementById('tableLoading').classList.add('d-none');
+    }
+}
+
+async function importEinzeln(pfad, btn) {
+    if (!pfad) return;
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importiere…';
+
+    try {
+        const resp = await fetch('/api/ertragsvorschau/jahresabschluss/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pfad })
+        });
+        const result = await resp.json();
+        if (!resp.ok || result.error) {
+            throw new Error(result.error || 'Unbekannter Fehler');
+        }
+        zeigeAlert('success',
+            `<i class="bi bi-check-circle me-2"></i>Import erfolgreich: <strong>${result.geschaeftsjahr || pfad}</strong>` +
+            (result.hinweis ? ` — ${result.hinweis}` : ''));
+        await ladeListe();
+    } catch(e) {
+        zeigeAlert('danger', '<i class="bi bi-exclamation-triangle me-2"></i>Fehler: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+    }
+}
+
+async function importAlle() {
+    const btn = document.getElementById('btnImportAlle');
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importiere alle…';
+
+    try {
+        const resp = await fetch('/api/ertragsvorschau/jahresabschluss/import-alle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const results = await resp.json();
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+        const ok  = Array.isArray(results) ? results.filter(r => !r.error).length : 0;
+        const err = Array.isArray(results) ? results.filter(r =>  r.error).length : 0;
+        let msg = `<i class="bi bi-cloud-check me-2"></i>Alle importiert: <strong>${ok} erfolgreich</strong>`;
+        if (err) msg += `, <strong class="text-danger">${err} Fehler</strong>`;
+        if (Array.isArray(results) && results.length === 0) msg = '<i class="bi bi-info-circle me-2"></i>Keine neuen JAs zu importieren.';
+        zeigeAlert(err ? 'warning' : 'success', msg);
+        await ladeListe();
+    } catch(e) {
+        zeigeAlert('danger', '<i class="bi bi-exclamation-triangle me-2"></i>Fehler: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+    }
+}
+
+function zeigeAlert(type, msg) {
+    const el = document.getElementById('importAlert');
+    el.className = `alert alert-${type}`;
+    el.innerHTML = msg;
+    el.classList.remove('d-none');
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => { el.classList.add('d-none'); }, 8000);
+}
+
+document.addEventListener('DOMContentLoaded', ladeListe);
+</script>
+{% endblock %}

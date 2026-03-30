@@ -1,0 +1,845 @@
+{% extends "base.html" %}
+
+{% block title %}Ertragsvorschau{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* KPI Cards */
+    .kpi-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        border-left: 4px solid;
+        border-radius: 6px;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15) !important;
+    }
+    .kpi-umsatz  { border-left-color: #16a34a; }
+    .kpi-ebit    { border-left-color: #2563eb; }
+    .kpi-ek      { border-left-color: #7c3aed; }
+    .kpi-fzstueck{ border-left-color: #ea580c; }
+    .kpi-pipeline{ border-left-color: #0891b2; }
+
+    .kpi-value { font-size: 1.4rem; font-weight: 700; }
+    .kpi-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: .04em; color: #6c757d; }
+
+    /* Delta badges */
+    .delta-pos { background: #d1fae5; color: #065f46; font-size: 0.78rem; border-radius: 12px; padding: 2px 8px; }
+    .delta-neg { background: #fee2e2; color: #991b1b; font-size: 0.78rem; border-radius: 12px; padding: 2px 8px; }
+    .delta-neu { background: #e0e7ff; color: #3730a3; font-size: 0.78rem; border-radius: 12px; padding: 2px 8px; }
+
+    /* Section accordion */
+    .section-card { border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 1rem; }
+    .section-header {
+        background: #f8f9fa;
+        padding: .75rem 1.25rem;
+        cursor: pointer;
+        border-radius: 8px 8px 0 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 600;
+        user-select: none;
+    }
+    .section-header:hover { background: #e9ecef; }
+    .section-header .chevron { transition: transform .2s; }
+    .section-header.collapsed .chevron { transform: rotate(-90deg); }
+    .section-body { padding: 1rem 1.25rem; }
+
+    /* Tables */
+    .ev-table { font-size: .83rem; }
+    .ev-table th { background: #f1f5f9; font-weight: 600; white-space: nowrap; }
+    .ev-table td { white-space: nowrap; }
+    .ev-table .row-sum { background: #eff6ff; font-weight: 700; }
+    .ev-table .row-marge { color: #6c757d; font-style: italic; }
+    .ev-table .row-ebit-pos { color: #16a34a; font-weight: 700; }
+    .ev-table .row-ebit-neg { color: #dc3545; font-weight: 700; }
+    .ev-table .col-kum { background: #fefce8; font-weight: 600; }
+    .ev-table .col-vj { background: #f0fdf4; color: #6c757d; }
+
+    /* Spinner */
+    #loadingOverlay {
+        position: fixed; inset: 0; background: rgba(255,255,255,.7);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 9999;
+    }
+
+    /* Chart containers */
+    .chart-container { position: relative; height: 280px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Loading Overlay -->
+<div id="loadingOverlay">
+    <div class="text-center">
+        <div class="spinner-border text-primary" style="width:3rem;height:3rem;" role="status"></div>
+        <div class="mt-2 text-muted fw-semibold">Daten werden geladen…</div>
+    </div>
+</div>
+
+<div class="container-fluid py-4" id="mainContent" style="display:none;">
+
+    <!-- ===== HEADER ===== -->
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1 class="h2 mb-1">
+                <i class="bi bi-graph-up-arrow me-2 text-primary"></i>Ertragsvorschau
+            </h1>
+            <p class="text-muted mb-0">
+                Gesamtbild: GuV · Verkauf · Service · Finanzierung · Eigenkapital
+                <span class="badge bg-secondary ms-2" id="stichtag">—</span>
+            </p>
+        </div>
+        <div class="col-auto d-flex align-items-center gap-2">
+            <label class="fw-semibold mb-0 me-1">Geschäftsjahr:</label>
+            <select class="form-select form-select-sm" id="gjSelect" style="width:auto;">
+                <option value="2025/26">2025/26</option>
+                <option value="2024/25">2024/25</option>
+                <option value="2023/24">2023/24</option>
+                <option value="2022/23">2022/23</option>
+                <option value="2021/22">2021/22</option>
+                <option value="2020/21">2020/21</option>
+            </select>
+            <a href="/controlling/ertragsvorschau/admin" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-upload me-1"></i>Admin / JA-Import
+            </a>
+        </div>
+    </div>
+
+    <!-- ===== ERROR ALERT ===== -->
+    <div id="errorAlert" class="alert alert-danger d-none" role="alert"></div>
+
+    <!-- ===== KPI CARDS ===== -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md">
+            <div class="card kpi-card kpi-umsatz p-3">
+                <div class="kpi-label">Umsatz kum.</div>
+                <div class="kpi-value text-success" id="kpiUmsatz">—</div>
+                <div class="mt-1"><span id="kpiUmsatzDelta" class="delta-neu">—</span></div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="card kpi-card kpi-ebit p-3">
+                <div class="kpi-label">EBIT kum.</div>
+                <div class="kpi-value text-primary" id="kpiEbit">—</div>
+                <div class="mt-1"><span id="kpiEbitDelta" class="delta-neu">—</span></div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="card kpi-card kpi-ek p-3">
+                <div class="kpi-label">EK aktuell (Schätzung)</div>
+                <div class="kpi-value" style="color:#7c3aed;" id="kpiEk">—</div>
+                <div class="mt-1 small text-muted" id="kpiEkBasis">—</div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="card kpi-card kpi-fzstueck p-3">
+                <div class="kpi-label">Fz-Auslieferungen</div>
+                <div class="kpi-value" style="color:#ea580c;" id="kpiFzStueck">—</div>
+                <div class="mt-1"><span id="kpiFzDelta" class="delta-neu">—</span></div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="card kpi-card kpi-pipeline p-3">
+                <div class="kpi-label">Auftragsbestand</div>
+                <div class="kpi-value" style="color:#0891b2;" id="kpiPipeline">—</div>
+                <div class="mt-1 small text-muted" id="kpiPipelineDetail">—</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 1: GuV-ENTWICKLUNG ===== -->
+    <div class="section-card">
+        <div class="section-header" onclick="toggleSection('secGuv')">
+            <span><i class="bi bi-table me-2 text-primary"></i>GuV-Entwicklung</span>
+            <i class="bi bi-chevron-down chevron"></i>
+        </div>
+        <div class="section-body" id="secGuv">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover ev-table" id="tblGuv">
+                    <thead id="tblGuvHead"><tr><th>Position</th></tr></thead>
+                    <tbody id="tblGuvBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 2: FAHRZEUGVERKAUF ===== -->
+    <div class="section-card">
+        <div class="section-header collapsed" onclick="toggleSection('secVerkauf')">
+            <span><i class="bi bi-car-front me-2 text-warning"></i>Fahrzeugverkauf</span>
+            <i class="bi bi-chevron-down chevron"></i>
+        </div>
+        <div class="section-body" id="secVerkauf" style="display:none;">
+            <div class="row">
+                <div class="col-lg-7">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover ev-table" id="tblVerkauf">
+                            <thead>
+                                <tr>
+                                    <th>Monat</th>
+                                    <th class="text-end">NW</th>
+                                    <th class="text-end">GW</th>
+                                    <th class="text-end">Gesamt</th>
+                                    <th class="text-end">Umsatz</th>
+                                    <th class="text-end">DB</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tblVerkaufBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="chart-container">
+                        <canvas id="chartVerkauf"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 3: WERKSTATT & TEILE ===== -->
+    <div class="section-card">
+        <div class="section-header collapsed" onclick="toggleSection('secService')">
+            <span><i class="bi bi-wrench-adjustable me-2 text-success"></i>Werkstatt &amp; Teile</span>
+            <i class="bi bi-chevron-down chevron"></i>
+        </div>
+        <div class="section-body" id="secService" style="display:none;">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover ev-table" id="tblService">
+                    <thead>
+                        <tr>
+                            <th>Monat</th>
+                            <th class="text-end">WS Erlöse</th>
+                            <th class="text-end">WS Rohertrag</th>
+                            <th class="text-end">WS Marge</th>
+                            <th class="text-end">Teile Erlöse</th>
+                            <th class="text-end">Teile Rohertrag</th>
+                            <th class="text-end">Aufträge</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tblServiceBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 4: STANDZEITEN & FINANZIERUNG ===== -->
+    <div class="section-card">
+        <div class="section-header collapsed" onclick="toggleSection('secStandzeiten')">
+            <span><i class="bi bi-bank me-2 text-info"></i>Standzeiten &amp; Finanzierung</span>
+            <i class="bi bi-chevron-down chevron"></i>
+        </div>
+        <div class="section-body" id="secStandzeiten" style="display:none;">
+            <div class="row g-3">
+                <div class="col-lg-7">
+                    <h6 class="fw-semibold mb-2">Nach Bank</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover ev-table">
+                            <thead>
+                                <tr>
+                                    <th>Bank</th>
+                                    <th class="text-end">Anzahl</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="text-end">Ø Standzeit</th>
+                                    <th class="text-end">Zinsen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tblStandBanken"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <h6 class="fw-semibold mb-2">Standzeit-Verteilung</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover ev-table">
+                            <thead>
+                                <tr>
+                                    <th>Klasse (Tage)</th>
+                                    <th class="text-end">Anzahl</th>
+                                    <th class="text-end">Saldo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tblStandVerteilung"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 5: EIGENKAPITAL ===== -->
+    <div class="section-card">
+        <div class="section-header collapsed" onclick="toggleSection('secEk')">
+            <span><i class="bi bi-pie-chart me-2" style="color:#7c3aed;"></i>Eigenkapital</span>
+            <i class="bi bi-chevron-down chevron"></i>
+        </div>
+        <div class="section-body" id="secEk" style="display:none;">
+            <div class="row align-items-start g-3">
+                <div class="col-lg-7">
+                    <div class="chart-container">
+                        <canvas id="chartEk"></canvas>
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="card border-0 bg-light p-3">
+                        <h6 class="fw-semibold mb-3">EK-Schätzung aktuelles GJ</h6>
+                        <table class="table table-sm mb-0">
+                            <tbody id="tblEkSchaetzung"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 6: MEHRJAHRESVERGLEICH ===== -->
+    <div class="section-card">
+        <div class="section-header collapsed" onclick="toggleSection('secMehj')">
+            <span><i class="bi bi-calendar-range me-2 text-secondary"></i>Mehrjahresvergleich (Jahresabschlüsse)</span>
+            <i class="bi bi-chevron-down chevron"></i>
+        </div>
+        <div class="section-body" id="secMehj" style="display:none;">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover ev-table" id="tblMehrj">
+                    <thead id="tblMehrjHead"></thead>
+                    <tbody id="tblMehrjBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 7: PROGNOSE ===== -->
+    <div class="section-card">
+        <div class="section-header collapsed" onclick="toggleSection('secPrognose')">
+            <span><i class="bi bi-magic me-2 text-danger"></i>Prognose (lineare Hochrechnung)</span>
+            <i class="bi bi-chevron-down chevron"></i>
+        </div>
+        <div class="section-body" id="secPrognose" style="display:none;">
+            <div class="row g-3" id="prognoseCards"></div>
+        </div>
+    </div>
+
+</div><!-- /container-fluid -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+// FORMAT HELPERS
+// ============================================================
+function fmtTeur(v) {
+    if (v === null || v === undefined) return '—';
+    const t = Math.round(v / 1000);
+    return t.toLocaleString('de-DE') + ' T€';
+}
+function fmtEur(v) {
+    if (v === null || v === undefined) return '—';
+    return Math.round(v).toLocaleString('de-DE') + ' €';
+}
+function fmtPct(v) {
+    if (v === null || v === undefined) return '—';
+    return (+(+v).toFixed(1)).toLocaleString('de-DE', {minimumFractionDigits:1}) + '%';
+}
+function fmtDeltaBadge(v, pct=false) {
+    if (v === null || v === undefined) return '<span class="delta-neu">—</span>';
+    const cls = v >= 0 ? 'delta-pos' : 'delta-neg';
+    const sign = v >= 0 ? '+' : '';
+    const txt = pct ? sign + fmtPct(v) : sign + fmtTeur(v);
+    return `<span class="${cls}">${txt}</span>`;
+}
+function fmtN(v) {
+    if (v === null || v === undefined) return '—';
+    return Math.round(v).toLocaleString('de-DE');
+}
+function fmtTeurTd(v, rowClass='') {
+    if (v === null || v === undefined || v === 0) return '<td class="text-end text-muted">—</td>';
+    const cls = v > 0 ? 'text-success' : 'text-danger';
+    return `<td class="text-end ${cls} ${rowClass}">${fmtTeur(v)}</td>`;
+}
+function fmtNTd(v) {
+    if (v === null || v === undefined) return '<td class="text-end text-muted">—</td>';
+    return `<td class="text-end">${fmtN(v)}</td>`;
+}
+
+// ============================================================
+// ACCORDION
+// ============================================================
+function toggleSection(id) {
+    const body = document.getElementById(id);
+    const header = body.previousElementSibling;
+    if (body.style.display === 'none') {
+        body.style.display = '';
+        header.classList.remove('collapsed');
+    } else {
+        body.style.display = 'none';
+        header.classList.add('collapsed');
+    }
+}
+
+// ============================================================
+// CHART INSTANCES
+// ============================================================
+let chartVerkaufInst = null;
+let chartEkInst = null;
+
+// ============================================================
+// MAIN LOAD
+// ============================================================
+async function loadDaten(gj) {
+    document.getElementById('loadingOverlay').style.display = 'flex';
+    document.getElementById('mainContent').style.display = 'none';
+    document.getElementById('errorAlert').classList.add('d-none');
+    try {
+        const url = `/api/ertragsvorschau/gesamtbild?gj=${encodeURIComponent(gj)}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const d = await resp.json();
+        renderAlles(d);
+    } catch(e) {
+        document.getElementById('errorAlert').textContent = 'Fehler beim Laden: ' + e.message;
+        document.getElementById('errorAlert').classList.remove('d-none');
+    } finally {
+        document.getElementById('loadingOverlay').style.display = 'none';
+        document.getElementById('mainContent').style.display = '';
+    }
+}
+
+function renderAlles(d) {
+    // Stichtag
+    document.getElementById('stichtag').textContent = 'Stand: ' + (d.stichtag || '—');
+
+    renderKpis(d);
+    renderGuv(d.guv);
+    renderVerkauf(d.verkauf);
+    renderService(d.service);
+    renderStandzeiten(d.standzeiten);
+    renderEigenkapital(d.eigenkapital);
+    renderMehrjahresvergleich(d.mehrjahresvergleich);
+    renderPrognose(d.prognose);
+}
+
+// ============================================================
+// KPI CARDS
+// ============================================================
+function renderKpis(d) {
+    const guv = d.guv || {};
+    const kum = guv.kumuliert || {};
+    const vj = guv.vj_kumuliert || {};
+    const delta = guv.delta_vj || {};
+    const vk = d.verkauf || {};
+    const vkKum = vk.kumuliert || {};
+    const vkVj = vk.vj_kumuliert || {};
+    const ek = d.eigenkapital || {};
+
+    // Umsatz
+    document.getElementById('kpiUmsatz').textContent = fmtTeur(kum.erloese * 1000 || null);
+    const umsatzDeltaEl = document.getElementById('kpiUmsatzDelta');
+    umsatzDeltaEl.outerHTML = `<div class="mt-1">${fmtDeltaBadge(delta.erloese * 1000 || null)} ggü. VJ</div>`;
+
+    // EBIT
+    document.getElementById('kpiEbit').textContent = fmtTeur(kum.ebit * 1000 || null);
+    const ebitDeltaEl = document.getElementById('kpiEbitDelta');
+    ebitDeltaEl.outerHTML = `<div class="mt-1">${fmtDeltaBadge(delta.ebit * 1000 || null)} ggü. VJ</div>`;
+
+    // EK
+    if (ek.ek_schaetzung_teur !== null && ek.ek_schaetzung_teur !== undefined) {
+        document.getElementById('kpiEk').textContent = fmtN(ek.ek_schaetzung_teur) + ' T€';
+        document.getElementById('kpiEkBasis').textContent = 'Basis: JA ' + (ek.basis_gj || '—');
+    } else {
+        document.getElementById('kpiEk').textContent = '—';
+        document.getElementById('kpiEkBasis').textContent = 'Kein JA importiert';
+    }
+
+    // Fz-Stück
+    document.getElementById('kpiFzStueck').textContent = fmtN(vkKum.stueck) + ' Stk';
+    const fzDeltaEl = document.getElementById('kpiFzDelta');
+    const fzDelta = (vkKum.stueck || 0) - (vkVj.stueck || 0);
+    fzDeltaEl.outerHTML = `<div class="mt-1">${fmtDeltaBadge(fzDelta)} Stk ggü. VJ</div>`;
+
+    // Pipeline
+    const pipe = (vk.pipeline) || {};
+    document.getElementById('kpiPipeline').textContent = fmtN(pipe.gesamt) + ' Stk';
+    document.getElementById('kpiPipelineDetail').textContent =
+        `NW: ${pipe.nw || 0} | GW: ${pipe.gw || 0}`;
+}
+
+// ============================================================
+// SECTION 1: GuV
+// ============================================================
+function renderGuv(guv) {
+    if (!guv) return;
+    const monate = guv.monate || [];
+    const kum = guv.kumuliert || {};
+    const vj = guv.vj_kumuliert || {};
+
+    // Build header
+    const head = document.getElementById('tblGuvHead');
+    let hRow = '<tr><th>Position</th>';
+    monate.forEach(m => { hRow += `<th class="text-end">${m.label}</th>`; });
+    hRow += '<th class="text-end col-kum">Kum.</th>';
+    hRow += '<th class="text-end col-vj">VJ Kum.</th>';
+    hRow += '</tr>';
+    head.innerHTML = hRow;
+
+    // Rows definition
+    const rows = [
+        { key: 'erloese',        label: 'Erlöse',        cls: '' },
+        { key: 'we',             label: 'Wareneinsatz',   cls: '' },
+        { key: 'rohertrag',      label: 'Rohertrag',      cls: 'row-sum' },
+        { key: 'rohertrag_marge',label: 'Marge %',        cls: 'row-marge', pct: true },
+        { key: 'personal',       label: 'Personalaufwand',cls: '' },
+        { key: 'sonst_aufwand',  label: 'Sonst. Aufwand', cls: '' },
+        { key: 'ebit',           label: 'EBIT',           cls: 'row-sum', ebit: true },
+        { key: 'zinsen',         label: 'Zinsen',         cls: '' },
+        { key: 'ebt',            label: 'EBT',            cls: 'row-sum', ebit: true },
+    ];
+
+    const body = document.getElementById('tblGuvBody');
+    let html = '';
+    rows.forEach(r => {
+        let rowCls = r.cls;
+        if (r.ebit) {
+            const v = kum[r.key] || 0;
+            rowCls += v >= 0 ? ' row-ebit-pos' : ' row-ebit-neg';
+        }
+        html += `<tr class="${rowCls}"><td class="fw-semibold">${r.label}</td>`;
+        monate.forEach(m => {
+            const v = m[r.key];
+            if (r.pct) {
+                html += `<td class="text-end row-marge">${fmtPct(v)}</td>`;
+            } else {
+                html += `<td class="text-end">${fmtTeur(v * 1000)}</td>`;
+            }
+        });
+        // Kum
+        const kv = kum[r.key];
+        if (r.pct) {
+            html += `<td class="text-end col-kum row-marge">${fmtPct(kv)}</td>`;
+        } else {
+            html += `<td class="text-end col-kum">${fmtTeur(kv * 1000)}</td>`;
+        }
+        // VJ
+        const vjv = vj[r.key];
+        if (r.pct) {
+            html += `<td class="text-end col-vj">${fmtPct(vjv)}</td>`;
+        } else {
+            html += `<td class="text-end col-vj">${fmtTeur(vjv * 1000)}</td>`;
+        }
+        html += '</tr>';
+    });
+    body.innerHTML = html;
+}
+
+// ============================================================
+// SECTION 2: Fahrzeugverkauf
+// ============================================================
+function renderVerkauf(vk) {
+    if (!vk) return;
+    const aus = vk.auslieferungen || [];
+    const kum = vk.kumuliert || {};
+    const mlabels = ['','Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+
+    const body = document.getElementById('tblVerkaufBody');
+    let html = '';
+    aus.forEach(m => {
+        html += `<tr>
+            <td>${mlabels[m.monat]} ${String(m.jahr).slice(-2)}</td>
+            ${fmtNTd(m.nw)}
+            ${fmtNTd(m.gw)}
+            ${fmtNTd(m.stueck)}
+            <td class="text-end">${fmtTeur(m.umsatz_netto)}</td>
+            <td class="text-end">${fmtTeur(m.db)}</td>
+        </tr>`;
+    });
+    // Kum row
+    html += `<tr class="row-sum fw-bold">
+        <td>Kumuliert</td>
+        ${fmtNTd(kum.nw)}
+        ${fmtNTd(kum.gw)}
+        ${fmtNTd(kum.stueck)}
+        <td class="text-end">${fmtTeur(kum.umsatz_netto)}</td>
+        <td class="text-end">${fmtTeur(kum.db)}</td>
+    </tr>`;
+    body.innerHTML = html;
+
+    // Chart
+    const labels = aus.map(m => mlabels[m.monat] + ' ' + String(m.jahr).slice(-2));
+    const nwData = aus.map(m => m.nw);
+    const gwData = aus.map(m => m.gw);
+
+    if (chartVerkaufInst) chartVerkaufInst.destroy();
+    const ctx = document.getElementById('chartVerkauf').getContext('2d');
+    chartVerkaufInst = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: 'NW', data: nwData, backgroundColor: 'rgba(37,99,235,.75)', stack: 'stk' },
+                { label: 'GW', data: gwData, backgroundColor: 'rgba(234,88,12,.75)', stack: 'stk' },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'top' }, tooltip: { mode: 'index' } },
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Stück' } }
+            }
+        }
+    });
+}
+
+// ============================================================
+// SECTION 3: Service
+// ============================================================
+function renderService(svc) {
+    if (!svc) return;
+    const monate = svc.monate || [];
+    const auftraege = svc.auftraege || [];
+    const kum = svc.kumuliert || {};
+    const mlabels = ['','Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+
+    // Build lookup for Aufträge
+    const aufMap = {};
+    auftraege.forEach(a => { aufMap[`${a.jahr}-${a.monat}`] = a.auftraege; });
+
+    const body = document.getElementById('tblServiceBody');
+    let html = '';
+    monate.forEach(m => {
+        const auf = aufMap[`${m.jahr}-${m.monat}`] || '—';
+        html += `<tr>
+            <td>${mlabels[m.monat]} ${String(m.jahr).slice(-2)}</td>
+            <td class="text-end">${fmtTeur(m.ws_erloese * 1000)}</td>
+            <td class="text-end">${fmtTeur(m.ws_rohertrag * 1000)}</td>
+            <td class="text-end row-marge">${fmtPct(m.ws_marge)}</td>
+            <td class="text-end">${fmtTeur(m.teile_erloese * 1000)}</td>
+            <td class="text-end">${fmtTeur(m.teile_rohertrag * 1000)}</td>
+            <td class="text-end">${fmtN(auf)}</td>
+        </tr>`;
+    });
+    // Kum
+    html += `<tr class="row-sum fw-bold">
+        <td>Kumuliert</td>
+        <td class="text-end">${fmtTeur(kum.ws_erloese * 1000)}</td>
+        <td class="text-end">${fmtTeur(kum.ws_rohertrag * 1000)}</td>
+        <td class="text-end">—</td>
+        <td class="text-end">${fmtTeur(kum.teile_erloese * 1000)}</td>
+        <td class="text-end">${fmtTeur(kum.teile_rohertrag * 1000)}</td>
+        <td class="text-end">${fmtN(kum.auftraege)}</td>
+    </tr>`;
+    body.innerHTML = html;
+}
+
+// ============================================================
+// SECTION 4: Standzeiten
+// ============================================================
+function renderStandzeiten(stz) {
+    if (!stz) return;
+    const banken = stz.nach_bank || [];
+    const verteilung = stz.verteilung || [];
+    const gesamt = stz.gesamt || {};
+
+    // Nach Bank
+    const bodyB = document.getElementById('tblStandBanken');
+    let html = '';
+    banken.forEach(b => {
+        html += `<tr>
+            <td>${b.bank}</td>
+            ${fmtNTd(b.anzahl)}
+            <td class="text-end">${fmtEur(b.saldo)}</td>
+            <td class="text-end">${b.avg_standzeit ? b.avg_standzeit + ' Tage' : '—'}</td>
+            <td class="text-end">${fmtEur(b.zinsen)}</td>
+        </tr>`;
+    });
+    html += `<tr class="row-sum fw-bold">
+        <td>Gesamt</td>
+        ${fmtNTd(gesamt.anzahl)}
+        <td class="text-end">${fmtEur(gesamt.saldo)}</td>
+        <td class="text-end">—</td>
+        <td class="text-end">—</td>
+    </tr>`;
+    bodyB.innerHTML = html;
+
+    // Verteilung
+    const bodyV = document.getElementById('tblStandVerteilung');
+    let htmlV = '';
+    verteilung.forEach(v => {
+        htmlV += `<tr>
+            <td>${v.klasse} Tage</td>
+            ${fmtNTd(v.anzahl)}
+            <td class="text-end">${fmtEur(v.saldo)}</td>
+        </tr>`;
+    });
+    bodyV.innerHTML = htmlV;
+}
+
+// ============================================================
+// SECTION 5: Eigenkapital
+// ============================================================
+function renderEigenkapital(ek) {
+    if (!ek) return;
+    const zeitreihe = ek.zeitreihe || [];
+
+    // Schätzung-Tabelle
+    const tbody = document.getElementById('tblEkSchaetzung');
+    const ekBasisTeur = ek.ek_letzter_ja !== null ? fmtN(ek.ek_letzter_ja) + ' T€' : '—';
+    const laufTeur = ek.laufendes_ergebnis_eur !== null ?
+        (ek.laufendes_ergebnis_eur >= 0 ? '+' : '') + fmtTeur(ek.laufendes_ergebnis_eur) : '—';
+    const entnahmenTeur = ek.entnahmen_eur ? '- ' + fmtTeur(ek.entnahmen_eur) : '—';
+    const schaetzung = ek.ek_schaetzung_teur !== null ?
+        `<strong>${fmtN(ek.ek_schaetzung_teur)} T€</strong>` : '<em>—</em>';
+
+    tbody.innerHTML = `
+        <tr><td class="text-muted">EK letzter JA (${ek.basis_gj || '—'})</td><td class="text-end">${ekBasisTeur}</td></tr>
+        <tr><td class="text-muted">+ Laufendes Ergebnis</td><td class="text-end">${laufTeur}</td></tr>
+        <tr><td class="text-muted">- Entnahmen</td><td class="text-end">${entnahmenTeur}</td></tr>
+        <tr class="table-light"><td class="fw-semibold">= EK-Schätzung</td><td class="text-end">${schaetzung}</td></tr>
+    `;
+
+    // Chart
+    if (chartEkInst) chartEkInst.destroy();
+    const ctx = document.getElementById('chartEk').getContext('2d');
+    const gjs = zeitreihe.map(z => z.geschaeftsjahr);
+    const ekWerte = zeitreihe.map(z => z.eigenkapital !== null ? parseFloat(z.eigenkapital) : null);
+    chartEkInst = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: gjs,
+            datasets: [{
+                label: 'Eigenkapital (T€)',
+                data: ekWerte,
+                backgroundColor: 'rgba(124,58,237,.7)',
+                borderColor: 'rgba(124,58,237,1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: false, title: { display: true, text: 'T€' } }
+            }
+        }
+    });
+}
+
+// ============================================================
+// SECTION 6: Mehrjahresvergleich
+// ============================================================
+function renderMehrjahresvergleich(daten) {
+    if (!daten || !daten.length) {
+        document.getElementById('tblMehrjHead').innerHTML = '<tr><th>Keine JA-Daten importiert</th></tr>';
+        document.getElementById('tblMehrjBody').innerHTML = '';
+        return;
+    }
+
+    // GJs als Spalten (neuestes zuerst)
+    const gjs = daten.map(d => d.geschaeftsjahr);
+
+    const head = document.getElementById('tblMehrjHead');
+    let hRow = '<tr><th>Kennzahl</th>';
+    gjs.forEach(gj => { hRow += `<th class="text-end">${gj}</th>`; });
+    hRow += '</tr>';
+    head.innerHTML = hRow;
+
+    const kennzahlen = [
+        { key: 'bilanzsumme',        label: 'Bilanzsumme', teur: true },
+        { key: 'eigenkapital',        label: 'Eigenkapital', teur: true },
+        { key: 'ek_quote',            label: 'EK-Quote', pct: true },
+        { key: 'umsatz',              label: 'Umsatz', teur: true },
+        { key: 'rohertrag_pct',       label: 'Rohertrag %', pct: true },
+        { key: 'personalaufwand',     label: 'Personalaufwand', teur: true },
+        { key: 'abschreibungen',      label: 'Abschreibungen', teur: true },
+        { key: 'zinsergebnis',        label: 'Zinsergebnis', teur: true },
+        { key: 'betriebsergebnis',    label: 'Betriebsergebnis', teur: true },
+        { key: 'jahresergebnis',      label: 'Jahresergebnis', teur: true },
+        { key: 'cashflow_geschaeft',  label: 'CF Geschäft', teur: true },
+        { key: 'cashflow_invest',     label: 'CF Invest', teur: true },
+        { key: 'cashflow_finanz',     label: 'CF Finanzierung', teur: true },
+        { key: 'finanzmittel_jahresende', label: 'Finanzmittel JE', teur: true },
+        { key: 'verbindlichkeiten',   label: 'Verbindlichkeiten', teur: true },
+        { key: 'rueckstellungen',     label: 'Rückstellungen', teur: true },
+    ];
+
+    const body = document.getElementById('tblMehrjBody');
+    let html = '';
+    kennzahlen.forEach(kz => {
+        html += `<tr><td class="fw-semibold">${kz.label}</td>`;
+        daten.forEach(d => {
+            const v = d[kz.key];
+            if (v === null || v === undefined) {
+                html += '<td class="text-end text-muted">—</td>';
+            } else if (kz.pct) {
+                html += `<td class="text-end">${fmtPct(v)}</td>`;
+            } else if (kz.teur) {
+                html += `<td class="text-end">${fmtN(parseFloat(v))} T€</td>`;
+            } else {
+                html += `<td class="text-end">${v}</td>`;
+            }
+        });
+        html += '</tr>';
+    });
+    body.innerHTML = html;
+}
+
+// ============================================================
+// SECTION 7: Prognose
+// ============================================================
+function renderPrognose(prog) {
+    const container = document.getElementById('prognoseCards');
+    if (!prog || prog.hinweis) {
+        container.innerHTML = `<div class="col"><div class="alert alert-info mb-0">${prog ? prog.hinweis : 'Keine Prognosedaten'}</div></div>`;
+        return;
+    }
+
+    const karten = [
+        { label: 'Umsatz-Prognose', val: fmtTeur(prog.umsatz_prognose * 1000), icon: 'bi-graph-up', color: '#16a34a' },
+        { label: 'EBIT-Prognose',   val: fmtTeur(prog.ebit_prognose * 1000),   icon: 'bi-cash-stack', color: '#2563eb' },
+        { label: 'EBT-Prognose',    val: fmtTeur(prog.ebt_prognose * 1000),    icon: 'bi-calculator', color: '#7c3aed' },
+        { label: 'Fz-Stück-Prognose', val: fmtN(prog.fz_stueck_prognose) + ' Stk', icon: 'bi-car-front', color: '#ea580c' },
+    ];
+
+    let html = '';
+    karten.forEach(k => {
+        html += `
+        <div class="col-6 col-md-3">
+            <div class="card p-3 h-100" style="border-left: 4px solid ${k.color};">
+                <div class="text-muted small"><i class="bi ${k.icon} me-1"></i>${k.label}</div>
+                <div class="fw-bold fs-5 mt-1">${k.val}</div>
+                <div class="text-muted" style="font-size:.75rem;">Basis: ${prog.basis_monate || '?'} Monate, linear</div>
+            </div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    // Detect current GJ and pre-select
+    const gjSelect = document.getElementById('gjSelect');
+    // Determine current GJ
+    const today = new Date();
+    const yr = today.getFullYear();
+    const mo = today.getMonth() + 1; // 1-12
+    const currentGj = mo >= 9 ? `${yr}/${String(yr+1).slice(-2)}` : `${yr-1}/${String(yr).slice(-2)}`;
+    // Set select
+    let found = false;
+    Array.from(gjSelect.options).forEach(opt => {
+        if (opt.value === currentGj) { opt.selected = true; found = true; }
+    });
+    if (!found && gjSelect.options.length > 0) gjSelect.options[0].selected = true;
+
+    loadDaten(gjSelect.value);
+
+    gjSelect.addEventListener('change', () => {
+        loadDaten(gjSelect.value);
+    });
+});
+</script>
+{% endblock %}
