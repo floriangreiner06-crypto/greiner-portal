@@ -174,11 +174,11 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles, kum_d
     stueck_prov = float(lauf.get('summe_stueckpraemie') or 0)
     if kum_daten:
         if kum_daten['kum_erfuellt']:
-            ziel_stk = f"Kum. {kum_daten['kum_ist']}/{kum_daten['kum_ziel']} Stk. erfüllt"
+            ziel_stk = 'erfüllt'
             if kum_daten['monats_ueber'] > 0:
-                ziel_stk += f" / +{kum_daten['monats_ueber']} Monat"
+                ziel_stk += f" / +{kum_daten['monats_ueber']} Stk."
         else:
-            ziel_stk = f"Kum. {kum_daten['kum_ist']}/{kum_daten['kum_ziel']} Stk. nicht erfüllt"
+            ziel_stk = 'nicht erfüllt'
     else:
         if stueck_prov > 0:
             ziel_stk = f'erfüllt / {len(nw)}'
