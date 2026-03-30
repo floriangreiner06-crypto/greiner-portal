@@ -609,7 +609,11 @@ def get_dashboard_daten(monat: str) -> Dict[str, Any]:
         cur.execute("""
             SELECT id, verkaufer_id, verkaufer_name, abrechnungsmonat, status,
                    summe_kat_i, summe_kat_ii, summe_kat_iii, summe_kat_iv, summe_kat_v, summe_gesamt,
-                   vorlauf_am, pdf_vorlauf, endlauf_am, endlauf_von, belegnummer
+                   vorlauf_am, vorlauf_von, pdf_vorlauf,
+                   pruefung_am, pruefung_von,
+                   freigegeben_am, freigegeben_von,
+                   genehmigt_am, genehmigt_von,
+                   endlauf_am, endlauf_von, belegnummer
             FROM provision_laeufe WHERE abrechnungsmonat = %s ORDER BY verkaufer_name
         """, (monat,))
         laeufe = rows_to_list(cur.fetchall())

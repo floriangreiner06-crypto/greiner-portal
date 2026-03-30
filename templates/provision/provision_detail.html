@@ -972,6 +972,17 @@
         var statusEl = document.getElementById('headerStatus');
         var statusLabels = {'VORLAUF':'Vorlauf','ZUR_PRUEFUNG':'Zur Prüfung','FREIGEGEBEN':'Freigegeben','GENEHMIGT':'Genehmigt','ENDLAUF':'Endlauf'};
         statusEl.textContent = statusLabels[statusUpper] || statusUpper;
+        // Tooltip mit Zeitstempel/Wer
+        var tooltipParts = [];
+        if (l.vorlauf_am) tooltipParts.push('Vorlauf: ' + new Date(l.vorlauf_am).toLocaleString('de-DE') + (l.vorlauf_von ? ' von ' + l.vorlauf_von : ''));
+        if (l.pruefung_am) tooltipParts.push('Zur Prüfung: ' + new Date(l.pruefung_am).toLocaleString('de-DE') + (l.pruefung_von ? ' von ' + l.pruefung_von : ''));
+        if (l.freigegeben_am) tooltipParts.push('Freigegeben: ' + new Date(l.freigegeben_am).toLocaleString('de-DE') + (l.freigegeben_von ? ' von ' + l.freigegeben_von : ''));
+        if (l.genehmigt_am) tooltipParts.push('Genehmigt: ' + new Date(l.genehmigt_am).toLocaleString('de-DE') + (l.genehmigt_von ? ' von ' + l.genehmigt_von : ''));
+        if (l.endlauf_am) tooltipParts.push('Endlauf: ' + new Date(l.endlauf_am).toLocaleString('de-DE') + (l.endlauf_von ? ' von ' + l.endlauf_von : ''));
+        if (tooltipParts.length) {
+            statusEl.title = tooltipParts.join('\n');
+            statusEl.style.cursor = 'help';
+        }
         if (statusUpper === 'VORLAUF') statusEl.className = 'status-badge status-vorlauf ms-2';
         else if (statusUpper === 'ZUR_PRUEFUNG') statusEl.className = 'status-badge status-zurpruefung ms-2';
         else if (statusUpper === 'FREIGEGEBEN') statusEl.className = 'status-badge status-freigegeben ms-2';
