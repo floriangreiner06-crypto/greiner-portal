@@ -412,7 +412,8 @@ def _recalc_lauf_sums(cursor, lauf_id):
             summe_kat_v   = COALESCE((SELECT SUM(provision_verkaufer) FROM provision_zusatzleistungen WHERE lauf_id = %s), 0),
             summe_gesamt  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s), 0)
                           + COALESCE((SELECT SUM(provision_verkaufer) FROM provision_zusatzleistungen WHERE lauf_id = %s), 0)
-                          + COALESCE(summe_stueckpraemie, 0),
+                          + COALESCE(summe_stueckpraemie, 0)
+                          + COALESCE(summe_tw_praemie, 0),
             aktualisiert_am = NOW()
         WHERE id = %s
     """, (lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id))
@@ -700,6 +701,46 @@ def position_reassign_einkaeufer(pos_id):
         'neuer_einkaeufer_name': neuer_name,
         'message': f'Position an {neuer_name} (Lauf {ziel_lauf_id}) übertragen.'
     })
+
+
+# =============================================================================
+# Manuelle Praemien (Stueckpraemie, TW-Praemie)
+# =============================================================================
+
+@provision_api.route('/lauf/<int:lauf_id>/praemie', methods=['POST'])
+@login_required
+def praemie_setzen(lauf_id):
+    """
+    POST /api/provision/lauf/<id>/praemie
+    Body: { "summe_tw_praemie": 123.45 } und/oder { "summe_stueckpraemie": 200.0 }
+    Nur Vollzugriff-User. Nicht bei ENDLAUF.
+    """
+    if not _has_provision_vollzugriff():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung.'}), 403
+    data = request.get_json() or {}
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if (lauf['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Endlauf ist gesperrt.'}), 403
+        updates = {}
+        for field in ('summe_tw_praemie', 'summe_stueckpraemie'):
+            if field in data and data[field] is not None:
+                try:
+                    updates[field] = float(data[field])
+                except (TypeError, ValueError):
+                    return jsonify({'success': False, 'error': f'{field} muss eine Zahl sein.'}), 400
+        if not updates:
+            return jsonify({'success': False, 'error': 'Mindestens ein Feld erforderlich.'}), 400
+        set_parts = [f"{k} = %s" for k in updates]
+        vals = list(updates.values())
+        cur.execute(f"UPDATE provision_laeufe SET {', '.join(set_parts)} WHERE id = %s", vals + [lauf_id])
+        _recalc_lauf_sums(cur, lauf_id)
+        conn.commit()
+    return jsonify({'success': True, 'message': 'Prämie aktualisiert.'})
 
 
 # =============================================================================

@@ -1001,8 +1001,9 @@
         // Summentabelle
         var sumRows = [
             {label: 'I. Neuwagen', val: l.summe_kat_i, color: '#2563eb'},
-            {label: 'Ia. NW Zielprämie', val: l.summe_stueckpraemie, color: '#6366f1'},
+            {label: 'Ia. NW Zielprämie', val: l.summe_stueckpraemie, color: '#6366f1', field: 'summe_stueckpraemie'},
             {label: 'II. Testwagen / VFW', val: l.summe_kat_ii, color: '#7c3aed'},
+            {label: 'IIa. TW/VFW-Prämie', val: l.summe_tw_praemie, color: '#a78bfa', field: 'summe_tw_praemie'},
             {label: 'III. Gebrauchtwagen', val: l.summe_kat_iii, color: '#0891b2'},
             {label: 'IV. GW aus Bestand', val: l.summe_kat_iv, color: '#ea580c'},
             {label: 'V. Zusatzleistungen', val: l.summe_kat_v, color: '#64748b'}
@@ -1010,10 +1011,34 @@
         var sumBody = document.getElementById('summenBody');
         var sumHtml = '';
         sumRows.forEach(function(r) {
-            sumHtml += '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + r.color + ';margin-right:.5rem;"></span>' + r.label + '</td><td class="text-end text-nowrap">' + fmtEuro(r.val) + '</td></tr>';
+            var valHtml = fmtEuro(r.val);
+            if (r.field && pvEditable) {
+                valHtml += ' <button class="btn btn-sm btn-outline-primary ms-1 praemie-edit-btn" data-field="' + r.field + '" data-val="' + (Number(r.val) || 0) + '" data-label="' + r.label + '" style="padding:0 .3rem; font-size:.7rem;"><i class="bi bi-pencil"></i></button>';
+            }
+            sumHtml += '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + r.color + ';margin-right:.5rem;"></span>' + r.label + '</td><td class="text-end text-nowrap">' + valHtml + '</td></tr>';
         });
         sumHtml += '<tr style="background:#f1f5f9; font-weight:700; font-size:.95rem;"><td>Gesamt</td><td class="text-end text-nowrap">' + fmtEuro(l.summe_gesamt) + '</td></tr>';
         sumBody.innerHTML = sumHtml;
+
+        // Prämie editieren (inline)
+        document.querySelectorAll('.praemie-edit-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                var field = this.getAttribute('data-field');
+                var oldVal = this.getAttribute('data-val');
+                var label = this.getAttribute('data-label');
+                var newVal = prompt(label + ' (€):', oldVal);
+                if (newVal === null) return;
+                var numVal = parseFloat(newVal.replace(',', '.'));
+                if (isNaN(numVal)) { alert('Bitte gültige Zahl eingeben.'); return; }
+                fetch('/api/provision/lauf/' + id + '/praemie', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
+                    body: JSON.stringify(Object.fromEntries([[field, numVal]]))
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) { if (res.success) window.location.reload(); else alert(res.error || 'Fehler'); });
+            });
+        });
 
         // Workflow-Buttons
         var wfHtml = '';
