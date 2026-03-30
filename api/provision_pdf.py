@@ -284,8 +284,17 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
         kat_sum = sum(float(p.get('provision_final') or 0) for p in rows)
         kat_elements = []
         kat_elements.append(HRFlowable(width='100%', thickness=2, color=kat_color, spaceAfter=2))
-        kat_elements.append(Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge  \u2014  {_fmt_eur(kat_sum)})</font>',
-                        ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceBefore=1, spaceAfter=4)))
+        kat_hdr = Table([
+            [Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge)</font>',
+                        ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)),
+             Paragraph(f'<b>{_fmt_eur(kat_sum)}</b>', td_rb)]
+        ], colWidths=[12.5 * cm, 3 * cm])
+        kat_hdr.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        kat_elements.append(kat_hdr)
 
         table_data = [[
             Paragraph('MODELL', th), Paragraph('KÄUFER', th),
