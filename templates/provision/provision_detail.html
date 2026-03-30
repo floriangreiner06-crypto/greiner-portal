@@ -27,26 +27,13 @@
     .status-freigegeben { background: #dbeafe; color: #1e40af; }
     .status-endlauf { background: #dcfce7; color: #166534; }
 
-    /* KPIs */
-    .kpi-card {
-        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
-        overflow: hidden; position: relative; transition: box-shadow .15s;
-    }
-    .kpi-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.07); }
-    .kpi-card .kpi-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 12px 0 0 12px; }
-    .kpi-card .card-body { padding: 1rem 1.15rem 1rem 1.4rem; }
-    .kpi-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .kpi-label { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
-    .kpi-value { font-size: 1.45rem; font-weight: 700; line-height: 1.2; color: #1e293b; }
-    .kpi-sub { font-size: .75rem; color: #94a3b8; margin-top: .15rem; }
-
     /* Accordion */
     .prov-accordion .accordion-item {
         border: 1px solid #e2e8f0; border-radius: 12px !important; margin-bottom: .75rem;
         background: #fff; overflow: hidden;
     }
     .prov-accordion .accordion-button {
-        background: #fff; border: none; padding: .85rem 1.25rem; font-size: .9rem;
+        background: #fff; border: none; padding: 1rem 1.25rem; font-size: 1rem;
         font-weight: 600; color: #1e293b; box-shadow: none !important;
     }
     .prov-accordion .accordion-button:not(.collapsed) { background: #f8fafc; }
@@ -62,7 +49,7 @@
     .kat-badge {
         font-size: .72rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-left: .5rem;
     }
-    .kat-sum { margin-left: auto; padding-right: .5rem; font-size: .9rem; font-weight: 700; color: #1e293b; }
+    .kat-sum { margin-left: auto; padding-right: .5rem; font-size: 1rem; font-weight: 700; color: #1e293b; }
 
     /* Tables inside accordion */
     .prov-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .85rem; }
@@ -172,106 +159,6 @@
             <a href="/provision/pdf/{{ lauf_id }}" download class="btn-action btn-action-success ms-auto" id="btnPdfEndlauf">
                 <i class="bi bi-file-earmark-pdf"></i> PDF herunterladen
             </a>
-        </div>
-
-        <!-- KPIs -->
-        <div class="row g-3 mb-4" id="kpiRow">
-            <!-- Kat. I -->
-            <div class="col-sm-6 col-lg-2">
-                <div class="card kpi-card h-100">
-                    <div class="kpi-bar" style="background:#2563eb;"></div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                            <div class="kpi-label" style="color:#2563eb;">Kat. I - NW</div>
-                            <div class="kpi-icon" style="background:#eff6ff;">
-                                <i class="bi bi-car-front" style="color:#2563eb; font-size:1rem;"></i>
-                            </div>
-                        </div>
-                        <div class="kpi-value" id="kpiKatI">--</div>
-                        <div class="kpi-sub" id="kpiKatISub"></div>
-                    </div>
-                </div>
-            </div>
-            <!-- Kat. II -->
-            <div class="col-sm-6 col-lg-2">
-                <div class="card kpi-card h-100">
-                    <div class="kpi-bar" style="background:#7c3aed;"></div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                            <div class="kpi-label" style="color:#7c3aed;">Kat. II - TW</div>
-                            <div class="kpi-icon" style="background:#f5f3ff;">
-                                <i class="bi bi-arrow-repeat" style="color:#7c3aed; font-size:1rem;"></i>
-                            </div>
-                        </div>
-                        <div class="kpi-value" id="kpiKatII">--</div>
-                        <div class="kpi-sub" id="kpiKatIISub"></div>
-                    </div>
-                </div>
-            </div>
-            <!-- Kat. III -->
-            <div class="col-sm-6 col-lg-2">
-                <div class="card kpi-card h-100">
-                    <div class="kpi-bar" style="background:#0891b2;"></div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                            <div class="kpi-label" style="color:#0891b2;">Kat. III - GW</div>
-                            <div class="kpi-icon" style="background:#ecfeff;">
-                                <i class="bi bi-car-front-fill" style="color:#0891b2; font-size:1rem;"></i>
-                            </div>
-                        </div>
-                        <div class="kpi-value" id="kpiKatIII">--</div>
-                        <div class="kpi-sub" id="kpiKatIIISub"></div>
-                    </div>
-                </div>
-            </div>
-            <!-- Kat. IV -->
-            <div class="col-sm-6 col-lg-2">
-                <div class="card kpi-card h-100">
-                    <div class="kpi-bar" style="background:#ea580c;"></div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                            <div class="kpi-label" style="color:#ea580c;">Kat. IV - Bestand</div>
-                            <div class="kpi-icon" style="background:#fff7ed;">
-                                <i class="bi bi-box-seam" style="color:#ea580c; font-size:1rem;"></i>
-                            </div>
-                        </div>
-                        <div class="kpi-value" id="kpiKatIV">--</div>
-                        <div class="kpi-sub" id="kpiKatIVSub"></div>
-                    </div>
-                </div>
-            </div>
-            <!-- Stuckpramie -->
-            <div class="col-sm-6 col-lg-2">
-                <div class="card kpi-card h-100">
-                    <div class="kpi-bar" style="background:#ca8a04;"></div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                            <div class="kpi-label" style="color:#ca8a04;">Stueckpramie</div>
-                            <div class="kpi-icon" style="background:#fefce8;">
-                                <i class="bi bi-trophy" style="color:#ca8a04; font-size:1rem;"></i>
-                            </div>
-                        </div>
-                        <div class="kpi-value" id="kpiStueck">--</div>
-                        <div class="kpi-sub">Zielpramie NW</div>
-                    </div>
-                </div>
-            </div>
-            <!-- Gesamt -->
-            <div class="col-sm-6 col-lg-2">
-                <div class="card kpi-card h-100">
-                    <div class="kpi-bar" style="background:#16a34a;"></div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                            <div class="kpi-label" style="color:#16a34a;">Gesamt</div>
-                            <div class="kpi-icon" style="background:#f0fdf4;">
-                                <i class="bi bi-cash-stack" style="color:#16a34a; font-size:1rem;"></i>
-                            </div>
-                        </div>
-                        <div class="kpi-value" id="kpiGesamt">--</div>
-                        <div class="kpi-sub">Alle Kategorien</div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- Accordion Categories -->
@@ -450,6 +337,8 @@
     var laufData = null;
     var posData = [];
     var aktiveVkData = [];
+    var configLimits = {};  // {kategorie: {min_betrag, max_betrag}}
+    var editKategorie = ''; // Kategorie der aktuell bearbeiteten Position
 
     var MO = ['Januar','Februar','Marz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
@@ -597,14 +486,26 @@
         var satzPct = parseFloat(document.getElementById('editProvisionssatz').value) || 0;
         var satz = satzPct / 100;
         var berechnet = bemessungsgrundlage * satz;
-        document.getElementById('editCalcPreview').textContent = fmtEuro(berechnet);
-        document.getElementById('editProvisionFinal').value = berechnet.toFixed(2);
+
+        // Min/Max aus Config anwenden
+        var limits = configLimits[editKategorie] || {};
+        var clamped = berechnet;
+        if (limits.max_betrag != null && clamped > limits.max_betrag) clamped = limits.max_betrag;
+        if (limits.min_betrag != null && clamped < limits.min_betrag && clamped > 0) clamped = limits.min_betrag;
+
+        var hinweis = '';
+        if (clamped !== berechnet) {
+            hinweis = ' (begrenzt' + (limits.max_betrag != null && berechnet > limits.max_betrag ? ', Max ' + fmtEuro(limits.max_betrag) : '') + (limits.min_betrag != null && berechnet < limits.min_betrag ? ', Min ' + fmtEuro(limits.min_betrag) : '') + ')';
+        }
+        document.getElementById('editCalcPreview').innerHTML = fmtEuro(clamped) + (hinweis ? '<span style="color:#dc2626; font-size:.75rem; font-weight:400;">' + hinweis + '</span>' : '');
+        document.getElementById('editProvisionFinal').value = clamped.toFixed(2);
     }
 
     document.getElementById('editBemessungsgrundlage').addEventListener('input', recalcEditPreview);
     document.getElementById('editProvisionssatz').addEventListener('input', recalcEditPreview);
 
     function openEditModal(pos) {
+        editKategorie = pos.kategorie || '';
         document.getElementById('editPosId').value = pos.id;
         document.getElementById('editModell').textContent = pos.modell || '--';
         document.getElementById('editKaeufer').textContent = pos.kaeufer_name || '--';
@@ -619,9 +520,12 @@
         document.getElementById('editProvisionssatz').value = (satz * 100).toFixed(2);
         document.getElementById('editProvisionFinal').value = provFinal.toFixed(2);
 
-        // Calc preview
+        // Calc preview — Berechnet anzeigen, aber provision_final beibehalten
         var berechnet = bemGrdl * satz;
-        document.getElementById('editCalcPreview').textContent = fmtEuro(berechnet);
+        var limits = configLimits[editKategorie] || {};
+        var hinweis = '';
+        if (limits.max_betrag != null && provFinal > limits.max_betrag) hinweis = ' (Max ' + fmtEuro(limits.max_betrag) + ')';
+        document.getElementById('editCalcPreview').innerHTML = fmtEuro(berechnet) + (hinweis ? '<span style="color:#dc2626; font-size:.75rem; font-weight:400;">' + hinweis + '</span>' : '');
 
         // Einkaufer dropdown (only for Kat. IV)
         var einkaeuferWrap = document.getElementById('editEinkaeuferWrap');
@@ -840,6 +744,7 @@
         laufData = l;
         posData = d.positionen || [];
         aktiveVkData = d.aktive_verkaeufer || [];
+        configLimits = d.config_limits || {};
 
         var statusUpper = (l.status || '').toUpperCase();
         var pvEditable = statusUpper !== 'ENDLAUF' && pvUserCanEdit;
@@ -854,25 +759,6 @@
         if (statusUpper === 'VORLAUF') statusEl.className = 'status-badge status-vorlauf ms-2';
         else if (statusUpper === 'FREIGEGEBEN') statusEl.className = 'status-badge status-freigegeben ms-2';
         else if (statusUpper === 'ENDLAUF') statusEl.className = 'status-badge status-endlauf ms-2';
-
-        // Count vehicles per category
-        var countByKat = {};
-        posData.forEach(function(p) {
-            var k = p.kategorie || '';
-            countByKat[k] = (countByKat[k] || 0) + 1;
-        });
-
-        // KPIs
-        document.getElementById('kpiKatI').textContent = fmtEuro(l.summe_kat_i);
-        document.getElementById('kpiKatISub').textContent = (countByKat['I_neuwagen'] || 0) + ' Fahrzeuge';
-        document.getElementById('kpiKatII').textContent = fmtEuro(l.summe_kat_ii);
-        document.getElementById('kpiKatIISub').textContent = (countByKat['II_testwagen'] || 0) + ' Fahrzeuge';
-        document.getElementById('kpiKatIII').textContent = fmtEuro(l.summe_kat_iii);
-        document.getElementById('kpiKatIIISub').textContent = (countByKat['III_gebrauchtwagen'] || 0) + ' Fahrzeuge';
-        document.getElementById('kpiKatIV').textContent = fmtEuro(l.summe_kat_iv);
-        document.getElementById('kpiKatIVSub').textContent = (countByKat['IV_gw_bestand'] || 0) + ' Fahrzeuge';
-        document.getElementById('kpiStueck').textContent = fmtEuro(l.summe_stueckpraemie);
-        document.getElementById('kpiGesamt').textContent = fmtEuro(l.summe_gesamt);
 
         // Build accordion
         buildAccordion(l, posData, pvEditable);
@@ -944,11 +830,9 @@
             if (!pvUserCanPdf) document.getElementById('btnPdfEndlauf').style.display = 'none';
             // Hide lower PDF button when Endlauf has its own
             document.getElementById('btnPdfDownload').style.display = 'none';
-        } else if (pvUserCanPdf) {
-            document.getElementById('btnPdfDownload').style.display = 'inline-flex';
-        } else {
-            document.getElementById('btnPdfDownload').style.display = 'none';
         }
+        // PDF-Button nur bei Endlauf sichtbar (über btnPdfEndlauf im Endlauf-Info-Bereich)
+        document.getElementById('btnPdfDownload').style.display = 'none';
 
     })
     .catch(function(err) {

@@ -784,15 +784,16 @@ def delete_vorlauf(lauf_id: int) -> Dict[str, Any]:
 
 
 def get_aktive_verkaeufer() -> List[Dict[str, Any]]:
-    """Alle Verkäufer mit provision_aktiv=true für Einkäufer-Dropdown."""
+    """Nur tatsächliche Verkäufer (die in sales als salesman_number vorkommen) für Einkäufer-Dropdown."""
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT locosoft_id,
-                   TRIM(BOTH ' ' FROM COALESCE(TRIM(first_name), '') || ' ' || COALESCE(TRIM(last_name), '')) AS name
-            FROM employees
-            WHERE COALESCE(provision_aktiv, true) = true
-              AND locosoft_id IS NOT NULL
-            ORDER BY last_name, first_name
+            SELECT DISTINCT e.locosoft_id,
+                   TRIM(BOTH ' ' FROM COALESCE(TRIM(e.first_name), '') || ' ' || COALESCE(TRIM(e.last_name), '')) AS name
+            FROM employees e
+            WHERE COALESCE(e.provision_aktiv, true) = true
+              AND e.locosoft_id IS NOT NULL
+              AND e.locosoft_id IN (SELECT DISTINCT salesman_number FROM sales WHERE out_invoice_date >= '2024-01-01')
+            ORDER BY e.last_name, e.first_name
         """)
         return rows_to_list(cur.fetchall())

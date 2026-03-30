@@ -196,6 +196,18 @@ def lauf_detail(lauf_id):
     if _may_see_all_verkaufer():
         from api.provision_service import get_aktive_verkaeufer
         data['aktive_verkaeufer'] = get_aktive_verkaeufer()
+    # Config-Regeln (Min/Max) pro Kategorie mitliefern für Frontend-Clamping
+    monat = data['lauf'].get('abrechnungsmonat') or ''
+    if monat and len(monat) == 7:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT kategorie, min_betrag, max_betrag
+                FROM provision_config
+                WHERE gueltig_ab <= %s AND (gueltig_bis IS NULL OR gueltig_bis >= %s)
+            """, (monat + '-01', monat + '-01'))
+            cfg_rows = cur.fetchall()
+            data['config_limits'] = {r['kategorie']: {'min_betrag': float(r['min_betrag']) if r['min_betrag'] is not None else None, 'max_betrag': float(r['max_betrag']) if r['max_betrag'] is not None else None} for r in cfg_rows}
     return jsonify(data)
 
 
@@ -328,7 +340,8 @@ def position_bearbeiten(pos_id):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT p.id, p.lauf_id, l.status
+            SELECT p.id, p.lauf_id, p.kategorie, p.bemessungsgrundlage, p.provisionssatz,
+                   l.status, l.abrechnungsmonat
             FROM provision_positionen p
             JOIN provision_laeufe l ON l.id = p.lauf_id
             WHERE p.id = %s
@@ -340,13 +353,46 @@ def position_bearbeiten(pos_id):
             return jsonify({'success': False, 'error': 'Endlauf ist gesperrt – keine Änderungen möglich.'}), 403
 
         lauf_id = row['lauf_id']
+        kategorie = row['kategorie']
+        monat = row['abrechnungsmonat'] or ''
+
+        # Min/Max aus provision_config laden und auf provision_final anwenden
+        if 'provisionssatz' in updates or 'bemessungsgrundlage' in updates or 'provision_final' in updates:
+            bem = updates.get('bemessungsgrundlage', float(row['bemessungsgrundlage'] or 0))
+            satz = updates.get('provisionssatz', float(row['provisionssatz'] or 0))
+            berechnet = round(bem * satz, 2)
+
+            # Config-Limits laden
+            min_betrag = None
+            max_betrag = None
+            if monat and len(monat) == 7:
+                cur.execute("""
+                    SELECT min_betrag, max_betrag FROM provision_config
+                    WHERE kategorie = %s AND gueltig_ab <= %s
+                      AND (gueltig_bis IS NULL OR gueltig_bis >= %s)
+                    LIMIT 1
+                """, (kategorie, monat + '-01', monat + '-01'))
+                cfg = cur.fetchone()
+                if cfg:
+                    min_betrag = float(cfg['min_betrag']) if cfg['min_betrag'] is not None else None
+                    max_betrag = float(cfg['max_betrag']) if cfg['max_betrag'] is not None else None
+
+            # Clamping: provision_final auf Min/Max begrenzen
+            prov_final = updates.get('provision_final', berechnet)
+            if max_betrag is not None and prov_final > max_betrag:
+                prov_final = max_betrag
+            if min_betrag is not None and prov_final < min_betrag and prov_final > 0:
+                prov_final = min_betrag
+            updates['provision_final'] = round(prov_final, 2)
+            updates['provision_berechnet'] = berechnet
+
         set_parts = [f"{k} = %s" for k in updates]
         vals = list(updates.values())
         cur.execute(f"UPDATE provision_positionen SET {', '.join(set_parts)} WHERE id = %s", vals + [pos_id])
         _recalc_lauf_sums(cur, lauf_id)
         conn.commit()
 
-    return jsonify({'success': True, 'message': 'Position aktualisiert.'})
+    return jsonify({'success': True, 'message': 'Position aktualisiert.', 'provision_final': updates.get('provision_final')})
 
 
 @provision_api.route('/position/<int:pos_id>/loeschen', methods=['POST', 'DELETE'])
