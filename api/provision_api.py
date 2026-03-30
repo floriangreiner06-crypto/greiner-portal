@@ -727,7 +727,7 @@ def praemie_setzen(lauf_id):
         if (lauf['status'] or '').upper() == 'ENDLAUF':
             return jsonify({'success': False, 'error': 'Endlauf ist gesperrt.'}), 403
         updates = {}
-        for field in ('summe_tw_praemie', 'summe_stueckpraemie'):
+        for field in ('summe_tw_praemie', 'summe_stueckpraemie', 'tw_praemie_stueck'):
             if field in data and data[field] is not None:
                 try:
                     updates[field] = float(data[field])

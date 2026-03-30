@@ -60,7 +60,7 @@ def _lauf_daten(lauf_id: int) -> Optional[dict]:
         cur.execute("""
             SELECT id, verkaufer_id, verkaufer_name, abrechnungsmonat, status,
                    summe_kat_i, summe_kat_ii, summe_kat_iii, summe_kat_iv, summe_kat_v,
-                   summe_stueckpraemie, summe_tw_praemie, summe_gesamt, belegnummer, endlauf_am
+                   summe_stueckpraemie, summe_tw_praemie, tw_praemie_stueck, summe_gesamt, belegnummer, endlauf_am
             FROM provision_laeufe WHERE id = %s
         """, (lauf_id,))
         lauf = cur.fetchone()
@@ -187,7 +187,8 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     totals.append(tw_prov)
 
     tw_praemie = float(lauf.get('summe_tw_praemie') or 0)
-    t, _ = summary_row(ACCENT, 'IIa. TW/VFW-Prämie', len(tw), 'Prämie', tw_praemie)
+    tw_praemie_stk = int(lauf.get('tw_praemie_stueck') or 0)
+    t, _ = summary_row(ACCENT, 'IIa. TW/VFW-Prämie', f'{tw_praemie_stk} Stk.', 'Prämie', tw_praemie)
     elements.append(t)
     totals.append(tw_praemie)
 

@@ -1003,7 +1003,7 @@
             {label: 'I. Neuwagen', val: l.summe_kat_i, color: '#2563eb'},
             {label: 'Ia. NW Zielprämie', val: l.summe_stueckpraemie, color: '#6366f1', field: 'summe_stueckpraemie'},
             {label: 'II. Testwagen / VFW', val: l.summe_kat_ii, color: '#7c3aed'},
-            {label: 'IIa. TW/VFW-Prämie', val: l.summe_tw_praemie, color: '#a78bfa', field: 'summe_tw_praemie'},
+            {label: 'IIa. TW/VFW-Prämie (' + (l.tw_praemie_stueck || 0) + ' Stk.)', val: l.summe_tw_praemie, color: '#a78bfa', field: 'summe_tw_praemie', stueckField: 'tw_praemie_stueck', stueckVal: l.tw_praemie_stueck || 0},
             {label: 'III. Gebrauchtwagen', val: l.summe_kat_iii, color: '#0891b2'},
             {label: 'IV. GW aus Bestand', val: l.summe_kat_iv, color: '#ea580c'},
             {label: 'V. Zusatzleistungen', val: l.summe_kat_v, color: '#64748b'}
@@ -1013,7 +1013,7 @@
         sumRows.forEach(function(r) {
             var valHtml = fmtEuro(r.val);
             if (r.field && pvEditable) {
-                valHtml += ' <button class="btn btn-sm btn-outline-primary ms-1 praemie-edit-btn" data-field="' + r.field + '" data-val="' + (Number(r.val) || 0) + '" data-label="' + r.label + '" style="padding:0 .3rem; font-size:.7rem;"><i class="bi bi-pencil"></i></button>';
+                valHtml += ' <button class="btn btn-sm btn-outline-primary ms-1 praemie-edit-btn" data-field="' + r.field + '" data-val="' + (Number(r.val) || 0) + '" data-label="' + r.label + '"' + (r.stueckField ? ' data-stueck-field="' + r.stueckField + '" data-stueck-val="' + (r.stueckVal || 0) + '"' : '') + ' style="padding:0 .3rem; font-size:.7rem;"><i class="bi bi-pencil"></i></button>';
             }
             sumHtml += '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + r.color + ';margin-right:.5rem;"></span>' + r.label + '</td><td class="text-end text-nowrap">' + valHtml + '</td></tr>';
         });
@@ -1027,13 +1027,29 @@
                 var field = this.getAttribute('data-field');
                 var oldVal = this.getAttribute('data-val');
                 var label = this.getAttribute('data-label');
-                var newVal = prompt(label + ' (€):', oldVal);
+                var stueckField = this.getAttribute('data-stueck-field');
+                var stueckVal = this.getAttribute('data-stueck-val');
+                var payload = {};
+
+                // Stückzahl abfragen (wenn vorhanden)
+                if (stueckField) {
+                    var newStueck = prompt(label + ' — Stückzahl:', stueckVal || '0');
+                    if (newStueck === null) return;
+                    var numStueck = parseInt(newStueck);
+                    if (isNaN(numStueck)) { alert('Bitte gültige Stückzahl eingeben.'); return; }
+                    payload[stueckField] = numStueck;
+                }
+
+                // Betrag abfragen
+                var newVal = prompt(label + ' — Betrag (€):', oldVal);
                 if (newVal === null) return;
                 var numVal = parseFloat(newVal.replace(',', '.'));
                 if (isNaN(numVal)) { alert('Bitte gültige Zahl eingeben.'); return; }
+                payload[field] = numVal;
+
                 fetch('/api/provision/lauf/' + id + '/praemie', {
                     method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
-                    body: JSON.stringify(Object.fromEntries([[field, numVal]]))
+                    body: JSON.stringify(payload)
                 })
                 .then(function(r) { return r.json(); })
                 .then(function(res) { if (res.success) window.location.reload(); else alert(res.error || 'Fehler'); });

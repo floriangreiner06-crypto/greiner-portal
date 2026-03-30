@@ -660,7 +660,7 @@ def get_lauf_detail(lauf_id: int) -> Optional[Dict[str, Any]]:
         cur.execute("""
             SELECT id, verkaufer_id, verkaufer_name, abrechnungsmonat, status,
                    summe_kat_i, summe_kat_ii, summe_kat_iii, summe_kat_iv, summe_kat_v,
-                   summe_stueckpraemie, summe_tw_praemie, summe_gesamt,
+                   summe_stueckpraemie, summe_tw_praemie, tw_praemie_stueck, summe_gesamt,
                    vorlauf_am, vorlauf_von, pdf_vorlauf, pdf_endlauf,
                    pruefung_am, pruefung_von,
                    freigegeben_am, freigegeben_von,
