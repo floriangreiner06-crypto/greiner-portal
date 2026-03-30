@@ -441,13 +441,11 @@ function renderKpis(d) {
 
     // Umsatz
     document.getElementById('kpiUmsatz').textContent = fmtTeur(kum.erloese * 1000 || null);
-    const umsatzDeltaEl = document.getElementById('kpiUmsatzDelta');
-    umsatzDeltaEl.outerHTML = `<div class="mt-1">${fmtDeltaBadge(delta.erloese * 1000 || null)} ggü. VJ</div>`;
+    document.getElementById('kpiUmsatzDelta').innerHTML = `${fmtDeltaBadge(delta.erloese * 1000 || null)} ggü. VJ`;
 
     // EBIT
     document.getElementById('kpiEbit').textContent = fmtTeur(kum.ebit * 1000 || null);
-    const ebitDeltaEl = document.getElementById('kpiEbitDelta');
-    ebitDeltaEl.outerHTML = `<div class="mt-1">${fmtDeltaBadge(delta.ebit * 1000 || null)} ggü. VJ</div>`;
+    document.getElementById('kpiEbitDelta').innerHTML = `${fmtDeltaBadge(delta.ebit * 1000 || null)} ggü. VJ`;
 
     // EK
     if (ek.ek_schaetzung_teur !== null && ek.ek_schaetzung_teur !== undefined) {
@@ -460,9 +458,8 @@ function renderKpis(d) {
 
     // Fz-Stück
     document.getElementById('kpiFzStueck').textContent = fmtN(vkKum.stueck) + ' Stk';
-    const fzDeltaEl = document.getElementById('kpiFzDelta');
     const fzDelta = (vkKum.stueck || 0) - (vkVj.stueck || 0);
-    fzDeltaEl.outerHTML = `<div class="mt-1">${fmtDeltaBadge(fzDelta)} Stk ggü. VJ</div>`;
+    document.getElementById('kpiFzDelta').innerHTML = `${fmtDeltaBadge(fzDelta)} Stk ggü. VJ`;
 
     // Pipeline
     const pipe = (vk.pipeline) || {};
