@@ -171,44 +171,29 @@ def get_guv_daten(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') ->
             m['label'] = f"{monatslabels[monat]} {str(jahr)[-2:]}"
             monate.append(m)
 
-    # Unvollständigen letzten Monat erkennen und bereinigen
+    # Unvollständigen letzten Monat erkennen
     # Wenn Personalaufwand des letzten Monats < 50% des Ø der Vormonate → unvollständig
-    unvollstaendig_idx = None
+    # Unvollständiger Monat wird in der Tabelle ANGEZEIGT aber aus der KUMULIERUNG AUSGESCHLOSSEN
     if len(monate) >= 2:
         vormonate = monate[:-1]
         letzter = monate[-1]
         avg_personal = sum(abs(m.get('personal', 0)) for m in vormonate) / len(vormonate)
         if avg_personal > 0 and abs(letzter.get('personal', 0)) < avg_personal * 0.5:
-            unvollstaendig_idx = len(monate) - 1
             monate[-1]['unvollstaendig'] = True
-            # Bereinigungswerte aus Ø der letzten 3 abgeschlossenen Monate
-            basis = monate[-4:-1] if len(monate) >= 4 else vormonate
-            bereinigt = {}
-            for f in ['personal', 'sonst_aufwand']:
-                bereinigt[f] = round(sum(m.get(f, 0) for m in basis) / len(basis))
-            # Bereinigtes EBIT/EBT
-            bereinigt['ebit'] = letzter['rohertrag'] + bereinigt['personal'] + bereinigt['sonst_aufwand'] + (letzter['ebit'] - letzter['rohertrag'] - letzter['personal'] - letzter['sonst_aufwand'])
-            bereinigt['ebt'] = bereinigt['ebit'] + letzter['zinsen']
-            monate[-1]['bereinigt'] = bereinigt
-            logger.info(f"  Monat {letzter['label']} als unvollständig markiert (Personal {letzter['personal']} vs. Ø {round(avg_personal)})")
+            logger.info(f"  Monat {letzter['label']} als unvollständig markiert (Personal {letzter['personal']} vs. Ø {round(avg_personal)}) — nicht in Kumulierung")
 
-    # Kumuliert (mit bereinigten Werten für unvollständigen Monat)
+    # Kumuliert: NUR abgeschlossene Monate (ohne unvollständigen letzten Monat)
     kum_felder = ['erloese', 'we', 'rohertrag', 'personal', 'sonst_aufwand', 'ebit', 'zinsen', 'ebt',
                   'werkstatt_erloese', 'teile_erloese', 'fz_erloese', 'sonst_erloese']
 
-    def _monat_wert(m, feld):
-        """Liefert bereinigten Wert wenn Monat unvollständig, sonst Rohwert."""
-        if m.get('unvollstaendig') and 'bereinigt' in m and feld in m['bereinigt']:
-            return m['bereinigt'][feld]
-        return m.get(feld, 0)
-
-    kumuliert = {f: sum(_monat_wert(m, f) for m in monate) for f in kum_felder}
+    abgeschlossene = [m for m in monate if not m.get('unvollstaendig')]
+    kumuliert = {f: sum(m.get(f, 0) for m in abgeschlossene) for f in kum_felder}
     kumuliert['rohertrag_marge'] = round(kumuliert['rohertrag'] / kumuliert['erloese'] * 100, 1) if kumuliert['erloese'] else 0
-    kumuliert['anzahl_monate'] = len(monate)
-    kumuliert['bereinigt'] = unvollstaendig_idx is not None
+    kumuliert['anzahl_monate'] = len(abgeschlossene)
+    kumuliert['hat_unvollstaendigen_monat'] = any(m.get('unvollstaendig') for m in monate)
 
-    # Vorjahr gleicher Zeitraum
-    bisherige_monate_nummern = [m['monat'] for m in monate]
+    # Vorjahr: gleiche abgeschlossene Monate (nicht den unvollständigen)
+    bisherige_monate_nummern = [m['monat'] for m in abgeschlossene]
     vj_monate_data = []
     for jahr, monat in _gj_monate(vj):
         if monat not in bisherige_monate_nummern:
@@ -590,6 +575,24 @@ def get_eigenkapital_entwicklung(geschaeftsjahr: str = None, gesellschaft: str =
     ek_schaetzung = None
     if ek_letzter_ja is not None:
         ek_schaetzung = round(float(ek_letzter_ja) + laufendes_ergebnis / 1000 - entnahmen / 1000, 1)
+    elif gesellschaft == 'gruppe':
+        # Fallback: Gruppe-EK als Summe der Einzelgesellschaften
+        ek_ah = get_eigenkapital_entwicklung(geschaeftsjahr, gesellschaft='autohaus')
+        ek_ag = get_eigenkapital_entwicklung(geschaeftsjahr, gesellschaft='auto')
+        if ek_ah.get('ek_schaetzung_teur') is not None and ek_ag.get('ek_schaetzung_teur') is not None:
+            ek_schaetzung = round(ek_ah['ek_schaetzung_teur'] + ek_ag['ek_schaetzung_teur'], 1)
+            ek_letzter_ja_sum = (ek_ah.get('ek_letzter_ja') or 0) + (ek_ag.get('ek_letzter_ja') or 0)
+            ek_letzter_ja = ek_letzter_ja_sum
+            # Zeitreihe aus Summe beider Gesellschaften aufbauen
+            ah_zr = {z['geschaeftsjahr']: z for z in ek_ah.get('zeitreihe', [])}
+            ag_zr = {z['geschaeftsjahr']: z for z in ek_ag.get('zeitreihe', [])}
+            alle_gjs = sorted(set(list(ah_zr.keys()) + list(ag_zr.keys())))
+            zeitreihe = []
+            for gj_key in alle_gjs:
+                ek_sum = (float(ah_zr[gj_key]['eigenkapital']) if gj_key in ah_zr and ah_zr[gj_key]['eigenkapital'] else 0) + \
+                         (float(ag_zr[gj_key]['eigenkapital']) if gj_key in ag_zr and ag_zr[gj_key]['eigenkapital'] else 0)
+                zeitreihe.append({'geschaeftsjahr': gj_key, 'eigenkapital': round(ek_sum, 1), 'ek_quote': None})
+            logger.info(f"  Gruppe-EK als Summe: AH {ek_ah['ek_schaetzung_teur']} + AG {ek_ag['ek_schaetzung_teur']} = {ek_schaetzung}")
 
     return {
         'ek_letzter_ja': float(ek_letzter_ja) if ek_letzter_ja else None,
