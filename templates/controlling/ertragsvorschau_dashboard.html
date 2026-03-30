@@ -92,6 +92,11 @@
             </p>
         </div>
         <div class="col-auto d-flex align-items-center gap-2">
+            <select id="gesellschaftSelect" class="form-select form-select-sm" style="width: auto; display: inline-block; margin-right: 10px;">
+                <option value="autohaus">Autohaus Greiner (Opel/Leapmotor)</option>
+                <option value="auto">Auto Greiner (Hyundai)</option>
+                <option value="gruppe" selected>Autohaus Greiner Gruppe</option>
+            </select>
             <label class="fw-semibold mb-0 me-1">Geschäftsjahr:</label>
             <select class="form-select form-select-sm" id="gjSelect" style="width:auto;">
                 <option value="2025/26">2025/26</option>
@@ -392,7 +397,8 @@ async function loadDaten(gj) {
     document.getElementById('mainContent').style.display = 'none';
     document.getElementById('errorAlert').classList.add('d-none');
     try {
-        const url = `/api/ertragsvorschau/gesamtbild?gj=${encodeURIComponent(gj)}`;
+        const gesellschaft = document.getElementById('gesellschaftSelect').value;
+        const url = `/api/ertragsvorschau/gesamtbild?gj=${encodeURIComponent(gj)}&gesellschaft=${encodeURIComponent(gesellschaft)}`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const d = await resp.json();
@@ -838,6 +844,10 @@ document.addEventListener('DOMContentLoaded', () => {
     loadDaten(gjSelect.value);
 
     gjSelect.addEventListener('change', () => {
+        loadDaten(gjSelect.value);
+    });
+
+    document.getElementById('gesellschaftSelect').addEventListener('change', () => {
         loadDaten(gjSelect.value);
     });
 });

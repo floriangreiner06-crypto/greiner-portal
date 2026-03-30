@@ -65,6 +65,7 @@
                     <thead>
                         <tr>
                             <th>GJ</th>
+                            <th>Gesellschaft</th>
                             <th>Dateiname</th>
                             <th>Status</th>
                             <th>Importiert am</th>
@@ -108,6 +109,7 @@ async function ladeListe() {
 
         const body = document.getElementById('jaTableBody');
         let html = '';
+        const gesellschaftLabel = { autohaus: 'Autohaus Greiner', auto: 'Auto Greiner', gruppe: 'Gruppe' };
         daten.forEach(ja => {
             const status = ja.importiert
                 ? '<span class="status-badge-imported"><i class="bi bi-check-circle me-1"></i>Importiert</span>'
@@ -117,16 +119,18 @@ async function ladeListe() {
             const btnDisabled = ja.importiert ? 'disabled' : '';
             const btnVariant = ja.importiert ? 'outline-secondary' : 'outline-primary';
             const dateiname = ja.pfad ? ja.pfad.split('/').pop() : '—';
+            const gesLabel = ja.gesellschaft ? (gesellschaftLabel[ja.gesellschaft] || ja.gesellschaft) : '—';
 
             html += `<tr>
                 <td><strong>${ja.geschaeftsjahr || '—'}</strong></td>
+                <td class="text-muted small">${gesLabel}</td>
                 <td class="text-muted small" title="${ja.pfad || ''}">${dateiname}</td>
                 <td>${status}</td>
                 <td class="text-muted small">${importiertAm}</td>
                 <td class="text-muted small">${importiertVon}</td>
                 <td class="text-end">
                     <button class="btn btn-sm btn-${btnVariant}" ${btnDisabled}
-                        onclick="importEinzeln(${JSON.stringify(ja.pfad)}, this)">
+                        onclick="importEinzeln(${JSON.stringify(ja.pfad)}, ${JSON.stringify(ja.gesellschaft || 'gruppe')}, this)">
                         <i class="bi bi-upload me-1"></i>Importieren
                     </button>
                 </td>
@@ -147,7 +151,7 @@ async function ladeListe() {
     }
 }
 
-async function importEinzeln(pfad, btn) {
+async function importEinzeln(pfad, gesellschaft, btn) {
     if (!pfad) return;
     const origHtml = btn.innerHTML;
     btn.disabled = true;
@@ -157,7 +161,7 @@ async function importEinzeln(pfad, btn) {
         const resp = await fetch('/api/ertragsvorschau/jahresabschluss/import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pfad })
+            body: JSON.stringify({ pfad, gesellschaft: gesellschaft || 'gruppe' })
         });
         const result = await resp.json();
         if (!resp.ok || result.error) {
