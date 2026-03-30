@@ -27,12 +27,7 @@ TEXT_MUTED = colors.HexColor('#94a3b8')
 BG_LIGHT = colors.HexColor('#f8fafc')
 BG_HEADER = colors.HexColor('#f1f5f9')
 BORDER = colors.HexColor('#e2e8f0')
-ACCENT_NW = colors.HexColor('#2563eb')
-ACCENT_TW = colors.HexColor('#7c3aed')
-ACCENT_GW = colors.HexColor('#0891b2')
-ACCENT_BESTAND = colors.HexColor('#ea580c')
-ACCENT_ZL = colors.HexColor('#059669')
-ACCENT_STUECK = colors.HexColor('#6366f1')
+ACCENT = colors.HexColor('#2563eb')  # Einheitliche Akzentfarbe
 WHITE = colors.white
 
 MONAT_NAMEN = [
@@ -140,9 +135,9 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     elements.append(Spacer(1, 0.5 * cm))
 
     # Styles
-    lbl = ParagraphStyle('L', fontName='Helvetica', fontSize=9, textColor=TEXT, leading=12)
-    lbl_b = ParagraphStyle('LB', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)
-    val_r = ParagraphStyle('VR', fontName='Helvetica-Bold', fontSize=10, textColor=DARK, leading=13, alignment=TA_RIGHT)
+    lbl = ParagraphStyle('L', fontName='Helvetica', fontSize=9, textColor=colors.black, leading=12)
+    lbl_b = ParagraphStyle('LB', fontName='Helvetica-Bold', fontSize=9, textColor=colors.black, leading=12)
+    val_r = ParagraphStyle('VR', fontName='Helvetica-Bold', fontSize=10, textColor=colors.black, leading=13, alignment=TA_RIGHT)
 
     by_kat = {}
     for p in positionen:
@@ -172,36 +167,36 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     # Kategorien
     nw = by_kat.get('I_neuwagen', [])
     nw_prov = sum(float(p.get('provision_final') or 0) for p in nw)
-    t, _ = summary_row(ACCENT_NW, 'I. Neuwagen', len(nw), 'Verkäufe', nw_prov)
+    t, _ = summary_row(ACCENT, 'I. Neuwagen', len(nw), 'Verkäufe', nw_prov)
     elements.append(t)
     totals.append(nw_prov)
 
     stueck_prov = float(lauf.get('summe_stueckpraemie') or 0)
-    t, _ = summary_row(ACCENT_STUECK, 'Ia. Zielprämie NW', len(nw), 'Zielprämie', stueck_prov)
+    t, _ = summary_row(ACCENT, 'Ia. Zielprämie NW', len(nw), 'Zielprämie', stueck_prov)
     elements.append(t)
     totals.append(stueck_prov)
 
     tw = by_kat.get('II_testwagen', [])
     tw_prov = sum(float(p.get('provision_final') or 0) for p in tw)
-    t, _ = summary_row(ACCENT_TW, 'II. Testwagen / VFW', len(tw), 'Verkäufe', tw_prov)
+    t, _ = summary_row(ACCENT, 'II. Testwagen / VFW', len(tw), 'Verkäufe', tw_prov)
     elements.append(t)
     totals.append(tw_prov)
 
     gw = by_kat.get('III_gebrauchtwagen', [])
     gw_prov = sum(float(p.get('provision_final') or 0) for p in gw)
-    t, _ = summary_row(ACCENT_GW, 'III. Gebrauchtwagen', len(gw), 'Verkäufe', gw_prov)
+    t, _ = summary_row(ACCENT, 'III. Gebrauchtwagen', len(gw), 'Verkäufe', gw_prov)
     elements.append(t)
     totals.append(gw_prov)
 
     gwb = by_kat.get('IV_gw_bestand', [])
     gwb_prov = sum(float(p.get('provision_final') or 0) for p in gwb)
-    t, _ = summary_row(ACCENT_BESTAND, 'IV. GW aus Bestand', len(gwb), 'Bruttoertragsprovision', gwb_prov)
+    t, _ = summary_row(ACCENT, 'IV. GW aus Bestand', len(gwb), 'Bruttoertragsprovision', gwb_prov)
     elements.append(t)
     totals.append(gwb_prov)
 
     zl_total = float(lauf.get('summe_kat_v') or 0)
     zl_count = len(zusatzleistungen or [])
-    t, _ = summary_row(ACCENT_ZL, 'V. Zusatzleistungen', zl_count, 'Finanzdienstleistung', zl_total)
+    t, _ = summary_row(ACCENT, 'V. Zusatzleistungen', zl_count, 'Finanzdienstleistung', zl_total)
     elements.append(t)
     totals.append(zl_total)
 
@@ -262,21 +257,21 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
     elements.append(Spacer(1, 0.4 * cm))
 
     # Tabellen-Styles
-    th = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=7.5, textColor=TEXT_LIGHT, leading=10)
-    th_r = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=7.5, textColor=TEXT_LIGHT, leading=10, alignment=TA_RIGHT)
-    td = ParagraphStyle('TD', fontName='Helvetica', fontSize=8, textColor=TEXT, leading=10)
-    td_r = ParagraphStyle('TDR', fontName='Helvetica', fontSize=8, textColor=TEXT, leading=10, alignment=TA_RIGHT)
-    td_rb = ParagraphStyle('TDRB', fontName='Helvetica-Bold', fontSize=8, textColor=DARK, leading=10, alignment=TA_RIGHT)
+    th = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=7.5, textColor=TEXT, leading=10)
+    th_r = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=7.5, textColor=TEXT, leading=10, alignment=TA_RIGHT)
+    td = ParagraphStyle('TD', fontName='Helvetica', fontSize=8, textColor=colors.black, leading=10)
+    td_r = ParagraphStyle('TDR', fontName='Helvetica', fontSize=8, textColor=colors.black, leading=10, alignment=TA_RIGHT)
+    td_rb = ParagraphStyle('TDRB', fontName='Helvetica-Bold', fontSize=8, textColor=colors.black, leading=10, alignment=TA_RIGHT)
 
     by_kat = {}
     for p in positionen:
         by_kat.setdefault(p.get('kategorie') or 'Sonstige', []).append(p)
 
     kat_config = [
-        ('I_neuwagen', 'I. Neuwagen', ACCENT_NW),
-        ('II_testwagen', 'II. Testwagen / VFW', ACCENT_TW),
-        ('III_gebrauchtwagen', 'III. Gebrauchtwagen', ACCENT_GW),
-        ('IV_gw_bestand', 'IV. GW aus Bestand', ACCENT_BESTAND),
+        ('I_neuwagen', 'I. Neuwagen', ACCENT),
+        ('II_testwagen', 'II. Testwagen / VFW', ACCENT),
+        ('III_gebrauchtwagen', 'III. Gebrauchtwagen', ACCENT),
+        ('IV_gw_bestand', 'IV. GW aus Bestand', ACCENT),
     ]
     col_widths = [5.5 * cm, 4.5 * cm, 2.5 * cm, 3 * cm]
 
@@ -323,7 +318,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
     # V. Zusatzleistungen
     zl = zusatzleistungen or []
     if zl:
-        elements.append(HRFlowable(width='100%', thickness=2, color=ACCENT_ZL, spaceAfter=2))
+        elements.append(HRFlowable(width='100%', thickness=2, color=ACCENT, spaceAfter=2))
         elements.append(Paragraph(f'<b>V. Zusatzleistungen</b>  <font size="7" color="#94a3b8">({len(zl)} Positionen)</font>',
                         ParagraphStyle('ZH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceBefore=1, spaceAfter=4)))
 
