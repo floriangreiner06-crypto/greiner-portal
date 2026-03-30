@@ -788,7 +788,7 @@ def get_aktive_verkaeufer() -> List[Dict[str, Any]]:
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT DISTINCT e.locosoft_id,
+            SELECT e.locosoft_id,
                    TRIM(BOTH ' ' FROM COALESCE(TRIM(e.first_name), '') || ' ' || COALESCE(TRIM(e.last_name), '')) AS name
             FROM employees e
             WHERE COALESCE(e.provision_aktiv, true) = true
