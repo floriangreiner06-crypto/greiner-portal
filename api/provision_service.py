@@ -77,7 +77,8 @@ def get_provision_config_for_monat(monat: str) -> Dict[str, Dict[str, Any]]:
                        COALESCE(gw_bestand_operator_komponenten, 'plus') AS gw_bestand_operator_komponenten,
                        COALESCE(use_zielpraemie, false) AS use_zielpraemie, zielerreichung_betrag, zielpraemie_fallback_ziel,
                        COALESCE(zielpraemie_basis, 'auslieferung') AS zielpraemie_basis,
-                       memo_p1_kategorie
+                       memo_p1_kategorie,
+                       COALESCE(use_kumuliert, false) AS use_kumuliert
                 FROM provision_config
                 WHERE gueltig_ab <= %s
                   AND (gueltig_bis IS NULL OR gueltig_bis >= %s)
@@ -113,6 +114,7 @@ def get_provision_config_for_monat(monat: str) -> Dict[str, Dict[str, Any]]:
             'zielpraemie_fallback_ziel': int(r['zielpraemie_fallback_ziel']) if r.get('zielpraemie_fallback_ziel') is not None else None,
             'zielpraemie_basis': (r.get('zielpraemie_basis') or 'auslieferung').strip().lower() if isinstance(r.get('zielpraemie_basis'), str) else 'auslieferung',
             'memo_p1_kategorie': (r.get('memo_p1_kategorie') or '').strip() or None,
+            'use_kumuliert': bool(r.get('use_kumuliert')),
         }
     return by_kategorie
 
@@ -236,6 +238,88 @@ def get_nw_auftragseingang_stueck(vkb: int, monat: str) -> int:
         """, (str(year), f"{int(month):02d}", vkb))
         row = cur.fetchone()
     return int((row.get('anzahl') if hasattr(row, 'get') else row[0]) or 0)
+
+
+def get_stueck_nw_fuer_monat(vkb: int, jahr: int, monat_nr: int, basis: str = 'auslieferung') -> int:
+    """NW-Stück für VKB in einem bestimmten Monat. Basis: 'auslieferung' oder 'auftragseingang'."""
+    monat_str = f"{jahr}-{monat_nr:02d}"
+    if basis == 'auftragseingang':
+        return get_nw_auftragseingang_stueck(vkb, monat_str)
+    # Auslieferung: Zählung über out_invoice_date in sales (gleiche Logik wie in berechne_live_provision)
+    with db_session() as conn:
+        cur = conn.cursor()
+        cfg_i = get_provision_config_for_monat(monat_str).get('I_neuwagen') or {}
+        p1_target = (cfg_i.get('memo_p1_kategorie') or '').strip()
+        where_p1 = ""
+        if p1_target in ('II_testwagen', 'III_gebrauchtwagen'):
+            where_p1 = "AND UPPER(COALESCE(TRIM(s.memo), '')) <> 'P1'"
+        cur.execute(f"""
+            SELECT COUNT(*) AS anzahl FROM sales s
+            WHERE EXTRACT(YEAR FROM s.out_invoice_date) = %s
+              AND EXTRACT(MONTH FROM s.out_invoice_date) = %s
+              AND s.salesman_number = %s
+              AND (
+                    s.dealer_vehicle_type = 'N'
+                    OR (s.dealer_vehicle_type IN ('T', 'V')
+                        AND (s.first_registration_date IS NULL
+                             OR (s.out_invoice_date::date - s.first_registration_date) <= 365))
+              )
+              AND NOT EXISTS (
+                    SELECT 1 FROM sales s2
+                    WHERE s2.vin = s.vin AND s2.out_invoice_date = s.out_invoice_date
+                      AND s2.dealer_vehicle_type IN ('T', 'V') AND s.dealer_vehicle_type = 'N'
+              )
+              {where_p1}
+        """, (str(jahr), f"{monat_nr:02d}", vkb))
+        row = cur.fetchone()
+    return int((row.get('anzahl') if hasattr(row, 'get') else row[0]) or 0)
+
+
+def get_kumulierte_zielpraemie_daten(vkb: int, monat: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Kumulierte Zielprämie: Gate = kum. IST >= kum. Ziel (Jan bis Monat).
+    Übererfüllung = rein monatlich (Monats-IST - Monats-Ziel), nur wenn Gate bestanden.
+    """
+    jahr_int = int(monat[:4])
+    monat_int = int(monat[5:7])
+    basis = (config.get('zielpraemie_basis') or 'auslieferung').strip().lower()
+    fallback_ziel = int(config.get('zielpraemie_fallback_ziel') or 0)
+
+    kum_ziel = 0
+    kum_ist = 0
+    monats_ziel = 0
+    monats_ist = 0
+
+    for m in range(1, monat_int + 1):
+        ziel_m = get_nw_ziel_verkaeufer_monat(vkb, jahr_int, m) if get_nw_ziel_verkaeufer_monat else 0
+        if ziel_m == 0 and fallback_ziel:
+            ziel_m = fallback_ziel
+        ist_m = get_stueck_nw_fuer_monat(vkb, jahr_int, m, basis)
+        kum_ziel += ziel_m
+        kum_ist += ist_m
+        if m == monat_int:
+            monats_ziel = ziel_m
+            monats_ist = ist_m
+
+    gate = kum_ziel > 0 and kum_ist >= kum_ziel
+    ziel_eur = float(config.get('zielerreichung_betrag') or 0) if gate else 0.0
+    monats_ueber = max(0, monats_ist - monats_ziel) if gate else 0
+    ueber_eur_pro_stueck = float(config.get('stueck_praemie') or 0)
+    uebererfuellung_betrag = monats_ueber * ueber_eur_pro_stueck
+    stueckpraemie_gesamt = ziel_eur + uebererfuellung_betrag
+
+    return {
+        'kum_ziel': kum_ziel,
+        'kum_ist': kum_ist,
+        'kum_erfuellt': gate,
+        'monats_ziel': monats_ziel,
+        'monats_ist': monats_ist,
+        'monats_ueber': monats_ueber,
+        'zielerreichung_betrag': ziel_eur,
+        'uebererfuellung_betrag': round(uebererfuellung_betrag, 2),
+        'ueber_eur_pro_stueck': ueber_eur_pro_stueck,
+        'stueckpraemie_gesamt': round(stueckpraemie_gesamt, 2),
+    }
 
 
 def _get_float(r: Dict, key: str) -> float:
@@ -480,19 +564,28 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
     if zielpraemie_basis == 'auftragseingang':
         stueck_nw_zielpraemie = get_nw_auftragseingang_stueck(vkb, monat)
 
+    kum_daten = None  # Kumulierte Daten für Detail/PDF
+
     # Zielprämie (NW): Ziel aus Verkäufer-Zielplanung; Basis konfigurierbar (Auslieferung/Auftragseingang)
     if cfg_i.get('use_zielpraemie') and get_nw_ziel_verkaeufer_monat:
-        jahr_int = int(monat[:4])
-        monat_int = int(monat[5:7])
-        nw_ziel = get_nw_ziel_verkaeufer_monat(vkb, jahr_int, monat_int)
-        if nw_ziel == 0 and cfg_i.get('zielpraemie_fallback_ziel'):
-            nw_ziel = int(cfg_i['zielpraemie_fallback_ziel'])
-        if nw_ziel and stueck_nw_zielpraemie >= nw_ziel:
-            ziel_eur = float(cfg_i.get('zielerreichung_betrag') or 100)
-            ueber_eur = float(cfg_i.get('stueck_praemie') or 50)
-            stueck_praemie_anteil = ziel_eur + max(0, stueck_nw_zielpraemie - nw_ziel) * ueber_eur
+        if cfg_i.get('use_kumuliert'):
+            # Kumulierte Zielprämie: Gate = kum. IST >= kum. Ziel (Jan..Monat)
+            kum_daten = get_kumulierte_zielpraemie_daten(vkb, monat, cfg_i)
+            stueck_praemie_anteil = kum_daten['stueckpraemie_gesamt']
+            stueck_nw_zielpraemie = kum_daten['monats_ist']
         else:
-            stueck_praemie_anteil = 0.0
+            # Bestehende Einzel-Monats-Logik
+            jahr_int = int(monat[:4])
+            monat_int = int(monat[5:7])
+            nw_ziel = get_nw_ziel_verkaeufer_monat(vkb, jahr_int, monat_int)
+            if nw_ziel == 0 and cfg_i.get('zielpraemie_fallback_ziel'):
+                nw_ziel = int(cfg_i['zielpraemie_fallback_ziel'])
+            if nw_ziel and stueck_nw_zielpraemie >= nw_ziel:
+                ziel_eur = float(cfg_i.get('zielerreichung_betrag') or 100)
+                ueber_eur = float(cfg_i.get('stueck_praemie') or 50)
+                stueck_praemie_anteil = ziel_eur + max(0, stueck_nw_zielpraemie - nw_ziel) * ueber_eur
+            else:
+                stueck_praemie_anteil = 0.0
     else:
         stueck_praemie_anteil = (cfg_i.get('stueck_praemie') or 50) * min(stueck_nw, (cfg_i.get('stueck_max') or 15))
 
@@ -534,6 +627,7 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
             'III': cfg_iii,
             'IV': cfg_iv,
         },
+        'kum_daten': kum_daten,
     }
 
 
