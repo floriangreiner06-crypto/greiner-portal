@@ -250,7 +250,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
     elements.append(Paragraph(f'Provisionsabrechnung {monat_label}',
                     ParagraphStyle('DT', fontName='Helvetica-Bold', fontSize=13, textColor=DARK, leading=16, alignment=TA_CENTER)))
     elements.append(Paragraph(f'{vk_name} \u2014 {typ_label}',
-                    ParagraphStyle('DS', fontName='Helvetica', fontSize=9, textColor=TEXT_LIGHT, leading=12, alignment=TA_CENTER)))
+                    ParagraphStyle('DS', fontName='Helvetica', fontSize=10, textColor=colors.black, leading=13, alignment=TA_CENTER)))
     if belegnummer:
         elements.append(Paragraph(f'Belegnummer: {belegnummer}',
                         ParagraphStyle('DB', fontName='Helvetica-Bold', fontSize=9, textColor=PRIMARY, leading=12, alignment=TA_CENTER, spaceBefore=2)))
@@ -288,7 +288,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
             [Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge)</font>',
                         ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)),
              Paragraph(f'<b>Gesamt: {_fmt_eur(kat_sum)}</b>', td_rb)]
-        ], colWidths=[12.5 * cm, 3 * cm])
+        ], colWidths=[11 * cm, 5.5 * cm])
         kat_hdr.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 1),
