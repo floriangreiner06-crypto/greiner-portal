@@ -48,8 +48,12 @@ def _gj_start_ende(gj: str) -> tuple:
     return date(start, 9, 1), date(start + 1, 8, 31)
 
 
-def get_guv_daten(geschaeftsjahr: str = None) -> dict:
+def get_guv_daten(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') -> dict:
     """Monatliche GuV aus fibu_guv_monatswerte.
+
+    Args:
+        geschaeftsjahr: z.B. '2025/26' (default: aktuelles GJ)
+        gesellschaft: 'autohaus', 'auto' oder 'gruppe' (konsolidiert = autohaus + auto)
 
     Returns:
         {
@@ -78,12 +82,24 @@ def get_guv_daten(geschaeftsjahr: str = None) -> dict:
         cursor = conn.cursor()
 
         # Alle Monatswerte für aktuelles + Vorjahres-GJ
-        cursor.execute("""
-            SELECT geschaeftsjahr, monat, bereich, betrag_cent
-            FROM fibu_guv_monatswerte
-            WHERE geschaeftsjahr IN (%s, %s)
-            ORDER BY geschaeftsjahr, monat, bereich
-        """, (geschaeftsjahr, vj))
+        if gesellschaft == 'gruppe':
+            # Konsolidiert: Summe aus autohaus + auto
+            cursor.execute("""
+                SELECT geschaeftsjahr, monat, bereich, SUM(betrag_cent) as betrag_cent
+                FROM fibu_guv_monatswerte
+                WHERE geschaeftsjahr IN (%s, %s)
+                  AND gesellschaft IN ('autohaus', 'auto')
+                GROUP BY geschaeftsjahr, monat, bereich
+                ORDER BY geschaeftsjahr, monat, bereich
+            """, (geschaeftsjahr, vj))
+        else:
+            cursor.execute("""
+                SELECT geschaeftsjahr, monat, bereich, betrag_cent
+                FROM fibu_guv_monatswerte
+                WHERE geschaeftsjahr IN (%s, %s)
+                  AND gesellschaft = %s
+                ORDER BY geschaeftsjahr, monat, bereich
+            """, (geschaeftsjahr, vj, gesellschaft))
 
         rows = cursor.fetchall()
 
@@ -220,7 +236,12 @@ def get_guv_daten(geschaeftsjahr: str = None) -> dict:
 
 
 def get_verkauf_daten(geschaeftsjahr: str = None) -> dict:
-    """Fahrzeugverkauf aus Portal sales-Tabelle."""
+    """Fahrzeugverkauf aus Portal sales-Tabelle.
+
+    Hinweis: Die sales-Tabelle hat keine gesellschaft-Spalte. Fahrzeugverkäufe
+    werden auf Gruppenebene verwaltet. Die Daten zeigen daher immer das
+    Gesamtunternehmen unabhängig von einer gesellschaft-Auswahl.
+    """
     from api.db_utils import db_session
 
     if not geschaeftsjahr:
@@ -319,8 +340,16 @@ def get_verkauf_daten(geschaeftsjahr: str = None) -> dict:
     }
 
 
-def get_service_daten(geschaeftsjahr: str = None) -> dict:
-    """Werkstatt + Teile: Erlöse/Rohertrag aus FIBU + Aufträge aus Locosoft."""
+def get_service_daten(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') -> dict:
+    """Werkstatt + Teile: Erlöse/Rohertrag aus FIBU + Aufträge aus Locosoft.
+
+    Args:
+        geschaeftsjahr: z.B. '2025/26' (default: aktuelles GJ)
+        gesellschaft: 'autohaus', 'auto' oder 'gruppe' (konsolidiert = autohaus + auto)
+
+    Hinweis: Locosoft-Auftragsdaten (orders) haben keine gesellschaft-Spalte und
+    werden daher ungefiltert geladen (Gesamtunternehmen).
+    """
     from api.db_utils import db_session, get_locosoft_connection
 
     if not geschaeftsjahr:
@@ -333,12 +362,24 @@ def get_service_daten(geschaeftsjahr: str = None) -> dict:
     # FIBU-Daten (Erlöse/WE) aus Sync-Tabelle
     with db_session() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT geschaeftsjahr, monat, bereich, betrag_cent
-            FROM fibu_guv_monatswerte
-            WHERE geschaeftsjahr IN (%s, %s)
-              AND bereich IN ('werkstatt_erloese', 'teile_erloese', 'we_werkstatt', 'we_teile')
-        """, (geschaeftsjahr, vj))
+        if gesellschaft == 'gruppe':
+            # Konsolidiert: Summe aus autohaus + auto
+            cursor.execute("""
+                SELECT geschaeftsjahr, monat, bereich, SUM(betrag_cent) as betrag_cent
+                FROM fibu_guv_monatswerte
+                WHERE geschaeftsjahr IN (%s, %s)
+                  AND gesellschaft IN ('autohaus', 'auto')
+                  AND bereich IN ('werkstatt_erloese', 'teile_erloese', 'we_werkstatt', 'we_teile')
+                GROUP BY geschaeftsjahr, monat, bereich
+            """, (geschaeftsjahr, vj))
+        else:
+            cursor.execute("""
+                SELECT geschaeftsjahr, monat, bereich, betrag_cent
+                FROM fibu_guv_monatswerte
+                WHERE geschaeftsjahr IN (%s, %s)
+                  AND gesellschaft = %s
+                  AND bereich IN ('werkstatt_erloese', 'teile_erloese', 'we_werkstatt', 'we_teile')
+            """, (geschaeftsjahr, vj, gesellschaft))
         fibu_rows = cursor.fetchall()
 
     # Strukturieren
@@ -427,7 +468,12 @@ def get_service_daten(geschaeftsjahr: str = None) -> dict:
 
 
 def get_standzeiten_daten() -> dict:
-    """Standzeiten + Finanzierungsvolumen aus fahrzeugfinanzierungen."""
+    """Standzeiten + Finanzierungsvolumen aus fahrzeugfinanzierungen.
+
+    Hinweis: fahrzeugfinanzierungen hat keine gesellschaft-Spalte. Fahrzeugfinanzierungen
+    werden auf Gruppenebene verwaltet. Die Daten zeigen daher immer das
+    Gesamtunternehmen unabhängig von einer gesellschaft-Auswahl.
+    """
     from api.db_utils import db_session
 
     with db_session() as conn:
@@ -478,8 +524,13 @@ def get_standzeiten_daten() -> dict:
     }
 
 
-def get_eigenkapital_entwicklung(geschaeftsjahr: str = None) -> dict:
-    """EK-Entwicklung: Letzter JA + laufendes Ergebnis - Entnahmen."""
+def get_eigenkapital_entwicklung(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') -> dict:
+    """EK-Entwicklung: Letzter JA + laufendes Ergebnis - Entnahmen.
+
+    Args:
+        geschaeftsjahr: z.B. '2025/26' (default: aktuelles GJ)
+        gesellschaft: 'autohaus', 'auto' oder 'gruppe'
+    """
     from api.db_utils import db_session
 
     if not geschaeftsjahr:
@@ -493,8 +544,8 @@ def get_eigenkapital_entwicklung(geschaeftsjahr: str = None) -> dict:
         cursor.execute("""
             SELECT eigenkapital, ek_quote, jahresergebnis
             FROM jahresabschluss_daten
-            WHERE geschaeftsjahr = %s
-        """, (vj,))
+            WHERE geschaeftsjahr = %s AND gesellschaft = %s
+        """, (vj, gesellschaft))
         ja_row = cursor.fetchone()
 
         ek_letzter_ja = ja_row[0] if ja_row else None
@@ -502,18 +553,27 @@ def get_eigenkapital_entwicklung(geschaeftsjahr: str = None) -> dict:
         # Laufendes Ergebnis: bereinigten EBT aus GuV verwenden (unvollst. Monat korrigiert)
         pass  # wird unten aus get_guv_daten geholt
 
-    guv = get_guv_daten(geschaeftsjahr)
+    guv = get_guv_daten(geschaeftsjahr, gesellschaft=gesellschaft)
     laufendes_ergebnis = guv['kumuliert'].get('ebt', 0)
 
     with db_session() as conn:
         cursor = conn.cursor()
 
         # Entnahmen
-        cursor.execute("""
-            SELECT SUM(betrag_cent)
-            FROM fibu_guv_monatswerte
-            WHERE geschaeftsjahr = %s AND bereich = 'entnahmen'
-        """, (geschaeftsjahr,))
+        if gesellschaft == 'gruppe':
+            cursor.execute("""
+                SELECT SUM(betrag_cent)
+                FROM fibu_guv_monatswerte
+                WHERE geschaeftsjahr = %s AND bereich = 'entnahmen'
+                  AND gesellschaft IN ('autohaus', 'auto')
+            """, (geschaeftsjahr,))
+        else:
+            cursor.execute("""
+                SELECT SUM(betrag_cent)
+                FROM fibu_guv_monatswerte
+                WHERE geschaeftsjahr = %s AND bereich = 'entnahmen'
+                  AND gesellschaft = %s
+            """, (geschaeftsjahr, gesellschaft))
         ent_row = cursor.fetchone()
         entnahmen = round(abs(ent_row[0] or 0) / 100) if ent_row else 0
 
@@ -521,8 +581,9 @@ def get_eigenkapital_entwicklung(geschaeftsjahr: str = None) -> dict:
         cursor.execute("""
             SELECT geschaeftsjahr, eigenkapital, ek_quote
             FROM jahresabschluss_daten
+            WHERE gesellschaft = %s
             ORDER BY geschaeftsjahr
-        """)
+        """, (gesellschaft,))
         zeitreihe = [dict(zip(['geschaeftsjahr', 'eigenkapital', 'ek_quote'], row)) for row in cursor.fetchall()]
 
     # EK-Schätzung: EK_JA + laufendes_ergebnis - Entnahmen (in TEUR)
@@ -540,12 +601,18 @@ def get_eigenkapital_entwicklung(geschaeftsjahr: str = None) -> dict:
     }
 
 
-def get_prognose(geschaeftsjahr: str = None) -> dict:
-    """Lineare Hochrechnung auf 12 Monate."""
+def get_prognose(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') -> dict:
+    """Lineare Hochrechnung auf 12 Monate.
+
+    Args:
+        geschaeftsjahr: z.B. '2025/26' (default: aktuelles GJ)
+        gesellschaft: 'autohaus', 'auto' oder 'gruppe'
+    """
     if not geschaeftsjahr:
         geschaeftsjahr = _aktuelles_gj()
 
-    guv = get_guv_daten(geschaeftsjahr)
+    guv = get_guv_daten(geschaeftsjahr, gesellschaft=gesellschaft)
+    # Fahrzeugverkauf hat keine gesellschaft-Spalte → zeigt Gesamtunternehmen
     verkauf = get_verkauf_daten(geschaeftsjahr)
 
     anz_monate = guv['kumuliert'].get('anzahl_monate', 0)
@@ -564,8 +631,12 @@ def get_prognose(geschaeftsjahr: str = None) -> dict:
     }
 
 
-def get_mehrjahresvergleich() -> list:
-    """Alle importierten Jahresabschlüsse als Zeitreihe."""
+def get_mehrjahresvergleich(gesellschaft: str = 'autohaus') -> list:
+    """Alle importierten Jahresabschlüsse als Zeitreihe.
+
+    Args:
+        gesellschaft: 'autohaus', 'auto' oder 'gruppe'
+    """
     from api.db_utils import db_session
 
     with db_session() as conn:
@@ -577,8 +648,9 @@ def get_mehrjahresvergleich() -> list:
                    cashflow_geschaeft, cashflow_invest, cashflow_finanz,
                    finanzmittel_jahresende, verbindlichkeiten, rueckstellungen
             FROM jahresabschluss_daten
+            WHERE gesellschaft = %s
             ORDER BY geschaeftsjahr DESC
-        """)
+        """, (gesellschaft,))
         spalten = ['geschaeftsjahr', 'stichtag', 'bilanzsumme', 'eigenkapital', 'ek_quote',
                    'umsatz', 'rohertrag_pct', 'personalaufwand', 'abschreibungen',
                    'zinsergebnis', 'betriebsergebnis', 'jahresergebnis',
@@ -588,19 +660,26 @@ def get_mehrjahresvergleich() -> list:
         return [dict(zip(spalten, row)) for row in cursor.fetchall()]
 
 
-def get_gesamtbild(geschaeftsjahr: str = None) -> dict:
-    """Orchestriert alle Datenquellen zu einem Gesamtpaket (SSOT)."""
+def get_gesamtbild(geschaeftsjahr: str = None, gesellschaft: str = 'autohaus') -> dict:
+    """Orchestriert alle Datenquellen zu einem Gesamtpaket (SSOT).
+
+    Args:
+        geschaeftsjahr: z.B. '2025/26' (default: aktuelles GJ)
+        gesellschaft: 'autohaus', 'auto' oder 'gruppe'
+    """
     if not geschaeftsjahr:
         geschaeftsjahr = _aktuelles_gj()
 
     return {
         'geschaeftsjahr': geschaeftsjahr,
+        'gesellschaft': gesellschaft,
         'stichtag': str(date.today()),
-        'guv': get_guv_daten(geschaeftsjahr),
+        'guv': get_guv_daten(geschaeftsjahr, gesellschaft=gesellschaft),
+        # Fahrzeugverkauf und Standzeiten haben keine gesellschaft-Spalte → Gesamtunternehmen
         'verkauf': get_verkauf_daten(geschaeftsjahr),
-        'service': get_service_daten(geschaeftsjahr),
+        'service': get_service_daten(geschaeftsjahr, gesellschaft=gesellschaft),
         'standzeiten': get_standzeiten_daten(),
-        'eigenkapital': get_eigenkapital_entwicklung(geschaeftsjahr),
-        'prognose': get_prognose(geschaeftsjahr),
-        'mehrjahresvergleich': get_mehrjahresvergleich(),
+        'eigenkapital': get_eigenkapital_entwicklung(geschaeftsjahr, gesellschaft=gesellschaft),
+        'prognose': get_prognose(geschaeftsjahr, gesellschaft=gesellschaft),
+        'mehrjahresvergleich': get_mehrjahresvergleich(gesellschaft=gesellschaft),
     }
