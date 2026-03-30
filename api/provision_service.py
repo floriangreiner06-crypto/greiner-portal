@@ -658,7 +658,11 @@ def get_lauf_detail(lauf_id: int) -> Optional[Dict[str, Any]]:
                    summe_kat_i, summe_kat_ii, summe_kat_iii, summe_kat_iv, summe_kat_v,
                    summe_stueckpraemie, summe_gesamt,
                    vorlauf_am, vorlauf_von, pdf_vorlauf, pdf_endlauf,
-                   endlauf_am, endlauf_von, belegnummer
+                   pruefung_am, pruefung_von,
+                   freigegeben_am, freigegeben_von,
+                   genehmigt_am, genehmigt_von,
+                   endlauf_am, endlauf_von, belegnummer,
+                   einspruch_text, einspruch_von, einspruch_am
             FROM provision_laeufe WHERE id = %s
         """, (lauf_id,))
         lauf = cur.fetchone()
