@@ -280,9 +280,11 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
         if not rows:
             continue
 
-        # Kategorie-Header als farbige Linie + Text
-        elements.append(HRFlowable(width='100%', thickness=2, color=kat_color, spaceAfter=2))
-        elements.append(Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge)</font>',
+        # Kategorie-Header + Tabelle + Summe als Block (kein Seitenumbruch dazwischen)
+        kat_sum = sum(float(p.get('provision_final') or 0) for p in rows)
+        kat_elements = []
+        kat_elements.append(HRFlowable(width='100%', thickness=2, color=kat_color, spaceAfter=2))
+        kat_elements.append(Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge  \u2014  {_fmt_eur(kat_sum)})</font>',
                         ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceBefore=1, spaceAfter=4)))
 
         table_data = [[
@@ -314,8 +316,9 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
             else:
                 style_cmds.append(('BACKGROUND', (0, i), (-1, i), BG_LIGHT))
         t.setStyle(TableStyle(style_cmds))
-        elements.append(t)
-        elements.append(Spacer(1, 0.4 * cm))
+        kat_elements.append(t)
+        kat_elements.append(Spacer(1, 0.4 * cm))
+        elements.append(KeepTogether(kat_elements))
 
     # V. Zusatzleistungen
     zl = zusatzleistungen or []
