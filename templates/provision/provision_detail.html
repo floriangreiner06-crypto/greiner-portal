@@ -1205,7 +1205,7 @@
             document.getElementById('endlaufInfo').style.display = 'flex';
             document.getElementById('endlaufBelegnummer').textContent = l.belegnummer || '--';
             document.getElementById('endlaufDatum').textContent = l.endlauf_am
-                ? 'Abgerechnet am ' + new Date(l.endlauf_am).toLocaleDateString('de-DE') + (l.endlauf_von ? ' von ' + l.endlauf_von : '')
+                ? 'Abgerechnet am ' + new Date(l.endlauf_am).toLocaleDateString('de-DE') + (l.endlauf_von ? ' von ' + displayName(l.endlauf_von) : '')
                 : '';
             if (!pvUserCanPdf) document.getElementById('btnPdfEndlauf').style.display = 'none';
             // Hide lower PDF button when Endlauf has its own
