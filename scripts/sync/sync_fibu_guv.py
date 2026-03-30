@@ -68,11 +68,11 @@ SKR51_BEREICHE = [
 
 # Separate Behandlung für Zinsen (Aufwand vs. Ertrag) und Neutral
 ZINSEN_RANGE = (230000, 242999)
-NEUTRAL_RANGES = [(200000, 229999), (243000, 293999)]
+NEUTRAL_RANGES = [(200000, 229999), (243000, 299999)]  # inkl. 294xxx kalk. Verrechnungen (BWA-konform)
 ENTNAHMEN_RANGE = (190000, 193999)
 
-# Ausschluss
-KALK_RANGES = [(294000, 294999)]  # Nur kalk. Unternehmerlohn/Miete/Zinsen (sind immer 0)
+# Ausschluss: KEINE — 294xxx wird als neutral_ertrag mitgesynct (BWA zählt sie zum Neutralen Ergebnis)
+KALK_RANGES = []
 EXCLUDE_DOC_TYPE = 'A'
 
 
