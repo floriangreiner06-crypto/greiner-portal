@@ -172,7 +172,11 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     totals.append(nw_prov)
 
     stueck_prov = float(lauf.get('summe_stueckpraemie') or 0)
-    t, _ = summary_row(ACCENT, 'Ia. Zielprämie NW', len(nw), 'Zielprämie', stueck_prov)
+    if stueck_prov > 0:
+        ziel_bez = f'erfüllt / {len(nw)} Stk.'
+    else:
+        ziel_bez = 'nicht erfüllt'
+    t, _ = summary_row(ACCENT, 'Ia. Zielprämie NW', '', ziel_bez, stueck_prov)
     elements.append(t)
     totals.append(stueck_prov)
 
@@ -299,13 +303,13 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
 
         table_data = [[
             Paragraph('MODELL', th), Paragraph('KÄUFER', th),
-            Paragraph('RG.NR.', th), Paragraph('PROVISION', th_r),
+            Paragraph('BEMESSUNGSGRDL.', th_r), Paragraph('PROVISION', th_r),
         ]]
         for p in rows:
             table_data.append([
                 Paragraph((p.get('modell') or '-')[:50], td),
                 Paragraph((p.get('kaeufer_name') or '-')[:45], td),
-                Paragraph((p.get('locosoft_rg_nr') or '-')[:15], td),
+                Paragraph(_fmt_eur(p.get('bemessungsgrundlage')), td_r),
                 Paragraph(_fmt_eur(p.get('provision_final')), td_rb),
             ])
 
