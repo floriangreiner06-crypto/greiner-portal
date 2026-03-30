@@ -760,7 +760,18 @@ def get_lauf_detail(lauf_id: int) -> Optional[Dict[str, Any]]:
                             WHERE lauf_id = %s AND vin IS NOT DISTINCT FROM %s AND locosoft_rg_nr IS NOT DISTINCT FROM %s
                         """, (ename, lauf_id, p.get('vin'), p.get('locosoft_rg_nr')))
                     conn3.commit()
-    return {'lauf': lauf_d, 'positionen': positionen}
+    # Zusatzleistungen (Kat. V) laden
+    zusatzleistungen = []
+    with db_session() as conn_z:
+        cur_z = conn_z.cursor()
+        cur_z.execute("""
+            SELECT id, typ, bezeichnung, beleg_referenz, beleg_datum, provision_verkaufer, erfasst_von, erfasst_am
+            FROM provision_zusatzleistungen WHERE lauf_id = %s
+            ORDER BY beleg_datum DESC NULLS LAST, id DESC
+        """, (lauf_id,))
+        zusatzleistungen = rows_to_list(cur_z.fetchall())
+
+    return {'lauf': lauf_d, 'positionen': positionen, 'zusatzleistungen': zusatzleistungen}
 
 
 def delete_vorlauf(lauf_id: int) -> Dict[str, Any]:

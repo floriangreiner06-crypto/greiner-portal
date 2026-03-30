@@ -335,6 +335,43 @@
     </div>
 </div>
 
+<!-- Modal: Zusatzleistung hinzufügen/bearbeiten -->
+<div class="modal fade" id="zlModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content modal-edit">
+            <div class="modal-header py-2" style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                <h5 class="modal-title" style="font-size:.95rem; font-weight:700;" id="zlModalTitle">Zusatzleistung hinzufügen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="zlId" value="">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label" for="zlBank">Bank</label>
+                        <input type="text" class="form-control form-control-sm" id="zlBank" placeholder="z.B. Santander">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="zlName">Name / Beschreibung</label>
+                        <input type="text" class="form-control form-control-sm" id="zlName" placeholder="Kunde oder Bezeichnung">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="zlDatum">Datum</label>
+                        <input type="date" class="form-control form-control-sm" id="zlDatum">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="zlBetrag">Betrag (€)</label>
+                        <input type="number" step="0.01" class="form-control form-control-sm" id="zlBetrag" placeholder="0,00">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2" style="border-top:1px solid #e2e8f0;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btnZlSave"><i class="bi bi-check-lg"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 (function(){
     var id = {{ lauf_id }};
@@ -350,6 +387,7 @@
     var laufData = null;
     var posData = [];
     var aktiveVkData = [];
+    var zusatzData = [];
     var configLimits = {};  // {kategorie: {min_betrag, max_betrag}}
     var editKategorie = ''; // Kategorie der aktuell bearbeiteten Position
 
@@ -736,6 +774,49 @@
             html += '</div></div></div>';
         });
 
+        // Kat V: Zusatzleistungen
+        var zlRows = zusatzData;
+        var zlSum = lauf.summe_kat_v || 0;
+        var zlIdx = 4;
+        html += '<div class="accordion-item">';
+        html += '<h2 class="accordion-header" id="heading' + zlIdx + '">';
+        html += '<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse' + zlIdx + '">';
+        html += '<span class="kat-dot" style="background:#64748b;"></span>';
+        html += '<span>V. Zusatzleistungen</span>';
+        html += '<span class="kat-badge" style="background:#64748b22; color:#64748b;">' + zlRows.length + ' Pos.</span>';
+        html += '<span class="kat-sum">' + fmtEuro(zlSum) + '</span>';
+        html += '<span class="chevron"><i class="bi bi-chevron-right"></i></span>';
+        html += '</button></h2>';
+        html += '<div id="collapse' + zlIdx + '" class="accordion-collapse collapse" data-bs-parent="#katAccordion">';
+        html += '<div class="accordion-body">';
+        if (zlRows.length > 0) {
+            html += '<div class="table-responsive"><table class="prov-table"><thead><tr>';
+            html += '<th>Bank</th><th>Name</th><th>Datum</th><th class="text-end">Betrag</th>';
+            if (pvEditable) html += '<th style="width:80px;"></th>';
+            html += '</tr></thead><tbody>';
+            zlRows.forEach(function(z) {
+                html += '<tr>';
+                html += '<td>' + escapeHtml(z.beleg_referenz || '--') + '</td>';
+                html += '<td>' + escapeHtml(z.bezeichnung || '--') + '</td>';
+                html += '<td>' + (z.beleg_datum ? new Date(z.beleg_datum).toLocaleDateString('de-DE') : '--') + '</td>';
+                html += '<td class="text-end text-nowrap fw-semibold">' + fmtEuro(z.provision_verkaufer) + '</td>';
+                if (pvEditable) {
+                    html += '<td class="text-end text-nowrap">';
+                    html += '<button class="btn btn-sm btn-outline-primary zl-edit-btn" data-zl=\'' + JSON.stringify(z).replace(/'/g, '&#39;') + '\' title="Bearbeiten"><i class="bi bi-pencil"></i></button> ';
+                    html += '<button class="btn btn-sm btn-outline-danger zl-del-btn" data-zl-id="' + z.id + '" title="Löschen"><i class="bi bi-trash"></i></button>';
+                    html += '</td>';
+                }
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+        } else {
+            html += '<div class="empty-cat">Keine Zusatzleistungen erfasst</div>';
+        }
+        if (pvEditable) {
+            html += '<div class="p-2 text-end"><button class="btn btn-sm btn-outline-primary" id="btnZlNeu"><i class="bi bi-plus-lg"></i> Zusatzleistung hinzufügen</button></div>';
+        }
+        html += '</div></div></div>';
+
         acc.innerHTML = html;
 
         // Bind RG links
@@ -759,8 +840,80 @@
                     }
                 });
             });
+
+            // ZL: Neu
+            var btnZlNeu = acc.querySelector('#btnZlNeu');
+            if (btnZlNeu) {
+                btnZlNeu.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    openZlModal(null);
+                });
+            }
+
+            // ZL: Bearbeiten
+            acc.querySelectorAll('.zl-edit-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    try { openZlModal(JSON.parse(this.getAttribute('data-zl'))); } catch(e) {}
+                });
+            });
+
+            // ZL: Löschen
+            acc.querySelectorAll('.zl-del-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    if (!confirm('Zusatzleistung wirklich löschen?')) return;
+                    btn.disabled = true;
+                    fetch('/api/provision/zusatzleistung/' + btn.getAttribute('data-zl-id') + '/loeschen', {method:'POST', credentials:'same-origin'})
+                    .then(function(r){return r.json();})
+                    .then(function(res){ if(res.success) window.location.reload(); else { alert(res.error||'Fehler'); btn.disabled=false; }});
+                });
+            });
         }
     }
+
+    // =========================================================================
+    // Zusatzleistungen Modal
+    // =========================================================================
+    function openZlModal(zl) {
+        document.getElementById('zlId').value = zl ? zl.id : '';
+        document.getElementById('zlModalTitle').textContent = zl ? 'Zusatzleistung bearbeiten' : 'Zusatzleistung hinzufügen';
+        document.getElementById('zlBank').value = zl ? (zl.beleg_referenz || '') : '';
+        document.getElementById('zlName').value = zl ? (zl.bezeichnung || '') : '';
+        document.getElementById('zlDatum').value = zl ? (zl.beleg_datum || '') : '';
+        document.getElementById('zlBetrag').value = zl ? (zl.provision_verkaufer || '') : '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('zlModal')).show();
+    }
+
+    document.getElementById('btnZlSave').addEventListener('click', function() {
+        var zlId = document.getElementById('zlId').value;
+        var btn = this;
+        btn.disabled = true;
+
+        var payload = {
+            bank: document.getElementById('zlBank').value,
+            name: document.getElementById('zlName').value,
+            datum: document.getElementById('zlDatum').value,
+            betrag: parseFloat(document.getElementById('zlBetrag').value) || 0
+        };
+
+        var url, body;
+        if (zlId) {
+            url = '/api/provision/zusatzleistung/' + zlId + '/bearbeiten';
+            body = payload;
+        } else {
+            url = '/api/provision/zusatzleistung/erstellen';
+            body = Object.assign({lauf_id: id}, payload);
+        }
+
+        fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body)})
+        .then(function(r){return r.json();})
+        .then(function(res){
+            if(res.success) window.location.reload();
+            else { alert(res.error||'Fehler'); btn.disabled=false; }
+        })
+        .catch(function(err){ alert('Fehler: '+err.message); btn.disabled=false; });
+    });
 
     // =========================================================================
     // Main Data Load
@@ -780,6 +933,7 @@
         laufData = l;
         posData = d.positionen || [];
         aktiveVkData = d.aktive_verkaeufer || [];
+        zusatzData = d.zusatzleistungen || [];
         configLimits = d.config_limits || {};
 
         var statusUpper = (l.status || '').toUpperCase();

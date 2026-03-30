@@ -216,19 +216,20 @@ def lauf_detail(lauf_id):
 # =============================================================================
 
 def _recalc_lauf_sums(cursor, lauf_id):
-    """Summen in provision_laeufe aus Positionen neu berechnen.
-    summe_kat_v bleibt manuell (nicht aus Positionen aggregiert)."""
+    """Summen in provision_laeufe aus Positionen + Zusatzleistungen neu berechnen."""
     cursor.execute("""
         UPDATE provision_laeufe SET
             summe_kat_i   = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'I_neuwagen'), 0),
             summe_kat_ii  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'II_testwagen'), 0),
             summe_kat_iii = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'III_gebrauchtwagen'), 0),
             summe_kat_iv  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'IV_gw_bestand'), 0),
+            summe_kat_v   = COALESCE((SELECT SUM(provision_verkaufer) FROM provision_zusatzleistungen WHERE lauf_id = %s), 0),
             summe_gesamt  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s), 0)
-                          + COALESCE(summe_kat_v, 0) + COALESCE(summe_stueckpraemie, 0),
+                          + COALESCE((SELECT SUM(provision_verkaufer) FROM provision_zusatzleistungen WHERE lauf_id = %s), 0)
+                          + COALESCE(summe_stueckpraemie, 0),
             aktualisiert_am = NOW()
         WHERE id = %s
-    """, (lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id))
+    """, (lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id))
 
 
 @provision_api.route('/vorlauf/<int:lauf_id>/endlauf', methods=['POST'])
@@ -513,6 +514,147 @@ def position_reassign_einkaeufer(pos_id):
         'neuer_einkaeufer_name': neuer_name,
         'message': f'Position an {neuer_name} (Lauf {ziel_lauf_id}) übertragen.'
     })
+
+
+# =============================================================================
+# Zusatzleistungen (Kat. V) – CRUD
+# =============================================================================
+
+@provision_api.route('/zusatzleistung/erstellen', methods=['POST'])
+@login_required
+def zusatzleistung_erstellen():
+    """
+    POST /api/provision/zusatzleistung/erstellen
+    Body: { "lauf_id": 39, "bank": "Santander", "name": "Müller", "datum": "2026-03-15", "betrag": 250.00 }
+    Nur VKL/Admin. Nicht bei ENDLAUF.
+    """
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin dürfen Zusatzleistungen erfassen.'}), 403
+
+    data = request.get_json() or {}
+    lauf_id = data.get('lauf_id')
+    bank = (data.get('bank') or '').strip()
+    name = (data.get('name') or '').strip()
+    datum = (data.get('datum') or '').strip() or None
+    betrag = data.get('betrag')
+
+    if not lauf_id or betrag is None:
+        return jsonify({'success': False, 'error': 'lauf_id und betrag sind erforderlich.'}), 400
+    try:
+        betrag = float(betrag)
+        lauf_id = int(lauf_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Ungültige Werte.'}), 400
+
+    erstellt_von = getattr(current_user, 'username', None) or getattr(current_user, 'display_name', '') or 'system'
+
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status, verkaufer_id, abrechnungsmonat FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if (lauf['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Endlauf ist gesperrt.'}), 403
+
+        cur.execute("""
+            INSERT INTO provision_zusatzleistungen
+                (lauf_id, verkaufer_id, abrechnungsmonat, typ, bezeichnung, beleg_referenz, beleg_datum,
+                 provision_verkaufer, betrag_gesamt, anteil_prozent, erfasst_von)
+            VALUES (%s, %s, %s, 'Finanzierung', %s, %s, %s, %s, %s, 100, %s)
+            RETURNING id
+        """, (lauf_id, lauf['verkaufer_id'], lauf['abrechnungsmonat'],
+              name, bank, datum, betrag, betrag, erstellt_von))
+        new_id = cur.fetchone()[0]
+        _recalc_lauf_sums(cur, lauf_id)
+        conn.commit()
+
+    return jsonify({'success': True, 'id': new_id, 'message': 'Zusatzleistung erfasst.'})
+
+
+@provision_api.route('/zusatzleistung/<int:zl_id>/bearbeiten', methods=['POST'])
+@login_required
+def zusatzleistung_bearbeiten(zl_id):
+    """
+    POST /api/provision/zusatzleistung/<id>/bearbeiten
+    Body: { "bank": "...", "name": "...", "datum": "...", "betrag": 123.45 }
+    """
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin.'}), 403
+
+    data = request.get_json() or {}
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT z.id, z.lauf_id, l.status
+            FROM provision_zusatzleistungen z
+            JOIN provision_laeufe l ON l.id = z.lauf_id
+            WHERE z.id = %s
+        """, (zl_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Nicht gefunden.'}), 404
+        if (row['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Endlauf ist gesperrt.'}), 403
+
+        lauf_id = row['lauf_id']
+        sets = []
+        vals = []
+        if 'bank' in data:
+            sets.append("beleg_referenz = %s"); vals.append((data['bank'] or '').strip())
+        if 'name' in data:
+            sets.append("bezeichnung = %s"); vals.append((data['name'] or '').strip())
+        if 'datum' in data:
+            sets.append("beleg_datum = %s"); vals.append((data['datum'] or '').strip() or None)
+        if 'betrag' in data:
+            try:
+                b = float(data['betrag'])
+                sets.append("provision_verkaufer = %s"); vals.append(b)
+                sets.append("betrag_gesamt = %s"); vals.append(b)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'betrag muss eine Zahl sein.'}), 400
+
+        if not sets:
+            return jsonify({'success': False, 'error': 'Keine Änderungen.'}), 400
+
+        bearbeitet_von = getattr(current_user, 'username', None) or 'system'
+        sets.append("geaendert_von = %s"); vals.append(bearbeitet_von)
+        sets.append("geaendert_am = NOW()")
+
+        cur.execute(f"UPDATE provision_zusatzleistungen SET {', '.join(sets)} WHERE id = %s", vals + [zl_id])
+        _recalc_lauf_sums(cur, lauf_id)
+        conn.commit()
+
+    return jsonify({'success': True, 'message': 'Aktualisiert.'})
+
+
+@provision_api.route('/zusatzleistung/<int:zl_id>/loeschen', methods=['POST', 'DELETE'])
+@login_required
+def zusatzleistung_loeschen(zl_id):
+    """POST/DELETE /api/provision/zusatzleistung/<id>/loeschen"""
+    if not _may_see_all_verkaufer():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin.'}), 403
+
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT z.id, z.lauf_id, l.status
+            FROM provision_zusatzleistungen z
+            JOIN provision_laeufe l ON l.id = z.lauf_id
+            WHERE z.id = %s
+        """, (zl_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Nicht gefunden.'}), 404
+        if (row['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Endlauf ist gesperrt.'}), 403
+
+        lauf_id = row['lauf_id']
+        cur.execute("DELETE FROM provision_zusatzleistungen WHERE id = %s", (zl_id,))
+        _recalc_lauf_sums(cur, lauf_id)
+        conn.commit()
+
+    return jsonify({'success': True, 'message': 'Gelöscht.'})
 
 
 # =============================================================================
