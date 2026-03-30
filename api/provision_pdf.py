@@ -12,7 +12,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, KeepTogether
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
 from api.db_utils import db_session, rows_to_list
@@ -93,15 +93,14 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     belegnummer = lauf.get('belegnummer') or ''
 
     # --- Titel ---
-    title_style = ParagraphStyle('DeckTitle', parent=styles['Heading1'],
-                                 fontSize=18, spaceAfter=4, textColor=NAVY,
-                                 fontName='Helvetica-Bold')
+    title_style = ParagraphStyle('DeckTitle', fontName='Helvetica-Bold',
+                                 fontSize=18, spaceAfter=4, textColor=NAVY, leading=22)
     elements.append(Paragraph('Provisionsabrechnung', title_style))
     elements.append(Spacer(1, 0.2 * cm))
 
     # --- Name / Monat / Belegnummer ---
-    info_style = ParagraphStyle('DeckInfo', parent=styles['Normal'], fontSize=10)
-    info_bold = ParagraphStyle('DeckInfoB', parent=info_style, fontName='Helvetica-Bold')
+    info_style = ParagraphStyle('DeckInfo', fontName='Helvetica', fontSize=10, leading=13)
+    info_bold = ParagraphStyle('DeckInfoB', fontName='Helvetica-Bold', fontSize=10, leading=13)
     info_data = [
         [Paragraph('<b>Name:</b>', info_bold), Paragraph(vk_name, info_style),
          Paragraph('<b>Monat/Jahr:</b>', info_bold), Paragraph(monat_label, info_style)],
@@ -120,11 +119,11 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     elements.append(info_t)
     elements.append(Spacer(1, 0.6 * cm))
 
-    # --- Shared Styles ---
-    cell = ParagraphStyle('DC', parent=styles['Normal'], fontSize=9, leading=11)
-    cell_b = ParagraphStyle('DCB', parent=cell, fontName='Helvetica-Bold')
-    cell_r = ParagraphStyle('DCR', parent=cell, alignment=TA_RIGHT)
-    cell_rb = ParagraphStyle('DCRB', parent=cell_r, fontName='Helvetica-Bold')
+    # --- Shared Styles (alle Helvetica) ---
+    cell = ParagraphStyle('DC', fontName='Helvetica', fontSize=9, leading=11)
+    cell_b = ParagraphStyle('DCB', fontName='Helvetica-Bold', fontSize=9, leading=11)
+    cell_r = ParagraphStyle('DCR', fontName='Helvetica', fontSize=9, leading=11, alignment=TA_RIGHT)
+    cell_rb = ParagraphStyle('DCRB', fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=TA_RIGHT)
 
     by_kat = {}
     for p in positionen:
@@ -209,8 +208,8 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
 
     # --- Gesamtsumme ---
     gesamt = sum(totals)
-    gesamt_label = ParagraphStyle('GL', parent=cell_b, fontSize=11, textColor=colors.white)
-    gesamt_val = ParagraphStyle('GV', parent=cell_rb, fontSize=12, textColor=colors.white)
+    gesamt_label = ParagraphStyle('GL', fontName='Helvetica-Bold', fontSize=11, textColor=colors.white, leading=14)
+    gesamt_val = ParagraphStyle('GV', fontName='Helvetica-Bold', fontSize=12, textColor=colors.white, leading=14, alignment=TA_RIGHT)
     total_data = [
         [Paragraph('Gesamtprovision', gesamt_label),
          Paragraph(_fmt_eur(gesamt), gesamt_val)],
@@ -237,8 +236,8 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
             footer_text += f' \u00b7 Belegnummer {belegnummer}'
     else:
         footer_text = f'Erstellt am {datetime.now().strftime("%d.%m.%Y")}'
-    footer_style = ParagraphStyle('DF', parent=styles['Normal'], fontSize=8,
-                                  alignment=TA_CENTER, textColor=colors.HexColor('#64748b'))
+    footer_style = ParagraphStyle('DF', fontName='Helvetica', fontSize=8,
+                                  alignment=TA_CENTER, textColor=colors.HexColor('#64748b'), leading=10)
     elements.append(Paragraph(footer_text, footer_style))
 
     elements.append(PageBreak())
@@ -255,16 +254,15 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ):
     belegnummer = lauf.get('belegnummer') or ''
     typ_label = 'Endlauf' if typ == 'endlauf' else 'Vorlauf'
 
-    # Styles
-    title_style = ParagraphStyle('DTitle', parent=styles['Heading1'],
-                                 fontSize=14, alignment=TA_CENTER, spaceAfter=4, textColor=NAVY)
-    subtitle_style = ParagraphStyle('DSub', parent=styles['Normal'],
-                                    fontSize=10, alignment=TA_CENTER, spaceAfter=2, textColor=colors.grey)
-    beleg_style = ParagraphStyle('DBeleg', parent=styles['Normal'],
-                                 fontSize=11, alignment=TA_CENTER, spaceAfter=8,
-                                 textColor=BLUE, fontName='Helvetica-Bold')
-    cell = ParagraphStyle('DCell', parent=styles['Normal'], fontSize=8, leading=10, wordWrap='LTR')
-    cell_r = ParagraphStyle('DCellR', parent=cell, alignment=TA_RIGHT)
+    # Styles (alle Helvetica)
+    title_style = ParagraphStyle('DTitle', fontName='Helvetica-Bold',
+                                 fontSize=14, alignment=TA_CENTER, spaceAfter=4, textColor=NAVY, leading=18)
+    subtitle_style = ParagraphStyle('DSub', fontName='Helvetica',
+                                    fontSize=10, alignment=TA_CENTER, spaceAfter=2, textColor=colors.grey, leading=13)
+    beleg_style = ParagraphStyle('DBeleg', fontName='Helvetica-Bold',
+                                 fontSize=11, alignment=TA_CENTER, spaceAfter=8, textColor=BLUE, leading=14)
+    cell = ParagraphStyle('DCell', fontName='Helvetica', fontSize=8, leading=10, wordWrap='LTR')
+    cell_r = ParagraphStyle('DCellR', fontName='Helvetica', fontSize=8, leading=10, alignment=TA_RIGHT)
 
     # Header
     elements.append(Paragraph(f'Provisionsabrechnung {monat_label}', title_style))
@@ -372,8 +370,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ):
             if i % 2 == 0:
                 zl_cmds.append(('BACKGROUND', (0, i), (-1, i), ZEBRA_EVEN))
         t_zl.setStyle(TableStyle(zl_cmds))
-        elements.append(t_zl)
-        elements.append(Spacer(1, 0.3 * cm))
+        elements.append(KeepTogether([t_zl, Spacer(1, 0.3 * cm)]))
 
     # --- Fusszeile ---
     elements.append(Spacer(1, 0.8 * cm))
@@ -386,8 +383,8 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ):
         footer_parts.append(f'Erstellt am {datetime.now().strftime("%d.%m.%Y")}')
     if belegnummer:
         footer_parts.append(f'Belegnummer {belegnummer}')
-    footer_style = ParagraphStyle('DFooter', parent=styles['Normal'], fontSize=8,
-                                  alignment=TA_CENTER, textColor=colors.HexColor('#64748b'))
+    footer_style = ParagraphStyle('DFooter', fontName='Helvetica', fontSize=8,
+                                  alignment=TA_CENTER, textColor=colors.HexColor('#64748b'), leading=10)
     elements.append(Paragraph(' \u00b7 '.join(footer_parts), footer_style))
 
 
