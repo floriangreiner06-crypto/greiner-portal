@@ -26,6 +26,8 @@
     .status-vorlauf { background: #fef3c7; color: #92400e; }
     .status-freigegeben { background: #dbeafe; color: #1e40af; }
     .status-endlauf { background: #dcfce7; color: #166534; }
+    .status-zurpruefung { background: #fed7aa; color: #9a3412; }
+    .status-genehmigt { background: #ccfbf1; color: #0f766e; }
 
     /* Accordion */
     .prov-accordion .accordion-item {
@@ -372,6 +374,27 @@
     </div>
 </div>
 
+<!-- Modal: Einspruch / Ablehnung -->
+<div class="modal fade" id="einspruchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content modal-edit">
+            <div class="modal-header py-2" style="background:#fef3c7; border-bottom:1px solid #fbbf24;">
+                <h5 class="modal-title" style="font-size:.95rem; font-weight:700;" id="einspruchModalTitle">Einspruch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small" id="einspruchModalHint">Bitte begründen Sie Ihren Einspruch. Dieses Feld ist ein Pflichtfeld.</p>
+                <textarea class="form-control" id="einspruchText" rows="4" placeholder="Begründung (Pflichtfeld)..." maxlength="2000"></textarea>
+                <div class="form-text text-danger" id="einspruchError" style="display:none;">Bitte Begründung eingeben.</div>
+            </div>
+            <div class="modal-footer py-2" style="border-top:1px solid #e2e8f0;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-sm btn-warning" id="btnEinspruchSend" disabled><i class="bi bi-exclamation-triangle"></i> <span id="btnEinspruchLabel">Einspruch senden</span></button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 (function(){
     var id = {{ lauf_id }};
@@ -379,6 +402,7 @@
     var pvUserCanEndlauf = pvProvisionVollzugriff;
     var pvUserCanPdf = pvProvisionVollzugriff;
     var pvUserCanEdit = pvProvisionVollzugriff;
+    var pvIsGenehmiger = {% if current_user.username in ('anton.suess@auto-greiner.de', 'florian.greiner@auto-greiner.de') %}true{% else %}false{% endif %};
 
     var L = document.getElementById('loading');
     var E = document.getElementById('error');
@@ -938,7 +962,7 @@
         configLimits = d.config_limits || {};
 
         var statusUpper = (l.status || '').toUpperCase();
-        var pvEditable = statusUpper !== 'ENDLAUF' && pvUserCanEdit;
+        var pvEditable = statusUpper === 'VORLAUF' && pvUserCanEdit;
 
         // Header
         document.getElementById('bcName').textContent = l.verkaufer_name || 'Detail';
@@ -948,7 +972,9 @@
         var statusEl = document.getElementById('headerStatus');
         statusEl.textContent = statusUpper;
         if (statusUpper === 'VORLAUF') statusEl.className = 'status-badge status-vorlauf ms-2';
+        else if (statusUpper === 'ZUR_PRUEFUNG') statusEl.className = 'status-badge status-zurpruefung ms-2';
         else if (statusUpper === 'FREIGEGEBEN') statusEl.className = 'status-badge status-freigegeben ms-2';
+        else if (statusUpper === 'GENEHMIGT') statusEl.className = 'status-badge status-genehmigt ms-2';
         else if (statusUpper === 'ENDLAUF') statusEl.className = 'status-badge status-endlauf ms-2';
 
         // Build accordion
@@ -971,6 +997,134 @@
         sumHtml += '<tr style="background:#f1f5f9; font-weight:700; font-size:.95rem;"><td>Gesamt</td><td class="text-end text-nowrap">' + fmtEuro(l.summe_gesamt) + '</td></tr>';
         sumBody.innerHTML = sumHtml;
 
+        // Workflow-Buttons
+        var wfHtml = '';
+
+        // Einspruch-Warnbox (wenn einspruch_text vorhanden und Status = VORLAUF)
+        if (statusUpper === 'VORLAUF' && l.einspruch_text) {
+            wfHtml += '<div class="alert alert-warning d-flex align-items-start gap-2 mb-3" style="border-radius:12px;">';
+            wfHtml += '<i class="bi bi-exclamation-triangle-fill mt-1" style="font-size:1.2rem;"></i>';
+            wfHtml += '<div><strong>Einspruch/Ablehnung</strong> von ' + escapeHtml(l.einspruch_von || '--') + ' am ' + (l.einspruch_am ? new Date(l.einspruch_am).toLocaleDateString('de-DE') : '--') + ':<br>';
+            wfHtml += '<span class="mt-1 d-block">' + escapeHtml(l.einspruch_text) + '</span></div></div>';
+        }
+
+        // Buttons je nach Status
+        if (statusUpper === 'VORLAUF' && pvProvisionVollzugriff) {
+            wfHtml += '<button class="btn-action btn-action-primary me-2" id="btnZurPruefung"><i class="bi bi-send"></i> Zur Prüfung senden</button>';
+        }
+
+        if (statusUpper === 'ZUR_PRUEFUNG') {
+            if (pvProvisionVollzugriff) {
+                wfHtml += '<button class="btn-action btn-action-success me-2" id="btnFreigeben"><i class="bi bi-check-circle"></i> Freigeben</button>';
+                wfHtml += '<button class="btn-action btn-action-danger" id="btnEinspruch"><i class="bi bi-exclamation-triangle"></i> Einspruch</button>';
+            }
+        }
+
+        if (statusUpper === 'FREIGEGEBEN') {
+            if (pvIsGenehmiger) {
+                wfHtml += '<button class="btn-action btn-action-success me-2" id="btnGenehmigen"><i class="bi bi-check-circle"></i> Genehmigen</button>';
+                wfHtml += '<button class="btn-action btn-action-danger" id="btnAblehnen"><i class="bi bi-x-circle"></i> Ablehnen</button>';
+            } else if (pvProvisionVollzugriff) {
+                wfHtml += '<div class="alert alert-info py-2 px-3 d-inline-block mb-0" style="border-radius:8px; font-size:.85rem;"><i class="bi bi-hourglass-split"></i> Wartet auf Genehmigung durch Anton Süß oder Florian Greiner</div>';
+            }
+        }
+
+        if (statusUpper === 'GENEHMIGT' && pvProvisionVollzugriff) {
+            wfHtml += '<div class="alert alert-success py-2 px-3 d-inline-block mb-0" style="border-radius:8px; font-size:.85rem;"><i class="bi bi-check-circle-fill"></i> Genehmigt — Endlauf kann erstellt werden</div>';
+        }
+
+        if (wfHtml) {
+            var wfDiv = document.createElement('div');
+            wfDiv.className = 'd-flex flex-wrap align-items-center gap-2 my-3';
+            wfDiv.innerHTML = wfHtml;
+            document.getElementById('katAccordion').after(wfDiv);
+        }
+
+        // Workflow Button Event Listeners
+        var btnZP = document.getElementById('btnZurPruefung');
+        if (btnZP) {
+            btnZP.addEventListener('click', function() {
+                if (!confirm('Vorlauf zur Prüfung an den Verkäufer senden?')) return;
+                btnZP.disabled = true;
+                fetch('/api/provision/vorlauf/' + id + '/zur-pruefung', {method:'POST', credentials:'same-origin'})
+                .then(function(r){return r.json();})
+                .then(function(res){ if(res.success) window.location.reload(); else { alert(res.error||'Fehler'); btnZP.disabled=false; }});
+            });
+        }
+
+        var btnFG = document.getElementById('btnFreigeben');
+        if (btnFG) {
+            btnFG.addEventListener('click', function() {
+                if (!confirm('Vorlauf freigeben?')) return;
+                btnFG.disabled = true;
+                fetch('/api/provision/vorlauf/' + id + '/freigeben', {method:'POST', credentials:'same-origin'})
+                .then(function(r){return r.json();})
+                .then(function(res){ if(res.success) window.location.reload(); else { alert(res.error||'Fehler'); btnFG.disabled=false; }});
+            });
+        }
+
+        var btnGM = document.getElementById('btnGenehmigen');
+        if (btnGM) {
+            btnGM.addEventListener('click', function() {
+                if (!confirm('Vorlauf genehmigen?')) return;
+                btnGM.disabled = true;
+                fetch('/api/provision/vorlauf/' + id + '/genehmigen', {method:'POST', credentials:'same-origin'})
+                .then(function(r){return r.json();})
+                .then(function(res){ if(res.success) window.location.reload(); else { alert(res.error||'Fehler'); btnGM.disabled=false; }});
+            });
+        }
+
+        // Einspruch-Modal oeffnen
+        var btnES = document.getElementById('btnEinspruch');
+        if (btnES) {
+            btnES.addEventListener('click', function() {
+                document.getElementById('einspruchModalTitle').textContent = 'Einspruch einlegen';
+                document.getElementById('einspruchModalHint').textContent = 'Bitte begründen Sie Ihren Einspruch. Dieses Feld ist ein Pflichtfeld.';
+                document.getElementById('btnEinspruchLabel').textContent = 'Einspruch senden';
+                document.getElementById('einspruchText').value = '';
+                document.getElementById('btnEinspruchSend').className = 'btn btn-sm btn-warning';
+                document.getElementById('btnEinspruchSend').disabled = true;
+                document.getElementById('btnEinspruchSend').setAttribute('data-action', 'einspruch');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('einspruchModal')).show();
+            });
+        }
+
+        // Ablehnen-Modal oeffnen (nutzt dasselbe Modal)
+        var btnAB = document.getElementById('btnAblehnen');
+        if (btnAB) {
+            btnAB.addEventListener('click', function() {
+                document.getElementById('einspruchModalTitle').textContent = 'Vorlauf ablehnen';
+                document.getElementById('einspruchModalHint').textContent = 'Bitte begründen Sie die Ablehnung. Dieses Feld ist ein Pflichtfeld.';
+                document.getElementById('btnEinspruchLabel').textContent = 'Ablehnen';
+                document.getElementById('einspruchText').value = '';
+                document.getElementById('btnEinspruchSend').className = 'btn btn-sm btn-danger';
+                document.getElementById('btnEinspruchSend').disabled = true;
+                document.getElementById('btnEinspruchSend').setAttribute('data-action', 'ablehnen');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('einspruchModal')).show();
+            });
+        }
+
+        // Einspruch Textarea Pflicht-Validierung + Senden
+        document.getElementById('einspruchText').addEventListener('input', function() {
+            var hasText = this.value.trim().length > 0;
+            document.getElementById('btnEinspruchSend').disabled = !hasText;
+            document.getElementById('einspruchError').style.display = hasText ? 'none' : 'block';
+        });
+
+        document.getElementById('btnEinspruchSend').addEventListener('click', function() {
+            var text = document.getElementById('einspruchText').value.trim();
+            if (!text) { document.getElementById('einspruchError').style.display = 'block'; return; }
+            var action = this.getAttribute('data-action');
+            var btn = this;
+            btn.disabled = true;
+            fetch('/api/provision/vorlauf/' + id + '/' + action, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({text: text})})
+            .then(function(r){return r.json();})
+            .then(function(res){
+                if(res.success) window.location.reload();
+                else { alert(res.error||'Fehler'); btn.disabled=false; }
+            });
+        });
+
         // Vorlauf löschen button
         if (statusUpper === 'VORLAUF') {
             var btnDel = document.getElementById('btnLoeschen');
@@ -988,7 +1142,7 @@
         }
 
         // Endlauf form (FREIGEGEBEN + permission)
-        if (statusUpper === 'FREIGEGEBEN' && pvUserCanEndlauf) {
+        if (statusUpper === 'GENEHMIGT' && pvUserCanEndlauf) {
             var ef = document.getElementById('endlaufBereich');
             ef.style.display = 'block';
             document.getElementById('belegnummerVorschau').textContent = 'VK' + (l.verkaufer_id || '') + '-' + (l.abrechnungsmonat || '');
