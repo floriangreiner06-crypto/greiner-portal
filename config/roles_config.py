@@ -97,6 +97,7 @@ FEATURE_ACCESS = {
     # Controlling / Finanzen - Führung + Buchhaltung
     'bankenspiegel': ['admin', 'buchhaltung'],
     'controlling': ['admin', 'buchhaltung'],
+    'ertragsvorschau': ['admin', 'geschaeftsleitung'],
     'zinsen': ['admin', 'buchhaltung', 'verkauf_leitung', 'disposition'],  # TAG82: +Verkaufsleitung, +Disposition
 
     # Einkaufsfinanzierung - Führung + Buchhaltung + Disposition + VKL/GF (VKL-Dashboard)
