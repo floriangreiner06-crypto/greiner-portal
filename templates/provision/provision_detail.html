@@ -451,6 +451,12 @@
         if (s == null) return '';
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
+    function displayName(s) {
+        if (!s) return '';
+        // "vanessa.groll@auto-greiner.de" -> "Vanessa Groll"
+        var parts = s.split('@')[0].split('.');
+        return parts.map(function(p){ return p.charAt(0).toUpperCase() + p.slice(1); }).join(' ');
+    }
     function monatLabel(m) {
         if (!m || m.length !== 7) return m || '';
         return MO[parseInt(m.substr(5, 2), 10) - 1] + ' ' + m.substr(0, 4);
@@ -974,11 +980,11 @@
         statusEl.textContent = statusLabels[statusUpper] || statusUpper;
         // Tooltip mit Zeitstempel/Wer
         var tooltipParts = [];
-        if (l.vorlauf_am) tooltipParts.push('Vorlauf: ' + new Date(l.vorlauf_am).toLocaleString('de-DE') + (l.vorlauf_von ? ' von ' + l.vorlauf_von : ''));
-        if (l.pruefung_am) tooltipParts.push('Zur Prüfung: ' + new Date(l.pruefung_am).toLocaleString('de-DE') + (l.pruefung_von ? ' von ' + l.pruefung_von : ''));
-        if (l.freigegeben_am) tooltipParts.push('Freigegeben: ' + new Date(l.freigegeben_am).toLocaleString('de-DE') + (l.freigegeben_von ? ' von ' + l.freigegeben_von : ''));
-        if (l.genehmigt_am) tooltipParts.push('Genehmigt: ' + new Date(l.genehmigt_am).toLocaleString('de-DE') + (l.genehmigt_von ? ' von ' + l.genehmigt_von : ''));
-        if (l.endlauf_am) tooltipParts.push('Endlauf: ' + new Date(l.endlauf_am).toLocaleString('de-DE') + (l.endlauf_von ? ' von ' + l.endlauf_von : ''));
+        if (l.vorlauf_am) tooltipParts.push('Vorlauf: ' + new Date(l.vorlauf_am).toLocaleString('de-DE') + (l.vorlauf_von ? ' von ' + displayName(l.vorlauf_von) : ''));
+        if (l.pruefung_am) tooltipParts.push('Zur Prüfung: ' + new Date(l.pruefung_am).toLocaleString('de-DE') + (l.pruefung_von ? ' von ' + displayName(l.pruefung_von) : ''));
+        if (l.freigegeben_am) tooltipParts.push('Freigegeben: ' + new Date(l.freigegeben_am).toLocaleString('de-DE') + (l.freigegeben_von ? ' von ' + displayName(l.freigegeben_von) : ''));
+        if (l.genehmigt_am) tooltipParts.push('Genehmigt: ' + new Date(l.genehmigt_am).toLocaleString('de-DE') + (l.genehmigt_von ? ' von ' + displayName(l.genehmigt_von) : ''));
+        if (l.endlauf_am) tooltipParts.push('Endlauf: ' + new Date(l.endlauf_am).toLocaleString('de-DE') + (l.endlauf_von ? ' von ' + displayName(l.endlauf_von) : ''));
         if (tooltipParts.length) {
             statusEl.title = tooltipParts.join('\n');
             statusEl.style.cursor = 'help';
