@@ -673,7 +673,7 @@ def get_lauf_detail(lauf_id: int) -> Optional[Dict[str, Any]]:
             ORDER BY CASE kategorie
                 WHEN 'I_neuwagen' THEN 1 WHEN 'II_testwagen' THEN 2
                 WHEN 'III_gebrauchtwagen' THEN 3 WHEN 'IV_gw_bestand' THEN 4 ELSE 5 END,
-                provision_final DESC NULLS LAST
+                rg_datum DESC NULLS LAST
         """, (lauf_id,))
         positionen = rows_to_list(cur.fetchall())
 
@@ -784,15 +784,16 @@ def delete_vorlauf(lauf_id: int) -> Dict[str, Any]:
 
 
 def get_aktive_verkaeufer() -> List[Dict[str, Any]]:
-    """Nur tatsächliche Verkäufer (die in sales als salesman_number vorkommen) für Einkäufer-Dropdown."""
+    """Alle Verkäufer/VKL/GL für Einkäufer-Dropdown (die in sales als salesman_number vorkommen).
+    Feld 'hat_provision': true = aktiver Verkäufer, false = VKL/GL (Position wird gelöscht statt umzuweisen)."""
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("""
             SELECT e.locosoft_id,
-                   TRIM(BOTH ' ' FROM COALESCE(TRIM(e.first_name), '') || ' ' || COALESCE(TRIM(e.last_name), '')) AS name
+                   TRIM(BOTH ' ' FROM COALESCE(TRIM(e.first_name), '') || ' ' || COALESCE(TRIM(e.last_name), '')) AS name,
+                   COALESCE(e.provision_aktiv, true) AS hat_provision
             FROM employees e
-            WHERE COALESCE(e.provision_aktiv, true) = true
-              AND e.locosoft_id IS NOT NULL
+            WHERE e.locosoft_id IS NOT NULL
               AND e.locosoft_id IN (SELECT DISTINCT salesman_number FROM sales WHERE out_invoice_date >= '2024-01-01')
             ORDER BY e.last_name, e.first_name
         """)

@@ -164,6 +164,19 @@
         <!-- Accordion Categories -->
         <div class="accordion prov-accordion" id="katAccordion"></div>
 
+        <!-- Summentabelle -->
+        <div class="mt-3" style="border:1px solid #e2e8f0; border-radius:12px; background:#fff; overflow:hidden;">
+            <table class="prov-table" id="summenTabelle">
+                <thead>
+                    <tr>
+                        <th>Kategorie</th>
+                        <th class="text-end">Summe</th>
+                    </tr>
+                </thead>
+                <tbody id="summenBody"></tbody>
+            </table>
+        </div>
+
         <!-- Endlauf Form (shown when FREIGEGEBEN + permission) -->
         <div id="endlaufBereich" style="display: none;" class="endlauf-card mt-3">
             <div class="card-header-custom">
@@ -533,13 +546,15 @@
         if (pos.kategorie === 'IV_gw_bestand' && aktiveVkData.length > 0) {
             einkaeuferWrap.style.display = 'block';
             var currentEinkaeufer = pos.einkaeufer_name || '';
-            einkaeuferSel.innerHTML = '<option value="">-- Kein Einkaufer --</option>';
+            einkaeuferSel.innerHTML = '<option value="">-- Nicht andern --</option>';
             aktiveVkData.forEach(function(vk) {
                 var sel = '';
                 if (String(vk.locosoft_id) === String(pos.einkaeufer_id) || vk.name === currentEinkaeufer) {
                     sel = ' selected';
                 }
-                einkaeuferSel.innerHTML += '<option value="' + vk.locosoft_id + '"' + sel + '>' + escapeHtml(vk.name) + ' (' + vk.locosoft_id + ')</option>';
+                var label = escapeHtml(vk.name) + ' (' + vk.locosoft_id + ')';
+                if (vk.hat_provision === false) label += ' — Position loschen';
+                einkaeuferSel.innerHTML += '<option value="' + vk.locosoft_id + '" data-hat-provision="' + (vk.hat_provision ? 'true' : 'false') + '"' + sel + '>' + label + '</option>';
             });
             document.getElementById('editOriginalEinkaeufer').value = einkaeuferSel.value;
         } else {
@@ -588,8 +603,29 @@
                 return;
             }
 
-            // Step 2: If Einkaufer changed, reassign
+            // Step 2: If Einkaufer changed
             if (einkaeuferChanged && einkaeuferSel.value) {
+                var selectedOpt = einkaeuferSel.options[einkaeuferSel.selectedIndex];
+                var hatProvision = selectedOpt.getAttribute('data-hat-provision') !== 'false';
+
+                if (!hatProvision) {
+                    // VKL/GL ausgewählt → Position löschen (kein Provisions-Lauf vorhanden)
+                    if (!confirm('Der gewählte Einkäufer hat keine Provisionsabrechnung. Die Position wird gelöscht. Fortfahren?')) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="bi bi-check-lg"></i> Speichern';
+                        return;
+                    }
+                    return fetch('/api/provision/position/' + posId + '/loeschen', {
+                        method: 'POST', credentials: 'same-origin'
+                    })
+                    .then(function(r2) { return r2.json(); })
+                    .then(function(res2) {
+                        if (!res2.success) alert('Fehler beim Löschen: ' + (res2.error || 'Fehler'));
+                        window.location.reload();
+                    });
+                }
+
+                // Normaler Verkäufer → umzuweisen
                 return fetch('/api/provision/position/' + posId + '/reassign-einkaeufer', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -762,6 +798,23 @@
 
         // Build accordion
         buildAccordion(l, posData, pvEditable);
+
+        // Summentabelle
+        var sumRows = [
+            {label: 'I. Neuwagen', val: l.summe_kat_i, color: '#2563eb'},
+            {label: 'Ia. NW Zielpramie', val: l.summe_stueckpraemie, color: '#6366f1'},
+            {label: 'II. Testwagen / VFW', val: l.summe_kat_ii, color: '#7c3aed'},
+            {label: 'III. Gebrauchtwagen', val: l.summe_kat_iii, color: '#0891b2'},
+            {label: 'IV. GW aus Bestand', val: l.summe_kat_iv, color: '#ea580c'},
+            {label: 'V. Zusatzleistungen', val: l.summe_kat_v, color: '#64748b'}
+        ];
+        var sumBody = document.getElementById('summenBody');
+        var sumHtml = '';
+        sumRows.forEach(function(r) {
+            sumHtml += '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + r.color + ';margin-right:.5rem;"></span>' + r.label + '</td><td class="text-end text-nowrap">' + fmtEuro(r.val) + '</td></tr>';
+        });
+        sumHtml += '<tr style="background:#f1f5f9; font-weight:700; font-size:.95rem;"><td>Gesamt</td><td class="text-end text-nowrap">' + fmtEuro(l.summe_gesamt) + '</td></tr>';
+        sumBody.innerHTML = sumHtml;
 
         // Vorlauf loschen button
         if (statusUpper === 'VORLAUF') {
