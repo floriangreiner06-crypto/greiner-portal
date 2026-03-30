@@ -697,28 +697,30 @@ def get_mehrjahresvergleich(gesellschaft: str = 'autohaus') -> list:
         cursor = conn.cursor()
 
         if gesellschaft == 'gruppe':
-            # Summe aus autohaus + auto pro GJ
+            # Summe aus autohaus + auto pro GJ (COALESCE für fehlende Werte)
+            # Zeigt Gruppe-Werte auch wenn eine Gesellschaft unvollständig geparst wurde
+            # Felder die nur bei einer Gesellschaft existieren werden trotzdem angezeigt
             cursor.execute("""
-                SELECT geschaeftsjahr, stichtag,
-                    SUM(bilanzsumme) as bilanzsumme,
-                    SUM(eigenkapital) as eigenkapital,
+                SELECT geschaeftsjahr, MAX(stichtag) as stichtag,
+                    SUM(COALESCE(bilanzsumme, 0)) as bilanzsumme,
+                    SUM(COALESCE(eigenkapital, 0)) as eigenkapital,
                     NULL as ek_quote,
-                    SUM(umsatz) as umsatz,
+                    CASE WHEN COUNT(umsatz) = COUNT(*) THEN SUM(umsatz) ELSE NULL END as umsatz,
                     NULL as rohertrag_pct,
-                    SUM(personalaufwand) as personalaufwand,
-                    SUM(abschreibungen) as abschreibungen,
-                    SUM(zinsergebnis) as zinsergebnis,
-                    SUM(betriebsergebnis) as betriebsergebnis,
-                    SUM(jahresergebnis) as jahresergebnis,
-                    SUM(cashflow_geschaeft) as cashflow_geschaeft,
-                    SUM(cashflow_invest) as cashflow_invest,
-                    SUM(cashflow_finanz) as cashflow_finanz,
-                    SUM(finanzmittel_jahresende) as finanzmittel_jahresende,
-                    SUM(verbindlichkeiten) as verbindlichkeiten,
-                    SUM(rueckstellungen) as rueckstellungen
+                    CASE WHEN COUNT(personalaufwand) = COUNT(*) THEN SUM(personalaufwand) ELSE NULL END as personalaufwand,
+                    CASE WHEN COUNT(abschreibungen) = COUNT(*) THEN SUM(abschreibungen) ELSE NULL END as abschreibungen,
+                    SUM(COALESCE(zinsergebnis, 0)) as zinsergebnis,
+                    CASE WHEN COUNT(betriebsergebnis) = COUNT(*) THEN SUM(betriebsergebnis) ELSE NULL END as betriebsergebnis,
+                    SUM(COALESCE(jahresergebnis, 0)) as jahresergebnis,
+                    CASE WHEN COUNT(cashflow_geschaeft) = COUNT(*) THEN SUM(cashflow_geschaeft) ELSE NULL END as cashflow_geschaeft,
+                    CASE WHEN COUNT(cashflow_invest) = COUNT(*) THEN SUM(cashflow_invest) ELSE NULL END as cashflow_invest,
+                    CASE WHEN COUNT(cashflow_finanz) = COUNT(*) THEN SUM(cashflow_finanz) ELSE NULL END as cashflow_finanz,
+                    CASE WHEN COUNT(finanzmittel_jahresende) = COUNT(*) THEN SUM(finanzmittel_jahresende) ELSE NULL END as finanzmittel_jahresende,
+                    SUM(COALESCE(verbindlichkeiten, 0)) as verbindlichkeiten,
+                    SUM(COALESCE(rueckstellungen, 0)) as rueckstellungen
                 FROM jahresabschluss_daten
                 WHERE gesellschaft IN ('autohaus', 'auto')
-                GROUP BY geschaeftsjahr, stichtag
+                GROUP BY geschaeftsjahr
                 HAVING COUNT(*) = 2
                 ORDER BY geschaeftsjahr DESC
             """)
