@@ -531,6 +531,13 @@ try:
     from api.opos_api import opos_api
     app.register_blueprint(opos_api)
     print("✅ OPOS API registriert: /api/controlling/opos")
+    # Ertragsvorschau API + Routes (Ertragsvorschau-Modul)
+    from api.ertragsvorschau_api import ertragsvorschau_api
+    app.register_blueprint(ertragsvorschau_api)
+    print("✅ Ertragsvorschau API registriert: /api/ertragsvorschau/")
+    from routes.ertragsvorschau_routes import ertragsvorschau_bp
+    app.register_blueprint(ertragsvorschau_bp)
+    print("✅ Ertragsvorschau Routes registriert: /controlling/ertragsvorschau/")
 except Exception as e:
     print(f"⚠️  Controlling API nicht geladen: {e}")
 
