@@ -303,24 +303,30 @@ def endlauf_setzen(lauf_id):
 def position_bearbeiten(pos_id):
     """
     POST /api/provision/position/<id>/bearbeiten
-    Body: { "provision_final": 123.45 }
+    Body: { "provision_final": 123.45, "provisionssatz": 0.009, "bemessungsgrundlage": 28500.0 }
+    Alle Felder optional — nur übergebene Felder werden aktualisiert.
     Nur VKL/Admin. Nicht bei Status ENDLAUF.
     """
     if not _may_see_all_verkaufer():
         return jsonify({'success': False, 'error': 'Nur VKL/Admin dürfen Positionen bearbeiten.'}), 403
 
     data = request.get_json() or {}
-    provision_final = data.get('provision_final')
-    if provision_final is None:
-        return jsonify({'success': False, 'error': 'provision_final ist erforderlich.'}), 400
-    try:
-        provision_final = float(provision_final)
-    except (TypeError, ValueError):
-        return jsonify({'success': False, 'error': 'provision_final muss eine Zahl sein.'}), 400
+
+    # Mindestens ein Feld muss übergeben werden
+    editable_fields = ('provision_final', 'provisionssatz', 'bemessungsgrundlage')
+    updates = {}
+    for field in editable_fields:
+        if field in data and data[field] is not None:
+            try:
+                updates[field] = float(data[field])
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': f'{field} muss eine Zahl sein.'}), 400
+
+    if not updates:
+        return jsonify({'success': False, 'error': 'Mindestens ein Feld (provision_final, provisionssatz, bemessungsgrundlage) ist erforderlich.'}), 400
 
     with db_session() as conn:
         cur = conn.cursor()
-        # Position + Lauf-Status prüfen
         cur.execute("""
             SELECT p.id, p.lauf_id, l.status
             FROM provision_positionen p
@@ -334,7 +340,9 @@ def position_bearbeiten(pos_id):
             return jsonify({'success': False, 'error': 'Endlauf ist gesperrt – keine Änderungen möglich.'}), 403
 
         lauf_id = row['lauf_id']
-        cur.execute("UPDATE provision_positionen SET provision_final = %s WHERE id = %s", (provision_final, pos_id))
+        set_parts = [f"{k} = %s" for k in updates]
+        vals = list(updates.values())
+        cur.execute(f"UPDATE provision_positionen SET {', '.join(set_parts)} WHERE id = %s", vals + [pos_id])
         _recalc_lauf_sums(cur, lauf_id)
         conn.commit()
 
