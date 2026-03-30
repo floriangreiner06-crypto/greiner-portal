@@ -116,7 +116,7 @@ def _lauf_daten(lauf_id: int) -> Optional[dict]:
 # Seite 1: Deckblatt
 # =============================================================================
 
-def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
+def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles, kum_daten=None):
     vk_name = lauf.get('verkaufer_name') or '-'
     monat_label = _monat_label(lauf.get('abrechnungsmonat') or '')
     belegnummer = lauf.get('belegnummer') or ''
@@ -172,10 +172,18 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     totals.append(nw_prov)
 
     stueck_prov = float(lauf.get('summe_stueckpraemie') or 0)
-    if stueck_prov > 0:
-        ziel_stk = f'erfüllt / {len(nw)}'
+    if kum_daten:
+        if kum_daten['kum_erfuellt']:
+            ziel_stk = f"Kum. {kum_daten['kum_ist']}/{kum_daten['kum_ziel']} Stk. erfüllt"
+            if kum_daten['monats_ueber'] > 0:
+                ziel_stk += f" / +{kum_daten['monats_ueber']} Monat"
+        else:
+            ziel_stk = f"Kum. {kum_daten['kum_ist']}/{kum_daten['kum_ziel']} Stk. nicht erfüllt"
     else:
-        ziel_stk = 'nicht erfüllt'
+        if stueck_prov > 0:
+            ziel_stk = f'erfüllt / {len(nw)}'
+        else:
+            ziel_stk = 'nicht erfüllt'
     t, _ = summary_row(ACCENT, 'Ia. Zielprämie NW', ziel_stk, 'Zielprämie', stueck_prov)
     elements.append(t)
     totals.append(stueck_prov)
@@ -484,13 +492,21 @@ def generate_provision_pdf(lauf_id: int, typ: str = 'vorlauf') -> Optional[str]:
     filepath = os.path.join(dir_path, filename)
     rel_path = f"provision_pdf/{jahr}/{mm}/{filename}"
 
+    # Kumulierte Zielprämie-Daten
+    kum_daten = None
+    if lauf.get('abrechnungsmonat') and vkb:
+        from api.provision_service import get_provision_config_for_monat, get_kumulierte_zielpraemie_daten
+        cfg_i = get_provision_config_for_monat(lauf['abrechnungsmonat']).get('I_neuwagen') or {}
+        if cfg_i.get('use_kumuliert') and cfg_i.get('use_zielpraemie'):
+            kum_daten = get_kumulierte_zielpraemie_daten(vkb, lauf['abrechnungsmonat'], cfg_i)
+
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4,
                             leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
     elements = []
     styles = getSampleStyleSheet()
 
-    _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles)
+    _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles, kum_daten=kum_daten)
     _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, data.get('jahresuebersicht'))
 
     doc.build(elements)

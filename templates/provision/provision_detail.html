@@ -166,6 +166,8 @@
         <!-- Accordion Categories -->
         <div class="accordion prov-accordion" id="katAccordion"></div>
 
+        <div id="kumInfo"></div>
+
         <!-- Summentabelle -->
         <div class="mt-3" style="border:1px solid #e2e8f0; border-radius:12px; background:#fff; overflow:hidden;">
             <table class="prov-table" id="summenTabelle">
@@ -1019,6 +1021,39 @@
         });
         sumHtml += '<tr style="background:#f1f5f9; font-weight:700; font-size:.95rem;"><td>Gesamt</td><td class="text-end text-nowrap">' + fmtEuro(l.summe_gesamt) + '</td></tr>';
         sumBody.innerHTML = sumHtml;
+
+        // Kumulierte Zielprämie Info-Block
+        var kumBlock = document.getElementById('kumInfo');
+        if (kumBlock) {
+            var kd = l.kum_daten;
+            if (kd) {
+                var monatLabel = l.abrechnungsmonat || '';
+                var mm = monatLabel.substring(5);
+                var jj = monatLabel.substring(0, 4);
+                var kumHtml = '<div class="card border-0 shadow-sm mb-3">';
+                kumHtml += '<div class="card-body py-2 px-3">';
+                kumHtml += '<h6 class="mb-2" style="font-size:.85rem;">Kumulierte Zielerreichung (Jan\u2013' + mm + '/' + jj + ')</h6>';
+                kumHtml += '<div class="row g-2" style="font-size:.82rem;">';
+                kumHtml += '<div class="col-auto"><span class="text-muted">Kum. Ziel:</span> <strong>' + kd.kum_ziel + ' Stk.</strong></div>';
+                kumHtml += '<div class="col-auto"><span class="text-muted">Kum. IST:</span> <strong>' + kd.kum_ist + ' Stk.</strong></div>';
+                kumHtml += '<div class="col-auto">' + (kd.kum_erfuellt ? '<span class="badge bg-success">Erfüllt</span>' : '<span class="badge bg-danger">Nicht erfüllt</span>') + '</div>';
+                kumHtml += '</div>';
+                if (kd.kum_erfuellt) {
+                    kumHtml += '<div class="row g-2 mt-1" style="font-size:.82rem;">';
+                    kumHtml += '<div class="col-auto"><span class="text-muted">Monat:</span> Ziel ' + kd.monats_ziel + ', IST ' + kd.monats_ist;
+                    if (kd.monats_ueber > 0) kumHtml += ' <span class="text-success">(+' + kd.monats_ueber + ' Übererfüllung)</span>';
+                    kumHtml += '</div></div>';
+                    kumHtml += '<div class="mt-1" style="font-size:.82rem;">';
+                    kumHtml += 'Zielerreichung: ' + fmtEuro(kd.zielerreichung_betrag);
+                    if (kd.uebererfuellung_betrag > 0) kumHtml += ' + Übererfüllung: ' + fmtEuro(kd.uebererfuellung_betrag) + ' (' + kd.monats_ueber + ' \u00d7 ' + fmtEuro(kd.ueber_eur_pro_stueck) + ')';
+                    kumHtml += '</div>';
+                } else {
+                    kumHtml += '<div class="text-muted mt-1" style="font-size:.82rem;">Keine Stückprämie in diesem Monat (kum. Ziel nicht erreicht).</div>';
+                }
+                kumHtml += '</div></div>';
+                kumBlock.innerHTML = kumHtml;
+            }
+        }
 
         // Prämie editieren (inline)
         document.querySelectorAll('.praemie-edit-btn').forEach(function(btn) {

@@ -254,6 +254,16 @@ def lauf_detail(lauf_id):
             """, (monat + '-01', monat + '-01'))
             cfg_rows = cur.fetchall()
             data['config_limits'] = {r['kategorie']: {'min_betrag': float(r['min_betrag']) if r['min_betrag'] is not None else None, 'max_betrag': float(r['max_betrag']) if r['max_betrag'] is not None else None} for r in cfg_rows}
+    # Kumulierte Zielprämie-Daten berechnen (wenn aktiv)
+    kum_daten = None
+    if data['lauf'].get('abrechnungsmonat') and data['lauf'].get('verkaufer_id'):
+        from api.provision_service import get_provision_config_for_monat, get_kumulierte_zielpraemie_daten
+        cfg_i = get_provision_config_for_monat(data['lauf']['abrechnungsmonat']).get('I_neuwagen') or {}
+        if cfg_i.get('use_kumuliert') and cfg_i.get('use_zielpraemie'):
+            kum_daten = get_kumulierte_zielpraemie_daten(
+                data['lauf']['verkaufer_id'], data['lauf']['abrechnungsmonat'], cfg_i
+            )
+    data['lauf']['kum_daten'] = kum_daten
     return jsonify(data)
 
 
