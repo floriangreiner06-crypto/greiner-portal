@@ -11,21 +11,29 @@ from typing import Optional
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, KeepTogether
+from reportlab.lib.units import cm, mm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, KeepTogether, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
 from api.db_utils import db_session, rows_to_list
 
-# Farben (konsistent mit Portal-Design)
-NAVY = colors.HexColor('#1e3a5f')
-BLUE = colors.HexColor('#2563eb')
-LIGHT_BG = colors.HexColor('#f8fafc')
-ZEBRA_EVEN = colors.HexColor('#f1f5f9')
-HEADER_BG = colors.HexColor('#e2e8f0')
-KAT_BG = colors.HexColor('#1e293b')
-KAT_TEXT = colors.white
-BORDER_COLOR = colors.HexColor('#cbd5e1')
+# Farbpalette
+PRIMARY = colors.HexColor('#2563eb')
+PRIMARY_DARK = colors.HexColor('#1e40af')
+DARK = colors.HexColor('#1e293b')
+TEXT = colors.HexColor('#334155')
+TEXT_LIGHT = colors.HexColor('#64748b')
+TEXT_MUTED = colors.HexColor('#94a3b8')
+BG_LIGHT = colors.HexColor('#f8fafc')
+BG_HEADER = colors.HexColor('#f1f5f9')
+BORDER = colors.HexColor('#e2e8f0')
+ACCENT_NW = colors.HexColor('#2563eb')
+ACCENT_TW = colors.HexColor('#7c3aed')
+ACCENT_GW = colors.HexColor('#0891b2')
+ACCENT_BESTAND = colors.HexColor('#ea580c')
+ACCENT_ZL = colors.HexColor('#059669')
+ACCENT_STUECK = colors.HexColor('#6366f1')
+WHITE = colors.white
 
 MONAT_NAMEN = [
     'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
@@ -51,7 +59,7 @@ def _monat_label(monat: str) -> str:
 
 
 def _lauf_daten(lauf_id: int) -> Optional[dict]:
-    """Liest Lauf + Positionen + Zusatzleistungen aus DB."""
+    """Liest Lauf + Positionen + Zusatzleistungen + Jahresuebersicht aus DB."""
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -80,8 +88,6 @@ def _lauf_daten(lauf_id: int) -> Optional[dict]:
             ORDER BY beleg_datum DESC NULLS LAST
         """, (lauf_id,))
         zusatzleistungen = rows_to_list(cur.fetchall())
-
-        # Jahresuebersicht: alle Laeufe desselben Verkaefers im selben Jahr
         vkb = lauf['verkaufer_id']
         monat = lauf['abrechnungsmonat'] or ''
         jahr = monat[:4] if len(monat) >= 4 else str(datetime.now().year)
@@ -112,7 +118,7 @@ def _lauf_daten(lauf_id: int) -> Optional[dict]:
 
 
 # =============================================================================
-# Seite 1: Deckblatt (Zusammenfassung)
+# Seite 1: Deckblatt
 # =============================================================================
 
 def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
@@ -120,154 +126,116 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     monat_label = _monat_label(lauf.get('abrechnungsmonat') or '')
     belegnummer = lauf.get('belegnummer') or ''
 
-    # --- Titel ---
-    title_style = ParagraphStyle('DeckTitle', fontName='Helvetica-Bold',
-                                 fontSize=18, spaceAfter=4, textColor=NAVY, leading=22)
-    elements.append(Paragraph('Provisionsabrechnung', title_style))
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # --- Name / Monat / Belegnummer ---
-    info_style = ParagraphStyle('DeckInfo', fontName='Helvetica', fontSize=10, leading=13)
-    info_bold = ParagraphStyle('DeckInfoB', fontName='Helvetica-Bold', fontSize=10, leading=13)
-    info_data = [
-        [Paragraph('<b>Name:</b>', info_bold), Paragraph(vk_name, info_style),
-         Paragraph('<b>Monat/Jahr:</b>', info_bold), Paragraph(monat_label, info_style)],
-    ]
+    # Header-Block: blaue Linie oben + Titel
+    elements.append(HRFlowable(width='100%', thickness=3, color=PRIMARY, spaceAfter=12))
+    elements.append(Paragraph('Provisionsabrechnung',
+                    ParagraphStyle('T', fontName='Helvetica-Bold', fontSize=20, textColor=DARK, leading=24)))
+    elements.append(Spacer(1, 0.15 * cm))
+    elements.append(Paragraph(f'{vk_name}  \u2014  {monat_label}',
+                    ParagraphStyle('S', fontName='Helvetica', fontSize=11, textColor=TEXT_LIGHT, leading=14)))
     if belegnummer:
-        info_data.append([
-            Paragraph('<b>Belegnummer:</b>', info_bold),
-            Paragraph(f'<font color="#2563eb"><b>{belegnummer}</b></font>', info_style), '', ''])
+        elements.append(Spacer(1, 0.1 * cm))
+        elements.append(Paragraph(f'Belegnummer {belegnummer}',
+                        ParagraphStyle('B', fontName='Helvetica-Bold', fontSize=10, textColor=PRIMARY, leading=13)))
+    elements.append(Spacer(1, 0.5 * cm))
 
-    info_t = Table(info_data, colWidths=[3 * cm, 5.5 * cm, 3 * cm, 5 * cm])
-    info_t.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LINEBELOW', (0, 0), (-1, 0), 1, BORDER_COLOR),
-    ]))
-    elements.append(info_t)
-    elements.append(Spacer(1, 0.6 * cm))
-
-    # --- Shared Styles (alle Helvetica) ---
-    cell = ParagraphStyle('DC', fontName='Helvetica', fontSize=9, leading=11)
-    cell_b = ParagraphStyle('DCB', fontName='Helvetica-Bold', fontSize=9, leading=11)
-    cell_r = ParagraphStyle('DCR', fontName='Helvetica', fontSize=9, leading=11, alignment=TA_RIGHT)
-    cell_rb = ParagraphStyle('DCRB', fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=TA_RIGHT)
+    # Styles
+    lbl = ParagraphStyle('L', fontName='Helvetica', fontSize=9, textColor=TEXT, leading=12)
+    lbl_b = ParagraphStyle('LB', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12)
+    val_r = ParagraphStyle('VR', fontName='Helvetica-Bold', fontSize=10, textColor=DARK, leading=13, alignment=TA_RIGHT)
 
     by_kat = {}
     for p in positionen:
         by_kat.setdefault(p.get('kategorie') or '', []).append(p)
 
-    def kat_row(title, stueck, bezeichnung, provision):
-        """Eine Kategorie-Zeile fuer das Deckblatt."""
-        data = [
-            # Header
-            [Paragraph(f'<b>{title}</b>', ParagraphStyle('KH', parent=cell_b, textColor=KAT_TEXT, fontSize=9)),
-             '', ''],
-            # Spalten-Header
-            [Paragraph('<b>Stück</b>', cell_b),
-             Paragraph('<b>Bezeichnung</b>', cell_b),
-             Paragraph('<b>Provision</b>', cell_rb)],
-            # Daten
-            [Paragraph(str(stueck), cell),
-             Paragraph(bezeichnung, cell),
-             Paragraph(_fmt_eur(provision), cell_r)],
-            # Summe
-            [Paragraph('', cell), Paragraph('', cell),
-             Paragraph(f'<b>{_fmt_eur(provision)}</b>', cell_rb)],
-        ]
-        t = Table(data, colWidths=[2.5 * cm, 9 * cm, 5 * cm])
+    def summary_row(accent_color, title, stueck, bezeichnung, provision):
+        """Kompakte Kategorie-Zeile mit farbigem Akzent links."""
+        data = [[
+            Paragraph('', lbl),  # Akzent-Platzhalter
+            Paragraph(f'<b>{title}</b>', lbl_b),
+            Paragraph(f'{stueck} Stk.', lbl),
+            Paragraph(bezeichnung, lbl),
+            Paragraph(_fmt_eur(provision), val_r),
+        ]]
+        t = Table(data, colWidths=[3 * mm, 5.5 * cm, 1.8 * cm, 5 * cm, 4 * cm])
         t.setStyle(TableStyle([
-            ('SPAN', (0, 0), (-1, 0)),
-            ('BACKGROUND', (0, 0), (-1, 0), KAT_BG),
-            ('TEXTCOLOR', (0, 0), (-1, 0), KAT_TEXT),
-            ('BACKGROUND', (0, 1), (-1, 1), HEADER_BG),
-            ('BACKGROUND', (0, 3), (-1, 3), LIGHT_BG),
-            ('BOX', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
-            ('INNERGRID', (0, 1), (-1, -1), 0.25, BORDER_COLOR),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BACKGROUND', (0, 0), (0, 0), accent_color),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+            ('LINEBELOW', (1, 0), (-1, 0), 0.5, BORDER),
         ]))
-        return t
+        return t, float(provision) if provision else 0
 
     totals = []
 
-    # I. Neuwagen
+    # Kategorien
     nw = by_kat.get('I_neuwagen', [])
     nw_prov = sum(float(p.get('provision_final') or 0) for p in nw)
-    elements.append(kat_row('I. Neuwagen', len(nw), 'Verkäufe', nw_prov))
-    elements.append(Spacer(1, 0.3 * cm))
+    t, _ = summary_row(ACCENT_NW, 'I. Neuwagen', len(nw), 'Verkäufe', nw_prov)
+    elements.append(t)
     totals.append(nw_prov)
 
-    # Ia. Zielprämie
     stueck_prov = float(lauf.get('summe_stueckpraemie') or 0)
-    elements.append(kat_row('Ia. Zielprämie Neuwagen', len(nw), 'Zielprämie', stueck_prov))
-    elements.append(Spacer(1, 0.3 * cm))
+    t, _ = summary_row(ACCENT_STUECK, 'Ia. Zielprämie NW', len(nw), 'Zielprämie', stueck_prov)
+    elements.append(t)
     totals.append(stueck_prov)
 
-    # II. Testwagen / VFW
     tw = by_kat.get('II_testwagen', [])
     tw_prov = sum(float(p.get('provision_final') or 0) for p in tw)
-    elements.append(kat_row('II. Testwagen / VFW', len(tw), 'Verkäufe', tw_prov))
-    elements.append(Spacer(1, 0.3 * cm))
+    t, _ = summary_row(ACCENT_TW, 'II. Testwagen / VFW', len(tw), 'Verkäufe', tw_prov)
+    elements.append(t)
     totals.append(tw_prov)
 
-    # III. Gebrauchtwagen
     gw = by_kat.get('III_gebrauchtwagen', [])
     gw_prov = sum(float(p.get('provision_final') or 0) for p in gw)
-    elements.append(kat_row('III. Gebrauchtwagen', len(gw), 'Verkäufe', gw_prov))
-    elements.append(Spacer(1, 0.3 * cm))
+    t, _ = summary_row(ACCENT_GW, 'III. Gebrauchtwagen', len(gw), 'Verkäufe', gw_prov)
+    elements.append(t)
     totals.append(gw_prov)
 
-    # IV. GW aus Bestand
     gwb = by_kat.get('IV_gw_bestand', [])
     gwb_prov = sum(float(p.get('provision_final') or 0) for p in gwb)
-    elements.append(kat_row('IV. GW aus Bestand', len(gwb), 'Bruttoertragsprovision', gwb_prov))
-    elements.append(Spacer(1, 0.3 * cm))
+    t, _ = summary_row(ACCENT_BESTAND, 'IV. GW aus Bestand', len(gwb), 'Bruttoertragsprovision', gwb_prov)
+    elements.append(t)
     totals.append(gwb_prov)
 
-    # V. Zusatzleistungen — nur "Finanzdienstleistung" + Gesamtsumme
     zl_total = float(lauf.get('summe_kat_v') or 0)
     zl_count = len(zusatzleistungen or [])
-    elements.append(kat_row('V. Zusatzleistungen', zl_count, 'Finanzdienstleistung', zl_total))
-    elements.append(Spacer(1, 0.5 * cm))
+    t, _ = summary_row(ACCENT_ZL, 'V. Zusatzleistungen', zl_count, 'Finanzdienstleistung', zl_total)
+    elements.append(t)
     totals.append(zl_total)
 
-    # --- Gesamtsumme ---
+    # Gesamtsumme
+    elements.append(Spacer(1, 0.3 * cm))
     gesamt = sum(totals)
-    gesamt_label = ParagraphStyle('GL', fontName='Helvetica-Bold', fontSize=11, textColor=colors.white, leading=14)
-    gesamt_val = ParagraphStyle('GV', fontName='Helvetica-Bold', fontSize=12, textColor=colors.white, leading=14, alignment=TA_RIGHT)
-    total_data = [
-        [Paragraph('Gesamtprovision', gesamt_label),
-         Paragraph(_fmt_eur(gesamt), gesamt_val)],
-    ]
-    total_t = Table(total_data, colWidths=[11.5 * cm, 5 * cm])
-    total_t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), NAVY),
-        ('BOX', (0, 0), (-1, -1), 1, NAVY),
+    g_data = [[
+        Paragraph('Gesamtprovision', ParagraphStyle('GL', fontName='Helvetica-Bold', fontSize=12, textColor=WHITE, leading=15)),
+        Paragraph(_fmt_eur(gesamt), ParagraphStyle('GV', fontName='Helvetica-Bold', fontSize=14, textColor=WHITE, leading=17, alignment=TA_RIGHT)),
+    ]]
+    g_t = Table(g_data, colWidths=[10 * cm, 6.5 * cm])
+    g_t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_DARK),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('ROUNDEDCORNERS', [4, 4, 4, 4]),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (0, 0), 12),
+        ('RIGHTPADDING', (-1, 0), (-1, 0), 12),
     ]))
-    elements.append(total_t)
+    elements.append(g_t)
 
-    # --- Footer auf Deckblatt ---
-    elements.append(Spacer(1, 0.8 * cm))
+    # Footer
+    elements.append(Spacer(1, 1 * cm))
     endlauf_am = lauf.get('endlauf_am')
-    footer_text = ''
+    parts = []
     if endlauf_am:
         datum_str = endlauf_am.strftime('%d.%m.%Y') if hasattr(endlauf_am, 'strftime') else str(endlauf_am)[:10]
-        footer_text = f'Abgerechnet am {datum_str}'
-        if belegnummer:
-            footer_text += f' \u00b7 Belegnummer {belegnummer}'
+        parts.append(f'Abgerechnet am {datum_str}')
     else:
-        footer_text = f'Erstellt am {datetime.now().strftime("%d.%m.%Y")}'
-    footer_style = ParagraphStyle('DF', fontName='Helvetica', fontSize=8,
-                                  alignment=TA_CENTER, textColor=colors.HexColor('#64748b'), leading=10)
-    elements.append(Paragraph(footer_text, footer_style))
-
+        parts.append(f'Erstellt am {datetime.now().strftime("%d.%m.%Y")}')
+    if belegnummer:
+        parts.append(f'Belegnummer {belegnummer}')
+    elements.append(Paragraph(' \u00b7 '.join(parts),
+                    ParagraphStyle('F', fontName='Helvetica', fontSize=8, textColor=TEXT_MUTED, alignment=TA_CENTER, leading=10)))
     elements.append(PageBreak())
 
 
@@ -282,179 +250,158 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
     belegnummer = lauf.get('belegnummer') or ''
     typ_label = 'Endlauf' if typ == 'endlauf' else 'Vorlauf'
 
-    # Styles (alle Helvetica)
-    title_style = ParagraphStyle('DTitle', fontName='Helvetica-Bold',
-                                 fontSize=14, alignment=TA_CENTER, spaceAfter=4, textColor=NAVY, leading=18)
-    subtitle_style = ParagraphStyle('DSub', fontName='Helvetica',
-                                    fontSize=10, alignment=TA_CENTER, spaceAfter=2, textColor=colors.grey, leading=13)
-    beleg_style = ParagraphStyle('DBeleg', fontName='Helvetica-Bold',
-                                 fontSize=11, alignment=TA_CENTER, spaceAfter=8, textColor=BLUE, leading=14)
-    cell = ParagraphStyle('DCell', fontName='Helvetica', fontSize=8, leading=10, wordWrap='LTR')
-    cell_r = ParagraphStyle('DCellR', fontName='Helvetica', fontSize=8, leading=10, alignment=TA_RIGHT)
-
     # Header
-    elements.append(Paragraph(f'Provisionsabrechnung {monat_label}', title_style))
-    elements.append(Paragraph(f'{vk_name} \u2014 {typ_label}', subtitle_style))
+    elements.append(HRFlowable(width='100%', thickness=2, color=PRIMARY, spaceAfter=8))
+    elements.append(Paragraph(f'Provisionsabrechnung {monat_label}',
+                    ParagraphStyle('DT', fontName='Helvetica-Bold', fontSize=13, textColor=DARK, leading=16, alignment=TA_CENTER)))
+    elements.append(Paragraph(f'{vk_name} \u2014 {typ_label}',
+                    ParagraphStyle('DS', fontName='Helvetica', fontSize=9, textColor=TEXT_LIGHT, leading=12, alignment=TA_CENTER)))
     if belegnummer:
-        elements.append(Paragraph(f'Belegnummer: {belegnummer}', beleg_style))
+        elements.append(Paragraph(f'Belegnummer: {belegnummer}',
+                        ParagraphStyle('DB', fontName='Helvetica-Bold', fontSize=9, textColor=PRIMARY, leading=12, alignment=TA_CENTER, spaceBefore=2)))
     elements.append(Spacer(1, 0.4 * cm))
 
-    # Positionen nach Kategorie
+    # Tabellen-Styles
+    th = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=7.5, textColor=TEXT_LIGHT, leading=10)
+    th_r = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=7.5, textColor=TEXT_LIGHT, leading=10, alignment=TA_RIGHT)
+    td = ParagraphStyle('TD', fontName='Helvetica', fontSize=8, textColor=TEXT, leading=10)
+    td_r = ParagraphStyle('TDR', fontName='Helvetica', fontSize=8, textColor=TEXT, leading=10, alignment=TA_RIGHT)
+    td_rb = ParagraphStyle('TDRB', fontName='Helvetica-Bold', fontSize=8, textColor=DARK, leading=10, alignment=TA_RIGHT)
+
     by_kat = {}
     for p in positionen:
         by_kat.setdefault(p.get('kategorie') or 'Sonstige', []).append(p)
 
-    kat_names = {
-        'I_neuwagen': 'I. Neuwagen',
-        'II_testwagen': 'II. Testwagen / VFW',
-        'III_gebrauchtwagen': 'III. Gebrauchtwagen',
-        'IV_gw_bestand': 'IV. GW aus Bestand'
-    }
-    col_widths = [5.5 * cm, 4.5 * cm, 2.5 * cm, 2.5 * cm]
+    kat_config = [
+        ('I_neuwagen', 'I. Neuwagen', ACCENT_NW),
+        ('II_testwagen', 'II. Testwagen / VFW', ACCENT_TW),
+        ('III_gebrauchtwagen', 'III. Gebrauchtwagen', ACCENT_GW),
+        ('IV_gw_bestand', 'IV. GW aus Bestand', ACCENT_BESTAND),
+    ]
+    col_widths = [5.5 * cm, 4.5 * cm, 2.5 * cm, 3 * cm]
 
-    for kat in ['I_neuwagen', 'II_testwagen', 'III_gebrauchtwagen', 'IV_gw_bestand']:
-        rows = by_kat.get(kat, [])
+    for kat_key, kat_label, kat_color in kat_config:
+        rows = by_kat.get(kat_key, [])
         if not rows:
             continue
 
-        kat_label = kat_names.get(kat, kat)
-        table_data = [[Paragraph(f'<b>{kat_label}</b>',
-                       ParagraphStyle('KL', parent=cell, textColor=KAT_TEXT, fontName='Helvetica-Bold')),
-                       '', '', '']]
-        table_data.append([
-            Paragraph('<b>Modell</b>', cell),
-            Paragraph('<b>Käufer</b>', cell),
-            Paragraph('<b>Rg.Nr.</b>', cell),
-            Paragraph('<b>Provision</b>', cell_r),
-        ])
+        # Kategorie-Header als farbige Linie + Text
+        elements.append(HRFlowable(width='100%', thickness=2, color=kat_color, spaceAfter=2))
+        elements.append(Paragraph(f'<b>{kat_label}</b>  <font size="7" color="#94a3b8">({len(rows)} Fahrzeuge)</font>',
+                        ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceBefore=1, spaceAfter=4)))
 
+        table_data = [[
+            Paragraph('MODELL', th), Paragraph('KÄUFER', th),
+            Paragraph('RG.NR.', th), Paragraph('PROVISION', th_r),
+        ]]
         for p in rows:
             table_data.append([
-                Paragraph((p.get('modell') or '-')[:50], cell),
-                Paragraph((p.get('kaeufer_name') or '-')[:45], cell),
-                Paragraph((p.get('locosoft_rg_nr') or '-')[:15], cell),
-                Paragraph(_fmt_eur(p.get('provision_final')), cell_r),
+                Paragraph((p.get('modell') or '-')[:50], td),
+                Paragraph((p.get('kaeufer_name') or '-')[:45], td),
+                Paragraph((p.get('locosoft_rg_nr') or '-')[:15], td),
+                Paragraph(_fmt_eur(p.get('provision_final')), td_rb),
             ])
 
         t = Table(table_data, colWidths=col_widths)
         style_cmds = [
-            ('SPAN', (0, 0), (-1, 0)),
-            ('BACKGROUND', (0, 0), (-1, 0), KAT_BG),
-            ('TEXTCOLOR', (0, 0), (-1, 0), KAT_TEXT),
-            ('BACKGROUND', (0, 1), (-1, 1), HEADER_BG),
-            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.75, BORDER),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('GRID', (0, 0), (-1, -1), 0.25, BORDER_COLOR),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ]
-        for i in range(2, len(table_data)):
+        for i in range(1, len(table_data)):
+            style_cmds.append(('LINEBELOW', (0, i), (-1, i), 0.25, BORDER))
             if i % 2 == 0:
-                style_cmds.append(('BACKGROUND', (0, i), (-1, i), ZEBRA_EVEN))
+                style_cmds.append(('BACKGROUND', (0, i), (-1, i), BG_LIGHT))
         t.setStyle(TableStyle(style_cmds))
         elements.append(t)
-        elements.append(Spacer(1, 0.3 * cm))
+        elements.append(Spacer(1, 0.4 * cm))
 
-    # --- V. Zusatzleistungen (Einzelpositionen) ---
+    # V. Zusatzleistungen
     zl = zusatzleistungen or []
     if zl:
-        zl_col_widths = [4 * cm, 5 * cm, 3 * cm, 3 * cm]
-        zl_data = [[Paragraph('<b>V. Zusatzleistungen</b>',
-                    ParagraphStyle('ZLH', parent=cell, textColor=KAT_TEXT, fontName='Helvetica-Bold')),
-                    '', '', '']]
-        zl_data.append([
-            Paragraph('<b>Bank</b>', cell),
-            Paragraph('<b>Name</b>', cell),
-            Paragraph('<b>Datum</b>', cell),
-            Paragraph('<b>Provision</b>', cell_r),
-        ])
+        elements.append(HRFlowable(width='100%', thickness=2, color=ACCENT_ZL, spaceAfter=2))
+        elements.append(Paragraph(f'<b>V. Zusatzleistungen</b>  <font size="7" color="#94a3b8">({len(zl)} Positionen)</font>',
+                        ParagraphStyle('ZH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceBefore=1, spaceAfter=4)))
+
+        zl_widths = [4 * cm, 5 * cm, 3 * cm, 3.5 * cm]
+        zl_data = [[Paragraph('BANK', th), Paragraph('NAME', th), Paragraph('DATUM', th), Paragraph('PROVISION', th_r)]]
         for z in zl:
             datum = ''
             if z.get('beleg_datum'):
                 d = z['beleg_datum']
                 datum = d.strftime('%d.%m.%Y') if hasattr(d, 'strftime') else str(d)[:10]
             zl_data.append([
-                Paragraph((z.get('beleg_referenz') or '-')[:30], cell),
-                Paragraph((z.get('bezeichnung') or '-')[:40], cell),
-                Paragraph(datum, cell),
-                Paragraph(_fmt_eur(z.get('provision_verkaufer')), cell_r),
+                Paragraph((z.get('beleg_referenz') or '-')[:30], td),
+                Paragraph((z.get('bezeichnung') or '-')[:40], td),
+                Paragraph(datum, td),
+                Paragraph(_fmt_eur(z.get('provision_verkaufer')), td_rb),
             ])
-
-        t_zl = Table(zl_data, colWidths=zl_col_widths)
+        t_zl = Table(zl_data, colWidths=zl_widths)
         zl_cmds = [
-            ('SPAN', (0, 0), (-1, 0)),
-            ('BACKGROUND', (0, 0), (-1, 0), KAT_BG),
-            ('TEXTCOLOR', (0, 0), (-1, 0), KAT_TEXT),
-            ('BACKGROUND', (0, 1), (-1, 1), HEADER_BG),
-            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.75, BORDER),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('GRID', (0, 0), (-1, -1), 0.25, BORDER_COLOR),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]
-        for i in range(2, len(zl_data)):
+        for i in range(1, len(zl_data)):
+            zl_cmds.append(('LINEBELOW', (0, i), (-1, i), 0.25, BORDER))
             if i % 2 == 0:
-                zl_cmds.append(('BACKGROUND', (0, i), (-1, i), ZEBRA_EVEN))
+                zl_cmds.append(('BACKGROUND', (0, i), (-1, i), BG_LIGHT))
         t_zl.setStyle(TableStyle(zl_cmds))
-        elements.append(KeepTogether([t_zl, Spacer(1, 0.3 * cm)]))
+        elements.append(KeepTogether([t_zl, Spacer(1, 0.4 * cm)]))
 
-    # --- Jahresuebersicht ---
+    # Jahresuebersicht
     if jahresuebersicht:
         j = jahresuebersicht
-        elements.append(Spacer(1, 0.6 * cm))
-        jh_title = ParagraphStyle('JHT', fontName='Helvetica-Bold', fontSize=10,
-                                  textColor=NAVY, leading=13)
-        elements.append(Paragraph(f'Jahresübersicht {j["jahr"]}', jh_title))
-        elements.append(Spacer(1, 0.2 * cm))
+        elements.append(Spacer(1, 0.4 * cm))
+        elements.append(HRFlowable(width='100%', thickness=1, color=TEXT_MUTED, spaceAfter=6))
+        elements.append(Paragraph(f'Jahresübersicht {j["jahr"]}',
+                        ParagraphStyle('JT', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceAfter=4)))
 
-        jh_cell = ParagraphStyle('JHC', fontName='Helvetica', fontSize=9, leading=11)
-        jh_cell_b = ParagraphStyle('JHCB', fontName='Helvetica-Bold', fontSize=9, leading=11)
-        jh_cell_r = ParagraphStyle('JHCR', fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=TA_RIGHT)
+        jc = ParagraphStyle('JC', fontName='Helvetica', fontSize=8.5, textColor=TEXT, leading=11)
+        jv = ParagraphStyle('JV', fontName='Helvetica-Bold', fontSize=8.5, textColor=DARK, leading=11, alignment=TA_RIGHT)
         jh_data = [
-            [Paragraph('Neuwagen', jh_cell), Paragraph(f'{j["stueck_nw"]} Stück', jh_cell_r)],
-            [Paragraph('Testwagen / VFW', jh_cell), Paragraph(f'{j["stueck_tw"]} Stück', jh_cell_r)],
-            [Paragraph('Gebrauchtwagen', jh_cell), Paragraph(f'{j["stueck_gw"]} Stück', jh_cell_r)],
+            [Paragraph('Neuwagen', jc), Paragraph(f'{j["stueck_nw"]} Stück', jv)],
+            [Paragraph('Testwagen / VFW', jc), Paragraph(f'{j["stueck_tw"]} Stück', jv)],
+            [Paragraph('Gebrauchtwagen', jc), Paragraph(f'{j["stueck_gw"]} Stück', jv)],
+            [Paragraph(f'Gesamtprovision {j["jahr"]}',
+                       ParagraphStyle('JP', fontName='Helvetica-Bold', fontSize=9, textColor=WHITE, leading=12)),
+             Paragraph(_fmt_eur(j['provision_jahr']),
+                       ParagraphStyle('JPV', fontName='Helvetica-Bold', fontSize=10, textColor=WHITE, leading=13, alignment=TA_RIGHT))],
         ]
-        # Gesamtprovision Jahr
-        jh_ges_l = ParagraphStyle('JGL', fontName='Helvetica-Bold', fontSize=10, textColor=colors.white, leading=13)
-        jh_ges_r = ParagraphStyle('JGR', fontName='Helvetica-Bold', fontSize=10, textColor=colors.white, leading=13, alignment=TA_RIGHT)
-        jh_data.append([
-            Paragraph(f'Gesamtprovision {j["jahr"]}', jh_ges_l),
-            Paragraph(_fmt_eur(j['provision_jahr']), jh_ges_r),
-        ])
-
         jh_t = Table(jh_data, colWidths=[11 * cm, 5.5 * cm])
-        jh_cmds = [
+        jh_t.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 5),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ('GRID', (0, 0), (-1, -2), 0.25, BORDER_COLOR),
-            ('BACKGROUND', (0, 0), (-1, 0), ZEBRA_EVEN),
-            ('BACKGROUND', (0, 2), (-1, 2), ZEBRA_EVEN),
-            ('BACKGROUND', (0, -1), (-1, -1), NAVY),
-            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-            ('LINEABOVE', (0, -1), (-1, -1), 1, NAVY),
-            ('BOX', (0, -1), (-1, -1), 1, NAVY),
-        ]
-        jh_t.setStyle(TableStyle(jh_cmds))
+            ('LINEBELOW', (0, 0), (-1, 0), 0.25, BORDER),
+            ('LINEBELOW', (0, 1), (-1, 1), 0.25, BORDER),
+            ('LINEBELOW', (0, 2), (-1, 2), 0.25, BORDER),
+            ('BACKGROUND', (0, -1), (-1, -1), PRIMARY_DARK),
+            ('LEFTPADDING', (0, -1), (0, -1), 8),
+            ('RIGHTPADDING', (-1, -1), (-1, -1), 8),
+            ('TOPPADDING', (0, -1), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, -1), (-1, -1), 7),
+        ]))
         elements.append(KeepTogether([jh_t]))
 
-    # --- Fusszeile ---
+    # Fusszeile
     elements.append(Spacer(1, 0.8 * cm))
-    footer_parts = []
+    parts = []
     endlauf_am = lauf.get('endlauf_am')
     if endlauf_am:
         datum_str = endlauf_am.strftime('%d.%m.%Y') if hasattr(endlauf_am, 'strftime') else str(endlauf_am)[:10]
-        footer_parts.append(f'Abgerechnet am {datum_str}')
+        parts.append(f'Abgerechnet am {datum_str}')
     else:
-        footer_parts.append(f'Erstellt am {datetime.now().strftime("%d.%m.%Y")}')
+        parts.append(f'Erstellt am {datetime.now().strftime("%d.%m.%Y")}')
     if belegnummer:
-        footer_parts.append(f'Belegnummer {belegnummer}')
-    footer_style = ParagraphStyle('DFooter', fontName='Helvetica', fontSize=8,
-                                  alignment=TA_CENTER, textColor=colors.HexColor('#64748b'), leading=10)
-    elements.append(Paragraph(' \u00b7 '.join(footer_parts), footer_style))
+        parts.append(f'Belegnummer {belegnummer}')
+    elements.append(Paragraph(' \u00b7 '.join(parts),
+                    ParagraphStyle('DF', fontName='Helvetica', fontSize=8, textColor=TEXT_MUTED, alignment=TA_CENTER, leading=10)))
 
 
 # =============================================================================
@@ -462,10 +409,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
 # =============================================================================
 
 def generate_provision_pdf(lauf_id: int, typ: str = 'vorlauf') -> Optional[str]:
-    """
-    Erstellt PDF: Seite 1 = Deckblatt (Zusammenfassung), Seite 2+ = Detail-Positionen.
-    Speicherort: data/provision_pdf/<jahr>/<monat>/<verkaufer_id>_<typ>.pdf
-    """
+    """Erstellt PDF: Seite 1 = Deckblatt, Seite 2+ = Detail-Positionen."""
     data = _lauf_daten(lauf_id)
     if not data:
         return None
@@ -485,19 +429,13 @@ def generate_provision_pdf(lauf_id: int, typ: str = 'vorlauf') -> Optional[str]:
     rel_path = f"provision_pdf/{jahr}/{mm}/{filename}"
 
     buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
     elements = []
     styles = getSampleStyleSheet()
 
-    # Seite 1: Deckblatt
     _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles)
-
-    # Seite 2+: Detail-Positionen
-    jahresuebersicht = data.get('jahresuebersicht')
-    _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jahresuebersicht)
+    _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, data.get('jahresuebersicht'))
 
     doc.build(elements)
     with open(filepath, 'wb') as f:
