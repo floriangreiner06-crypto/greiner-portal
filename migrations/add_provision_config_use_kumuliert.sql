@@ -6,4 +6,5 @@ ALTER TABLE provision_config ADD COLUMN IF NOT EXISTS use_kumuliert BOOLEAN DEFA
 UPDATE provision_config
 SET use_kumuliert = true
 WHERE kategorie = 'I_neuwagen'
-  AND use_zielpraemie = true;
+  AND use_zielpraemie = true
+  AND bemessungsgrundlage = 'manuell';
