@@ -155,12 +155,41 @@ def get_guv_daten(geschaeftsjahr: str = None) -> dict:
             m['label'] = f"{monatslabels[monat]} {str(jahr)[-2:]}"
             monate.append(m)
 
-    # Kumuliert
+    # Unvollständigen letzten Monat erkennen und bereinigen
+    # Wenn Personalaufwand des letzten Monats < 50% des Ø der Vormonate → unvollständig
+    unvollstaendig_idx = None
+    if len(monate) >= 2:
+        vormonate = monate[:-1]
+        letzter = monate[-1]
+        avg_personal = sum(abs(m.get('personal', 0)) for m in vormonate) / len(vormonate)
+        if avg_personal > 0 and abs(letzter.get('personal', 0)) < avg_personal * 0.5:
+            unvollstaendig_idx = len(monate) - 1
+            monate[-1]['unvollstaendig'] = True
+            # Bereinigungswerte aus Ø der letzten 3 abgeschlossenen Monate
+            basis = monate[-4:-1] if len(monate) >= 4 else vormonate
+            bereinigt = {}
+            for f in ['personal', 'sonst_aufwand']:
+                bereinigt[f] = round(sum(m.get(f, 0) for m in basis) / len(basis))
+            # Bereinigtes EBIT/EBT
+            bereinigt['ebit'] = letzter['rohertrag'] + bereinigt['personal'] + bereinigt['sonst_aufwand'] + (letzter['ebit'] - letzter['rohertrag'] - letzter['personal'] - letzter['sonst_aufwand'])
+            bereinigt['ebt'] = bereinigt['ebit'] + letzter['zinsen']
+            monate[-1]['bereinigt'] = bereinigt
+            logger.info(f"  Monat {letzter['label']} als unvollständig markiert (Personal {letzter['personal']} vs. Ø {round(avg_personal)})")
+
+    # Kumuliert (mit bereinigten Werten für unvollständigen Monat)
     kum_felder = ['erloese', 'we', 'rohertrag', 'personal', 'sonst_aufwand', 'ebit', 'zinsen', 'ebt',
                   'werkstatt_erloese', 'teile_erloese', 'fz_erloese', 'sonst_erloese']
-    kumuliert = {f: sum(m.get(f, 0) for m in monate) for f in kum_felder}
+
+    def _monat_wert(m, feld):
+        """Liefert bereinigten Wert wenn Monat unvollständig, sonst Rohwert."""
+        if m.get('unvollstaendig') and 'bereinigt' in m and feld in m['bereinigt']:
+            return m['bereinigt'][feld]
+        return m.get(feld, 0)
+
+    kumuliert = {f: sum(_monat_wert(m, f) for m in monate) for f in kum_felder}
     kumuliert['rohertrag_marge'] = round(kumuliert['rohertrag'] / kumuliert['erloese'] * 100, 1) if kumuliert['erloese'] else 0
     kumuliert['anzahl_monate'] = len(monate)
+    kumuliert['bereinigt'] = unvollstaendig_idx is not None
 
     # Vorjahr gleicher Zeitraum
     bisherige_monate_nummern = [m['monat'] for m in monate]
