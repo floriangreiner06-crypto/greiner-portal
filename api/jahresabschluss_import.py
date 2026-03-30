@@ -346,24 +346,24 @@ def _extrahiere_aus_anlagen(pdf) -> dict:
                 # Suche spezifisch nach der EK-Summenzeile
                 pass
 
-        # Eigenkapital: suche die Zeile mit 2 großen Zahlen nach "Kapitalanteile"/"Eigenkapital"
-        ek_found = False
+        # Eigenkapital: suche ALLE Zahlenpaare nach "Kapitalanteile"/"Eigenkapital"
+        # Nimm den GRÖSSTEN Wert — die EK-Summe ist immer > Teilpositionen
+        # (Zwei-Spalten-Bilanz vermischt AKTIVA/PASSIVA-Zeilen)
+        ek_kandidaten = []
         for i, line in enumerate(lines):
-            if ek_found:
-                break
             if 'Kapitalanteile' in line or ('Eigenkapital' in line and 'quote' not in line.lower()):
-                # Die nächsten Zeilen nach Eigenkapital durchsuchen
-                for j in range(i, min(i+8, len(lines))):
+                for j in range(i, min(i + 10, len(lines))):
                     subline = lines[j]
+                    if 'Verbindlich' in subline:
+                        break
                     zahlen = re.findall(r'-?\d{1,3}(?:\.\d{3})*,\d{2}', subline)
-                    if len(zahlen) >= 2:
-                        v1 = _parse_german_number(zahlen[0])
-                        v2 = _parse_german_number(zahlen[1])
-                        # EK-Summenzeile: zwei ähnlich große Zahlen > 50.000
-                        if v1 and v2 and abs(v1) > 50000 and abs(v2) > 50000:
-                            result['eigenkapital'] = round(v1 / 1000, 1)
-                            ek_found = True
-                            break
+                    for z in zahlen:
+                        v = _parse_german_number(z)
+                        if v and abs(v) > 50000:
+                            ek_kandidaten.append(v)
+        if ek_kandidaten:
+            # Der größte Kandidat ist die EK-Summe (inkl. aller Kapitalanteile)
+            result['eigenkapital'] = round(max(ek_kandidaten) / 1000, 1)
 
     # Rohertrag berechnen wenn möglich
     if result.get('umsatz') and result.get('_materialaufwand'):
