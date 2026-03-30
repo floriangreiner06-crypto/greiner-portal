@@ -257,11 +257,11 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
     elements.append(Spacer(1, 0.4 * cm))
 
     # Tabellen-Styles
-    th = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=7.5, textColor=TEXT, leading=10)
-    th_r = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=7.5, textColor=TEXT, leading=10, alignment=TA_RIGHT)
-    td = ParagraphStyle('TD', fontName='Helvetica', fontSize=8, textColor=colors.black, leading=10)
-    td_r = ParagraphStyle('TDR', fontName='Helvetica', fontSize=8, textColor=colors.black, leading=10, alignment=TA_RIGHT)
-    td_rb = ParagraphStyle('TDRB', fontName='Helvetica-Bold', fontSize=8, textColor=colors.black, leading=10, alignment=TA_RIGHT)
+    th = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=8.5, textColor=TEXT, leading=11)
+    th_r = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=8.5, textColor=TEXT, leading=11, alignment=TA_RIGHT)
+    td = ParagraphStyle('TD', fontName='Helvetica', fontSize=9, textColor=colors.black, leading=12)
+    td_r = ParagraphStyle('TDR', fontName='Helvetica', fontSize=9, textColor=colors.black, leading=12, alignment=TA_RIGHT)
+    td_rb = ParagraphStyle('TDRB', fontName='Helvetica-Bold', fontSize=9, textColor=colors.black, leading=12, alignment=TA_RIGHT)
 
     by_kat = {}
     for p in positionen:
@@ -310,6 +310,8 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
         for i in range(1, len(table_data)):
             style_cmds.append(('LINEBELOW', (0, i), (-1, i), 0.25, BORDER))
             if i % 2 == 0:
+                style_cmds.append(('BACKGROUND', (0, i), (-1, i), BG_HEADER))
+            else:
                 style_cmds.append(('BACKGROUND', (0, i), (-1, i), BG_LIGHT))
         t.setStyle(TableStyle(style_cmds))
         elements.append(t)
@@ -345,6 +347,8 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
         for i in range(1, len(zl_data)):
             zl_cmds.append(('LINEBELOW', (0, i), (-1, i), 0.25, BORDER))
             if i % 2 == 0:
+                zl_cmds.append(('BACKGROUND', (0, i), (-1, i), BG_HEADER))
+            else:
                 zl_cmds.append(('BACKGROUND', (0, i), (-1, i), BG_LIGHT))
         t_zl.setStyle(TableStyle(zl_cmds))
         elements.append(KeepTogether([t_zl, Spacer(1, 0.4 * cm)]))
@@ -352,8 +356,8 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
     # Jahresuebersicht
     if jahresuebersicht:
         j = jahresuebersicht
-        elements.append(Spacer(1, 0.4 * cm))
-        elements.append(HRFlowable(width='100%', thickness=1, color=TEXT_MUTED, spaceAfter=6))
+        elements.append(Spacer(1, 1.2 * cm))
+        elements.append(HRFlowable(width='100%', thickness=2, color=PRIMARY, spaceAfter=8))
         elements.append(Paragraph(f'Jahresübersicht {j["jahr"]}',
                         ParagraphStyle('JT', fontName='Helvetica-Bold', fontSize=12, textColor=colors.black, leading=15, spaceAfter=6)))
 
@@ -373,6 +377,9 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 7),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+            ('BACKGROUND', (0, 0), (-1, 0), BG_HEADER),
+            ('BACKGROUND', (0, 1), (-1, 1), BG_LIGHT),
+            ('BACKGROUND', (0, 2), (-1, 2), BG_HEADER),
             ('LINEBELOW', (0, 0), (-1, 0), 0.25, BORDER),
             ('LINEBELOW', (0, 1), (-1, 1), 0.25, BORDER),
             ('LINEBELOW', (0, 2), (-1, 2), 0.25, BORDER),
