@@ -1027,9 +1027,9 @@
         if (kumBlock) {
             var kd = l.kum_daten;
             if (kd) {
-                var monatLabel = l.abrechnungsmonat || '';
-                var mm = monatLabel.substring(5);
-                var jj = monatLabel.substring(0, 4);
+                var kumMonat = l.abrechnungsmonat || '';
+                var mm = kumMonat.substring(5);
+                var jj = kumMonat.substring(0, 4);
                 var kumHtml = '<div class="card border-0 shadow-sm mb-3">';
                 kumHtml += '<div class="card-body py-2 px-3">';
                 kumHtml += '<h6 class="mb-2" style="font-size:.85rem;">Kumulierte Zielerreichung (Jan\u2013' + mm + '/' + jj + ')</h6>';
