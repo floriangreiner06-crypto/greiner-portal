@@ -80,7 +80,35 @@ def _lauf_daten(lauf_id: int) -> Optional[dict]:
             ORDER BY beleg_datum DESC NULLS LAST
         """, (lauf_id,))
         zusatzleistungen = rows_to_list(cur.fetchall())
-    return {'lauf': dict(lauf), 'positionen': positionen, 'zusatzleistungen': zusatzleistungen}
+
+        # Jahresuebersicht: alle Laeufe desselben Verkaefers im selben Jahr
+        vkb = lauf['verkaufer_id']
+        monat = lauf['abrechnungsmonat'] or ''
+        jahr = monat[:4] if len(monat) >= 4 else str(datetime.now().year)
+        cur.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN pp.kategorie = 'I_neuwagen' THEN 1 ELSE 0 END), 0) AS stueck_nw,
+                COALESCE(SUM(CASE WHEN pp.kategorie = 'II_testwagen' THEN 1 ELSE 0 END), 0) AS stueck_tw,
+                COALESCE(SUM(CASE WHEN pp.kategorie = 'III_gebrauchtwagen' THEN 1 ELSE 0 END), 0) AS stueck_gw
+            FROM provision_positionen pp
+            JOIN provision_laeufe pl ON pp.lauf_id = pl.id
+            WHERE pl.verkaufer_id = %s AND pl.abrechnungsmonat LIKE %s
+        """, (vkb, f'{jahr}-%'))
+        row_j = cur.fetchone()
+        cur.execute("""
+            SELECT COALESCE(SUM(summe_gesamt), 0) AS provision_jahr
+            FROM provision_laeufe
+            WHERE verkaufer_id = %s AND abrechnungsmonat LIKE %s
+        """, (vkb, f'{jahr}-%'))
+        row_p = cur.fetchone()
+        jahresuebersicht = {
+            'jahr': jahr,
+            'stueck_nw': int(row_j['stueck_nw']) if row_j else 0,
+            'stueck_tw': int(row_j['stueck_tw']) if row_j else 0,
+            'stueck_gw': int(row_j['stueck_gw']) if row_j else 0,
+            'provision_jahr': float(row_p['provision_jahr']) if row_p else 0,
+        }
+    return {'lauf': dict(lauf), 'positionen': positionen, 'zusatzleistungen': zusatzleistungen, 'jahresuebersicht': jahresuebersicht}
 
 
 # =============================================================================
@@ -247,7 +275,7 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
 # Seite 2+: Detail-Positionen
 # =============================================================================
 
-def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ):
+def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jahresuebersicht=None):
     vk_name = lauf.get('verkaufer_name') or '-'
     monat = lauf.get('abrechnungsmonat') or ''
     monat_label = _monat_label(monat)
@@ -372,6 +400,47 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ):
         t_zl.setStyle(TableStyle(zl_cmds))
         elements.append(KeepTogether([t_zl, Spacer(1, 0.3 * cm)]))
 
+    # --- Jahresuebersicht ---
+    if jahresuebersicht:
+        j = jahresuebersicht
+        elements.append(Spacer(1, 0.6 * cm))
+        jh_title = ParagraphStyle('JHT', fontName='Helvetica-Bold', fontSize=10,
+                                  textColor=NAVY, leading=13)
+        elements.append(Paragraph(f'Jahresübersicht {j["jahr"]}', jh_title))
+        elements.append(Spacer(1, 0.2 * cm))
+
+        jh_cell = ParagraphStyle('JHC', fontName='Helvetica', fontSize=9, leading=11)
+        jh_cell_b = ParagraphStyle('JHCB', fontName='Helvetica-Bold', fontSize=9, leading=11)
+        jh_cell_r = ParagraphStyle('JHCR', fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=TA_RIGHT)
+        jh_data = [
+            [Paragraph('Neuwagen', jh_cell), Paragraph(f'{j["stueck_nw"]} Stück', jh_cell_r)],
+            [Paragraph('Testwagen / VFW', jh_cell), Paragraph(f'{j["stueck_tw"]} Stück', jh_cell_r)],
+            [Paragraph('Gebrauchtwagen', jh_cell), Paragraph(f'{j["stueck_gw"]} Stück', jh_cell_r)],
+        ]
+        # Gesamtprovision Jahr
+        jh_ges_l = ParagraphStyle('JGL', fontName='Helvetica-Bold', fontSize=10, textColor=colors.white, leading=13)
+        jh_ges_r = ParagraphStyle('JGR', fontName='Helvetica-Bold', fontSize=10, textColor=colors.white, leading=13, alignment=TA_RIGHT)
+        jh_data.append([
+            Paragraph(f'Gesamtprovision {j["jahr"]}', jh_ges_l),
+            Paragraph(_fmt_eur(j['provision_jahr']), jh_ges_r),
+        ])
+
+        jh_t = Table(jh_data, colWidths=[11 * cm, 5.5 * cm])
+        jh_cmds = [
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('GRID', (0, 0), (-1, -2), 0.25, BORDER_COLOR),
+            ('BACKGROUND', (0, 0), (-1, 0), ZEBRA_EVEN),
+            ('BACKGROUND', (0, 2), (-1, 2), ZEBRA_EVEN),
+            ('BACKGROUND', (0, -1), (-1, -1), NAVY),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+            ('LINEABOVE', (0, -1), (-1, -1), 1, NAVY),
+            ('BOX', (0, -1), (-1, -1), 1, NAVY),
+        ]
+        jh_t.setStyle(TableStyle(jh_cmds))
+        elements.append(KeepTogether([jh_t]))
+
     # --- Fusszeile ---
     elements.append(Spacer(1, 0.8 * cm))
     footer_parts = []
@@ -427,7 +496,8 @@ def generate_provision_pdf(lauf_id: int, typ: str = 'vorlauf') -> Optional[str]:
     _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles)
 
     # Seite 2+: Detail-Positionen
-    _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ)
+    jahresuebersicht = data.get('jahresuebersicht')
+    _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jahresuebersicht)
 
     doc.build(elements)
     with open(filepath, 'wb') as f:
