@@ -2696,3 +2696,18 @@ def garantie_precheck_refresh(max_orders: int = 120, max_ai: int = 20):
     except Exception as e:
         logger.exception("Fehler bei garantie_precheck_refresh")
         return {'success': False, 'error': str(e)}
+
+
+@shared_task(soft_time_limit=600, bind=True, max_retries=3)
+def sync_fibu_guv(self):
+    """Synchronisiert FIBU GuV-Daten aus Locosoft ins Portal.
+
+    Täglich 20:15 Mo-Fr (nach Locosoft-Mirror 19:00).
+    Erstellt: 2026-03-30 | Workstream: Controlling / Ertragsvorschau
+    """
+    try:
+        from scripts.sync.sync_fibu_guv import sync_fibu_guv as do_sync
+        return do_sync()
+    except Exception as exc:
+        logger.error(f"sync_fibu_guv fehlgeschlagen: {exc}")
+        raise self.retry(exc=exc, countdown=300)

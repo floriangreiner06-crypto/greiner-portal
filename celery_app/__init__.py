@@ -188,6 +188,13 @@ app.conf.update(
             'schedule': crontab(minute=15, hour=20, day_of_week='mon-fri'),
             'options': {'queue': 'controlling'}
         },
+
+        # FIBU GuV Sync (20:15 Mo-Fr nach Locosoft-Mirror 19:00)
+        'sync-fibu-guv': {
+            'task': 'celery_app.tasks.sync_fibu_guv',
+            'schedule': crontab(minute=15, hour=20, day_of_week='mon-fri'),
+            'options': {'queue': 'controlling'}
+        },
         
         # Wartung
         'db-backup': {
