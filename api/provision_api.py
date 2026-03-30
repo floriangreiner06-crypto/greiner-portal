@@ -31,10 +31,12 @@ _PROVISION_VOLLZUGRIFF_USERS = {
     'vanessa.groll@auto-greiner.de',
 }
 
-# Genehmiger: Nur diese 2 Personen duerfen Provisionen genehmigen (einer reicht)
+# Genehmiger: Diese Personen duerfen Provisionen genehmigen (einer reicht)
+# Vanessa Groll temporaer fuer Testphase hinzugefuegt
 _PROVISION_GENEHMIGER_USERS = {
     'anton.suess@auto-greiner.de',
     'florian.greiner@auto-greiner.de',
+    'vanessa.groll@auto-greiner.de',
 }
 
 # E-Mail-Versand: In Testversion deaktiviert

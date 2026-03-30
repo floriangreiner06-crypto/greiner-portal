@@ -402,7 +402,7 @@
     var pvUserCanEndlauf = pvProvisionVollzugriff;
     var pvUserCanPdf = pvProvisionVollzugriff;
     var pvUserCanEdit = pvProvisionVollzugriff;
-    var pvIsGenehmiger = {% if current_user.username in ('anton.suess@auto-greiner.de', 'florian.greiner@auto-greiner.de') %}true{% else %}false{% endif %};
+    var pvIsGenehmiger = {% if current_user.username in ('anton.suess@auto-greiner.de', 'florian.greiner@auto-greiner.de', 'vanessa.groll@auto-greiner.de') %}true{% else %}false{% endif %};
 
     var L = document.getElementById('loading');
     var E = document.getElementById('error');
@@ -970,7 +970,8 @@
         document.getElementById('headerMonat').textContent = monatLabel(l.abrechnungsmonat);
 
         var statusEl = document.getElementById('headerStatus');
-        statusEl.textContent = statusUpper;
+        var statusLabels = {'VORLAUF':'Vorlauf','ZUR_PRUEFUNG':'Zur Prüfung','FREIGEGEBEN':'Freigegeben','GENEHMIGT':'Genehmigt','ENDLAUF':'Endlauf'};
+        statusEl.textContent = statusLabels[statusUpper] || statusUpper;
         if (statusUpper === 'VORLAUF') statusEl.className = 'status-badge status-vorlauf ms-2';
         else if (statusUpper === 'ZUR_PRUEFUNG') statusEl.className = 'status-badge status-zurpruefung ms-2';
         else if (statusUpper === 'FREIGEGEBEN') statusEl.className = 'status-badge status-freigegeben ms-2';
@@ -1037,7 +1038,7 @@
             var wfDiv = document.createElement('div');
             wfDiv.className = 'd-flex flex-wrap align-items-center gap-2 my-3';
             wfDiv.innerHTML = wfHtml;
-            document.getElementById('katAccordion').after(wfDiv);
+            document.getElementById('summenTabelle').parentNode.after(wfDiv);
         }
 
         // Workflow Button Event Listeners
