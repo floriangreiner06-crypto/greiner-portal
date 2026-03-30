@@ -252,6 +252,141 @@ def _extrahiere_ertragslage(page) -> dict:
     return result
 
 
+def _extrahiere_aus_anlagen(pdf) -> dict:
+    """Extrahiert Kennzahlen aus Bilanz (Anlage 1) und GuV (Anlage 2).
+
+    Fallback-Parser für PDFs ohne Mehrjahresvergleich (z.B. Auto Greiner).
+    Werte werden in EUR extrahiert und in TEUR umgerechnet.
+    """
+    result = {}
+    ganzer_text = '\n'.join(page.extract_text() or '' for page in pdf.pages)
+
+    # --- Bilanz-Werte (aus "Bilanz zum 31. August") ---
+    # Bilanzsumme: die letzte Zahl in der Bilanz-Zeile die mit der Seitensumme übereinstimmt
+    # Format: "3.568.219,03 3.728.115,49" (aktuell, Vorjahr)
+    bilanz_match = re.findall(r'(\d{1,3}(?:\.\d{3})*,\d{2})\s+(\d{1,3}(?:\.\d{3})*,\d{2})\s*$',
+                               ganzer_text, re.MULTILINE)
+
+    # Eigenkapital aus "Eigenkapital" Zeile mit Kapitalanteile-Summe
+    # Suche nach dem Muster: Kapitalanteile-Summe (z.B. "1.348.786,76 1.322.610,57")
+    ek_matches = re.findall(r'(\d{1,3}(?:\.\d{3})*,\d{2})\s+(\d{1,3}(?:\.\d{3})*,\d{2})', ganzer_text)
+
+    # --- GuV-Werte (aus "Gewinn- und Verlustrechnung") ---
+    for page in pdf.pages:
+        text = page.extract_text() or ''
+        if 'Gewinn- und Verlustrechnung' not in text and 'Verlustrechnung' not in text:
+            continue
+        if 'Anlage' not in text:
+            continue
+
+        lines = text.split('\n')
+        for line in lines:
+            # Zahlen extrahieren: Format "1.234.567,89" oder "-1.234.567,89"
+            zahlen = re.findall(r'-?\d{1,3}(?:\.\d{3})*,\d{2}', line)
+            if not zahlen:
+                continue
+            # Erste Zahl = aktuelles GJ
+            aktuelle = _parse_german_number(zahlen[0])
+
+            # Umsatzerlöse (Zeile 1)
+            if re.match(r'^\d+\.\s*U', line) or 'Umsatzerlöse' in line or ('U' in line[:5] and aktuelle and aktuelle > 1000000):
+                if aktuelle and aktuelle > 100000:
+                    result['umsatz'] = round(aktuelle / 1000, 1)
+
+            # Materialaufwand
+            elif 'Materialaufwand' in line or ('aterial' in line and aktuelle and aktuelle < -100000):
+                if aktuelle and aktuelle < 0:
+                    result['_materialaufwand'] = aktuelle
+
+            # Abschreibungen
+            elif 'Abschreibungen' in line or 'bschreibung' in line:
+                if aktuelle and aktuelle < 0:
+                    result['abschreibungen'] = round(abs(aktuelle) / 1000, 1)
+
+            # Sonstige betriebliche Aufwendungen
+            elif 'Sonstige betriebliche Aufwendungen' in line or 'onstige betrieblic' in line:
+                if aktuelle and aktuelle < 0:
+                    result['_sonst_aufw'] = aktuelle
+
+            # Zinsaufwendungen
+            elif 'Zins' in line and 'Aufwendungen' in line:
+                if aktuelle and aktuelle < 0:
+                    result['zinsergebnis'] = round(aktuelle / 1000, 1)
+
+            # Ergebnis nach Steuern / Jahresüberschuss
+            elif 'Ergebnis nach Steuern' in line:
+                if aktuelle is not None:
+                    result['jahresergebnis'] = round(aktuelle / 1000, 1)
+            elif ('schuss' in line or 'fehlbetrag' in line) and re.match(r'^\d+\.', line.strip()):
+                if aktuelle is not None and 'jahresergebnis' not in result:
+                    result['jahresergebnis'] = round(aktuelle / 1000, 1)
+
+    # --- Bilanz-Seite: Bilanzsumme und EK ---
+    for page in pdf.pages:
+        text = page.extract_text() or ''
+        if 'Bilanz zum' not in text:
+            continue
+        if 'Anlage' not in text and 'A K T I V A' not in text:
+            continue
+
+        lines = text.split('\n')
+        for line in lines:
+            zahlen = re.findall(r'-?\d{1,3}(?:\.\d{3})*,\d{2}', line)
+            if not zahlen:
+                continue
+            aktuelle = _parse_german_number(zahlen[0])
+
+            # Bilanzsumme: letzte Zeile der Bilanz (enthält Gesamtsumme)
+            # Beide Seiten (Aktiva + Passiva) enden mit derselben Zahl
+            if aktuelle and aktuelle > 1000000:
+                result['bilanzsumme'] = round(aktuelle / 1000, 1)  # wird überschrieben bis zur letzten Zeile
+
+            # Eigenkapital: Zeile mit Kapitalanteile-Summe
+            if ('1.348' in line or '1.322' in line) and 'Kommandit' not in line:
+                # Suche spezifisch nach der EK-Summenzeile
+                pass
+
+        # Eigenkapital: suche die Zeile mit 2 großen Zahlen nach "Kapitalanteile"/"Eigenkapital"
+        ek_found = False
+        for i, line in enumerate(lines):
+            if ek_found:
+                break
+            if 'Kapitalanteile' in line or ('Eigenkapital' in line and 'quote' not in line.lower()):
+                # Die nächsten Zeilen nach Eigenkapital durchsuchen
+                for j in range(i, min(i+8, len(lines))):
+                    subline = lines[j]
+                    zahlen = re.findall(r'-?\d{1,3}(?:\.\d{3})*,\d{2}', subline)
+                    if len(zahlen) >= 2:
+                        v1 = _parse_german_number(zahlen[0])
+                        v2 = _parse_german_number(zahlen[1])
+                        # EK-Summenzeile: zwei ähnlich große Zahlen > 50.000
+                        if v1 and v2 and abs(v1) > 50000 and abs(v2) > 50000:
+                            result['eigenkapital'] = round(v1 / 1000, 1)
+                            ek_found = True
+                            break
+
+    # Rohertrag berechnen wenn möglich
+    if result.get('umsatz') and result.get('_materialaufwand'):
+        rohertrag = result['umsatz'] * 1000 + result['_materialaufwand']
+        result['rohertrag_pct'] = round(rohertrag / (result['umsatz'] * 1000) * 100, 1)
+
+    # EK-Quote berechnen
+    if result.get('eigenkapital') and result.get('bilanzsumme') and result['bilanzsumme'] > 0:
+        result['ek_quote'] = round(result['eigenkapital'] / result['bilanzsumme'] * 100, 1)
+
+    # Betriebsergebnis berechnen
+    if all(k in result for k in ['umsatz', '_materialaufwand', 'abschreibungen', '_sonst_aufw']):
+        be = (result['umsatz'] * 1000 + result['_materialaufwand']
+              - result['abschreibungen'] * 1000 + result['_sonst_aufw'])
+        result['betriebsergebnis'] = round(be / 1000, 1)
+
+    # Temp-Felder entfernen
+    result.pop('_materialaufwand', None)
+    result.pop('_sonst_aufw', None)
+
+    return result
+
+
 def _gj_aus_dateiname(dateiname: str) -> Optional[str]:
     """Extrahiert das Geschäftsjahr aus dem Dateinamen.
 
@@ -333,20 +468,23 @@ def import_jahresabschluss(dateipfad: str, gesellschaft: str = 'autohaus', impor
     logger.info(f"Importiere JA {gj} aus {dateiname}")
 
     with pdfplumber.open(dateipfad) as pdf:
-        # Mehrjahresvergleich finden und parsen
+        # Strategie 1: Mehrjahresvergleich (Autohaus Greiner, volle Berichte)
         mjv_seite = _finde_mehrjahresvergleich_seite(pdf)
-        if mjv_seite is None:
-            return {'error': 'Mehrjahresvergleich-Seite nicht gefunden'}
+        if mjv_seite is not None:
+            daten = _extrahiere_mehrjahresvergleich(pdf.pages[mjv_seite])
+            logger.info(f"  Mehrjahresvergleich (S. {mjv_seite + 1}): {len(daten)} Werte")
 
-        daten = _extrahiere_mehrjahresvergleich(pdf.pages[mjv_seite])
-        logger.info(f"  Mehrjahresvergleich (S. {mjv_seite + 1}): {len(daten)} Werte")
-
-        # Ertragslage finden und parsen
-        el_seite = _finde_ertragslage_seite(pdf)
-        if el_seite is not None:
-            el_daten = _extrahiere_ertragslage(pdf.pages[el_seite])
-            daten.update(el_daten)
-            logger.info(f"  Ertragslage (S. {el_seite + 1}): {len(el_daten)} Werte")
+            # Ertragslage finden und parsen
+            el_seite = _finde_ertragslage_seite(pdf)
+            if el_seite is not None:
+                el_daten = _extrahiere_ertragslage(pdf.pages[el_seite])
+                daten.update(el_daten)
+                logger.info(f"  Ertragslage (S. {el_seite + 1}): {len(el_daten)} Werte")
+        else:
+            # Strategie 2: Bilanz + GuV aus Anlagen parsen (Auto Greiner, kürzere Berichte)
+            logger.info(f"  Kein Mehrjahresvergleich → parse Bilanz + GuV aus Anlagen")
+            daten = _extrahiere_aus_anlagen(pdf)
+            logger.info(f"  Anlagen-Parser: {len(daten)} Werte")
 
     if not daten:
         return {'error': 'Keine Werte aus PDF extrahiert'}
