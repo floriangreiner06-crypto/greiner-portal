@@ -188,7 +188,7 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
 
     tw_praemie = float(lauf.get('summe_tw_praemie') or 0)
     tw_praemie_stk = int(lauf.get('tw_praemie_stueck') or 0)
-    t, _ = summary_row(ACCENT, 'IIa. TW/VFW-Prämie', f'{tw_praemie_stk} Stk.', 'Prämie', tw_praemie)
+    t, _ = summary_row(ACCENT, 'IIa. TW/VFW-Prämie', tw_praemie_stk, 'Prämie', tw_praemie)
     elements.append(t)
     totals.append(tw_praemie)
 
