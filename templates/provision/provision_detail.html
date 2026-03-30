@@ -139,7 +139,7 @@
                     <i class="bi bi-file-earmark-pdf"></i> PDF
                 </a>
                 <button type="button" id="btnLoeschen" class="btn-action btn-action-danger" style="display:none;">
-                    <i class="bi bi-trash"></i> Vorlauf loschen
+                    <i class="bi bi-trash"></i> Vorlauf löschen
                 </button>
                 <a href="/provision/dashboard" class="btn-action">
                     <i class="bi bi-arrow-left"></i> Dashboard
@@ -219,7 +219,7 @@
                         <div class="readonly-value" id="editModell">--</div>
                     </div>
                     <div class="col-6">
-                        <div class="form-label">Kaufer</div>
+                        <div class="form-label">Käufer</div>
                         <div class="readonly-value" id="editKaeufer">--</div>
                     </div>
                     <div class="col-6">
@@ -255,7 +255,7 @@
                     <div class="value" id="editCalcPreview">0,00 &euro;</div>
                 </div>
                 <div class="mt-3">
-                    <label class="form-label" for="editProvisionFinal">Provision final (manuell uberschreibbar)</label>
+                    <label class="form-label" for="editProvisionFinal">Provision final (manuell überschreibbar)</label>
                     <div class="input-group input-group-sm">
                         <input type="number" step="0.01" class="form-control" id="editProvisionFinal" placeholder="0.00">
                         <span class="input-group-text">&euro;</span>
@@ -263,7 +263,7 @@
                 </div>
                 <!-- Einkaufer dropdown (Kat. IV only) -->
                 <div id="editEinkaeuferWrap" style="display:none;" class="mt-3">
-                    <label class="form-label" for="editEinkaeufer">Einkaufer</label>
+                    <label class="form-label" for="editEinkaeufer">Einkäufer</label>
                     <select class="form-select form-select-sm" id="editEinkaeufer"></select>
                 </div>
             </div>
@@ -353,7 +353,7 @@
     var configLimits = {};  // {kategorie: {min_betrag, max_betrag}}
     var editKategorie = ''; // Kategorie der aktuell bearbeiteten Position
 
-    var MO = ['Januar','Februar','Marz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+    var MO = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
     var katOrder = ['I_neuwagen', 'II_testwagen', 'III_gebrauchtwagen', 'IV_gw_bestand'];
     var katLabel = {
@@ -546,14 +546,14 @@
         if (pos.kategorie === 'IV_gw_bestand' && aktiveVkData.length > 0) {
             einkaeuferWrap.style.display = 'block';
             var currentEinkaeufer = pos.einkaeufer_name || '';
-            einkaeuferSel.innerHTML = '<option value="">-- Nicht andern --</option>';
+            einkaeuferSel.innerHTML = '<option value="">-- Nicht ändern --</option>';
             aktiveVkData.forEach(function(vk) {
                 var sel = '';
                 if (String(vk.locosoft_id) === String(pos.einkaeufer_id) || vk.name === currentEinkaeufer) {
                     sel = ' selected';
                 }
                 var label = escapeHtml(vk.name) + ' (' + vk.locosoft_id + ')';
-                if (vk.hat_provision === false) label += ' — Position loschen';
+                if (vk.hat_provision === false) label += ' — Position löschen';
                 einkaeuferSel.innerHTML += '<option value="' + vk.locosoft_id + '" data-hat-provision="' + (vk.hat_provision ? 'true' : 'false') + '"' + sel + '>' + label + '</option>';
             });
             document.getElementById('editOriginalEinkaeufer').value = einkaeuferSel.value;
@@ -635,7 +635,7 @@
                 .then(function(r2) { return r2.json(); })
                 .then(function(res2) {
                     if (!res2.success) {
-                        alert('Position gespeichert, aber Einkaufer-Zuweisung fehlgeschlagen: ' + (res2.error || 'Fehler'));
+                        alert('Position gespeichert, aber Einkäufer-Zuweisung fehlgeschlagen: ' + (res2.error || 'Fehler'));
                     }
                     window.location.reload();
                 });
@@ -698,8 +698,8 @@
                 html += '<div class="table-responsive">';
                 html += '<table class="prov-table">';
                 html += '<thead><tr>';
-                html += '<th>Modell</th><th>Kaufer</th>';
-                if (isKatIV) html += '<th>Einkaufer</th>';
+                html += '<th>Modell</th><th>Käufer</th>';
+                if (isKatIV) html += '<th>Einkäufer</th>';
                 html += '<th>Rg.Nr.</th><th class="text-end">Bemessungsgrdl.</th><th class="text-end">Provision</th>';
                 if (pvEditable) html += '<th style="width:60px;"></th>';
                 html += '</tr></thead><tbody>';
@@ -802,7 +802,7 @@
         // Summentabelle
         var sumRows = [
             {label: 'I. Neuwagen', val: l.summe_kat_i, color: '#2563eb'},
-            {label: 'Ia. NW Zielpramie', val: l.summe_stueckpraemie, color: '#6366f1'},
+            {label: 'Ia. NW Zielprämie', val: l.summe_stueckpraemie, color: '#6366f1'},
             {label: 'II. Testwagen / VFW', val: l.summe_kat_ii, color: '#7c3aed'},
             {label: 'III. Gebrauchtwagen', val: l.summe_kat_iii, color: '#0891b2'},
             {label: 'IV. GW aus Bestand', val: l.summe_kat_iv, color: '#ea580c'},
@@ -816,12 +816,12 @@
         sumHtml += '<tr style="background:#f1f5f9; font-weight:700; font-size:.95rem;"><td>Gesamt</td><td class="text-end text-nowrap">' + fmtEuro(l.summe_gesamt) + '</td></tr>';
         sumBody.innerHTML = sumHtml;
 
-        // Vorlauf loschen button
+        // Vorlauf löschen button
         if (statusUpper === 'VORLAUF') {
             var btnDel = document.getElementById('btnLoeschen');
             btnDel.style.display = 'inline-flex';
             btnDel.onclick = function() {
-                if (!confirm('Vorlauf wirklich loschen?')) return;
+                if (!confirm('Vorlauf wirklich löschen?')) return;
                 btnDel.disabled = true;
                 fetch('/api/provision/vorlauf/' + id + '/loeschen', { method: 'POST', credentials: 'same-origin' })
                 .then(function(r) { return r.json(); })
