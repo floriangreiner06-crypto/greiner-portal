@@ -23,13 +23,26 @@ def _get_vkb_for_request():
     return None
 
 
+# Provision-Vollzugriff: NUR diese 3 Personen dürfen das Dashboard, alle Läufe,
+# und Bearbeitungsfunktionen nutzen. Andere Admins (z.B. IT) haben KEINEN Zugriff.
+_PROVISION_VOLLZUGRIFF_USERS = {
+    'florian.greiner@auto-greiner.de',
+    'peter.greiner@auto-greiner.de',
+    'vanessa.groll@auto-greiner.de',
+}
+
+
+def _has_provision_vollzugriff():
+    """Nur Florian Greiner, Peter Greiner und Vanessa Groll haben Vollzugriff auf Provisionen."""
+    if not current_user.is_authenticated:
+        return False
+    username = getattr(current_user, 'username', '') or ''
+    return username.lower() in _PROVISION_VOLLZUGRIFF_USERS
+
+
 def _may_see_all_verkaufer():
-    """VKL / Admin dürfen beliebigen Verkäufer abfragen."""
-    return current_user.is_authenticated and (
-        getattr(current_user, 'has_role', lambda _: False)('admin') or
-        getattr(current_user, 'portal_role', '') == 'admin' or
-        getattr(current_user, 'has_role', lambda _: False)('geschaeftsfuehrung')
-    )
+    """Nur Provision-Vollzugriff-User dürfen alle Verkäufer sehen."""
+    return _has_provision_vollzugriff()
 
 
 def _get_portal_role():
@@ -39,31 +52,19 @@ def _get_portal_role():
 
 
 def _may_endlauf():
-    """Personalbüro / Buchhaltung / Admin dürfen Endlauf setzen."""
-    role = _get_portal_role()
-    return current_user.is_authenticated and (
-        role in ('admin', 'buchhaltung', 'personalbüro') or
-        getattr(current_user, 'has_role', lambda _: False)('admin') or
-        getattr(current_user, 'has_role', lambda _: False)('buchhaltung')
-    )
+    """Nur Provision-Vollzugriff-User dürfen Endlauf setzen."""
+    return _has_provision_vollzugriff()
 
 
 def _may_download_pdf_any():
-    """Admin, VKL, GL, Personalbüro, Buchhaltung dürfen alle PDFs laden.
+    """Provision-Vollzugriff-User dürfen alle PDFs laden.
     Verkäufer dürfen nur eigene Läufe (VKB-Check separat)."""
-    role = _get_portal_role()
-    return current_user.is_authenticated and (
-        getattr(current_user, 'has_role', lambda _: False)('admin') or
-        role in ('admin', 'verkauf_leitung', 'geschaeftsfuehrung', 'personalbüro', 'buchhaltung')
-    )
+    return _has_provision_vollzugriff()
 
 
 def _may_manage_config():
-    """Nur Admin darf Provisionsarten (provision_config) verwalten."""
-    return current_user.is_authenticated and (
-        getattr(current_user, 'portal_role', '') == 'admin' or
-        getattr(current_user, 'has_role', lambda _: False)('admin')
-    )
+    """Nur Provision-Vollzugriff-User dürfen Provisionsarten verwalten."""
+    return _has_provision_vollzugriff()
 
 
 @provision_api.route('/live-preview', methods=['GET'])

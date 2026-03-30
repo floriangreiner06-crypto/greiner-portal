@@ -375,9 +375,10 @@
 <script>
 (function(){
     var id = {{ lauf_id }};
-    var pvUserCanEndlauf = {% if current_user.portal_role in ('admin', 'buchhaltung', 'personalbüro') %}true{% else %}false{% endif %};
-    var pvUserCanPdf = {% if current_user.portal_role in ('admin', 'verkauf', 'verkauf_leitung', 'geschaeftsfuehrung', 'personalbüro', 'buchhaltung') %}true{% else %}false{% endif %};
-    var pvUserCanEdit = {% if current_user.portal_role in ('admin', 'verkauf_leitung', 'geschaeftsfuehrung') %}true{% else %}false{% endif %};
+    var pvProvisionVollzugriff = {% if current_user.username in ('florian.greiner@auto-greiner.de', 'peter.greiner@auto-greiner.de', 'vanessa.groll@auto-greiner.de') %}true{% else %}false{% endif %};
+    var pvUserCanEndlauf = pvProvisionVollzugriff;
+    var pvUserCanPdf = pvProvisionVollzugriff;
+    var pvUserCanEdit = pvProvisionVollzugriff;
 
     var L = document.getElementById('loading');
     var E = document.getElementById('error');
