@@ -127,7 +127,7 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
                     ParagraphStyle('T', fontName='Helvetica-Bold', fontSize=20, textColor=DARK, leading=24)))
     elements.append(Spacer(1, 0.15 * cm))
     elements.append(Paragraph(f'{vk_name}  \u2014  {monat_label}',
-                    ParagraphStyle('S', fontName='Helvetica', fontSize=11, textColor=TEXT_LIGHT, leading=14)))
+                    ParagraphStyle('S', fontName='Helvetica', fontSize=12, textColor=colors.black, leading=15)))
     if belegnummer:
         elements.append(Spacer(1, 0.1 * cm))
         elements.append(Paragraph(f'Belegnummer {belegnummer}',
@@ -135,9 +135,9 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
     elements.append(Spacer(1, 0.5 * cm))
 
     # Styles
-    lbl = ParagraphStyle('L', fontName='Helvetica', fontSize=9, textColor=colors.black, leading=12)
-    lbl_b = ParagraphStyle('LB', fontName='Helvetica-Bold', fontSize=9, textColor=colors.black, leading=12)
-    val_r = ParagraphStyle('VR', fontName='Helvetica-Bold', fontSize=10, textColor=colors.black, leading=13, alignment=TA_RIGHT)
+    lbl = ParagraphStyle('L', fontName='Helvetica', fontSize=10, textColor=colors.black, leading=13)
+    lbl_b = ParagraphStyle('LB', fontName='Helvetica-Bold', fontSize=10, textColor=colors.black, leading=13)
+    val_r = ParagraphStyle('VR', fontName='Helvetica-Bold', fontSize=11, textColor=colors.black, leading=14, alignment=TA_RIGHT)
 
     by_kat = {}
     for p in positionen:
@@ -155,9 +155,9 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles):
         t.setStyle(TableStyle([
             ('LINEBEFORE', (0, 0), (0, 0), 3, accent_color),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 7),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
-            ('LEFTPADDING', (0, 0), (0, 0), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 9),
+            ('LEFTPADDING', (0, 0), (0, 0), 10),
             ('LINEBELOW', (0, 0), (-1, 0), 0.5, BORDER),
         ]))
         return t, float(provision) if provision else 0
@@ -282,7 +282,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
 
         # Kategorie-Header als farbige Linie + Text
         elements.append(HRFlowable(width='100%', thickness=2, color=kat_color, spaceAfter=2))
-        elements.append(Paragraph(f'<b>{kat_label}</b>  <font size="7" color="#94a3b8">({len(rows)} Fahrzeuge)</font>',
+        elements.append(Paragraph(f'<b>{kat_label}</b>  <font size="8" color="#334155">({len(rows)} Fahrzeuge)</font>',
                         ParagraphStyle('KH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceBefore=1, spaceAfter=4)))
 
         table_data = [[
@@ -319,7 +319,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
     zl = zusatzleistungen or []
     if zl:
         elements.append(HRFlowable(width='100%', thickness=2, color=ACCENT, spaceAfter=2))
-        elements.append(Paragraph(f'<b>V. Zusatzleistungen</b>  <font size="7" color="#94a3b8">({len(zl)} Positionen)</font>',
+        elements.append(Paragraph(f'<b>V. Zusatzleistungen</b>  <font size="8" color="#334155">({len(zl)} Positionen)</font>',
                         ParagraphStyle('ZH', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceBefore=1, spaceAfter=4)))
 
         zl_widths = [4 * cm, 5 * cm, 3 * cm, 3.5 * cm]
@@ -355,32 +355,32 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
         elements.append(Spacer(1, 0.4 * cm))
         elements.append(HRFlowable(width='100%', thickness=1, color=TEXT_MUTED, spaceAfter=6))
         elements.append(Paragraph(f'Jahresübersicht {j["jahr"]}',
-                        ParagraphStyle('JT', fontName='Helvetica-Bold', fontSize=9, textColor=DARK, leading=12, spaceAfter=4)))
+                        ParagraphStyle('JT', fontName='Helvetica-Bold', fontSize=12, textColor=colors.black, leading=15, spaceAfter=6)))
 
-        jc = ParagraphStyle('JC', fontName='Helvetica', fontSize=8.5, textColor=TEXT, leading=11)
-        jv = ParagraphStyle('JV', fontName='Helvetica-Bold', fontSize=8.5, textColor=DARK, leading=11, alignment=TA_RIGHT)
+        jc = ParagraphStyle('JC', fontName='Helvetica', fontSize=10, textColor=colors.black, leading=13)
+        jv = ParagraphStyle('JV', fontName='Helvetica-Bold', fontSize=10, textColor=colors.black, leading=13, alignment=TA_RIGHT)
         jh_data = [
             [Paragraph('Neuwagen', jc), Paragraph(f'{j["stueck_nw"]} Stück', jv)],
             [Paragraph('Testwagen / VFW', jc), Paragraph(f'{j["stueck_tw"]} Stück', jv)],
             [Paragraph('Gebrauchtwagen', jc), Paragraph(f'{j["stueck_gw"]} Stück', jv)],
             [Paragraph(f'Gesamtprovision {j["jahr"]}',
-                       ParagraphStyle('JP', fontName='Helvetica-Bold', fontSize=9, textColor=WHITE, leading=12)),
+                       ParagraphStyle('JP', fontName='Helvetica-Bold', fontSize=11, textColor=WHITE, leading=14)),
              Paragraph(_fmt_eur(j['provision_jahr']),
-                       ParagraphStyle('JPV', fontName='Helvetica-Bold', fontSize=10, textColor=WHITE, leading=13, alignment=TA_RIGHT))],
+                       ParagraphStyle('JPV', fontName='Helvetica-Bold', fontSize=12, textColor=WHITE, leading=15, alignment=TA_RIGHT))],
         ]
         jh_t = Table(jh_data, colWidths=[11 * cm, 5.5 * cm])
         jh_t.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('TOPPADDING', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
             ('LINEBELOW', (0, 0), (-1, 0), 0.25, BORDER),
             ('LINEBELOW', (0, 1), (-1, 1), 0.25, BORDER),
             ('LINEBELOW', (0, 2), (-1, 2), 0.25, BORDER),
             ('BACKGROUND', (0, -1), (-1, -1), PRIMARY_DARK),
-            ('LEFTPADDING', (0, -1), (0, -1), 8),
-            ('RIGHTPADDING', (-1, -1), (-1, -1), 8),
-            ('TOPPADDING', (0, -1), (-1, -1), 7),
-            ('BOTTOMPADDING', (0, -1), (-1, -1), 7),
+            ('LEFTPADDING', (0, -1), (0, -1), 10),
+            ('RIGHTPADDING', (-1, -1), (-1, -1), 10),
+            ('TOPPADDING', (0, -1), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, -1), (-1, -1), 9),
         ]))
         elements.append(KeepTogether([jh_t]))
 
