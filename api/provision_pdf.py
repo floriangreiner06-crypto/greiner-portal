@@ -69,7 +69,8 @@ def _lauf_daten(lauf_id: int) -> Optional[dict]:
         cur.execute("""
             SELECT kategorie, vin, modell, kaeufer_name, einkaeufer_name,
                    rg_netto, deckungsbeitrag, bemessungsgrundlage, provisionssatz,
-                   provision_berechnet, provision_final, rg_datum, locosoft_rg_nr
+                   provision_berechnet, provision_final, rg_datum, locosoft_rg_nr,
+                   vorbesitzer_name
             FROM provision_positionen WHERE lauf_id = %s
             ORDER BY CASE kategorie
                 WHEN 'I_neuwagen' THEN 1 WHEN 'II_testwagen' THEN 2
