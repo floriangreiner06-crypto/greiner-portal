@@ -307,19 +307,36 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
         ]))
         kat_elements.append(kat_hdr)
 
-        table_data = [[
-            Paragraph('MODELL', th), Paragraph('KÄUFER', th),
-            Paragraph('BE' if kat_key == 'IV_gw_bestand' else 'ERLÖS', th_r), Paragraph('PROVISION', th_r),
-        ]]
-        for p in rows:
-            table_data.append([
-                Paragraph((p.get('modell') or '-')[:50], td),
-                Paragraph((p.get('kaeufer_name') or '-')[:45], td),
-                Paragraph(_fmt_eur(p.get('bemessungsgrundlage')), td_r),
-                Paragraph(_fmt_eur(p.get('provision_final')), td_rb),
-            ])
+        is_gw_bestand = (kat_key == 'IV_gw_bestand')
+        if is_gw_bestand:
+            table_data = [[
+                Paragraph('MODELL', th), Paragraph('KÄUFER', th),
+                Paragraph('VORBESITZER', th), Paragraph('BE', th_r), Paragraph('PROVISION', th_r),
+            ]]
+            for p in rows:
+                table_data.append([
+                    Paragraph((p.get('modell') or '-')[:40], td),
+                    Paragraph((p.get('kaeufer_name') or '-')[:35], td),
+                    Paragraph((p.get('vorbesitzer_name') or '-')[:35], td),
+                    Paragraph(_fmt_eur(p.get('bemessungsgrundlage')), td_r),
+                    Paragraph(_fmt_eur(p.get('provision_final')), td_rb),
+                ])
+            gw_col_widths = [4.5 * cm, 3.5 * cm, 3.5 * cm, 2 * cm, 2 * cm]
+        else:
+            table_data = [[
+                Paragraph('MODELL', th), Paragraph('KÄUFER', th),
+                Paragraph('ERLÖS', th_r), Paragraph('PROVISION', th_r),
+            ]]
+            for p in rows:
+                table_data.append([
+                    Paragraph((p.get('modell') or '-')[:50], td),
+                    Paragraph((p.get('kaeufer_name') or '-')[:45], td),
+                    Paragraph(_fmt_eur(p.get('bemessungsgrundlage')), td_r),
+                    Paragraph(_fmt_eur(p.get('provision_final')), td_rb),
+                ])
+            gw_col_widths = col_widths
 
-        t = Table(table_data, colWidths=col_widths)
+        t = Table(table_data, colWidths=gw_col_widths)
         style_cmds = [
             ('LINEBELOW', (0, 0), (-1, 0), 0.75, BORDER),
             ('FONTSIZE', (0, 0), (-1, -1), 8),

@@ -19,6 +19,34 @@ except ImportError:
     get_nw_ziel_verkaeufer_monat = None
 
 
+def _get_vorbesitzer_fuer_vins(vins: list) -> Dict[str, str]:
+    """Vorbesitzer-Namen aus Locosoft fuer eine Liste von VINs laden."""
+    if not vins:
+        return {}
+    try:
+        from api.db_utils import get_locosoft_connection
+        conn = get_locosoft_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT v.vin,
+                   TRIM(BOTH ', ' FROM COALESCE(TRIM(c.family_name), '') || ', ' || COALESCE(TRIM(c.first_name), '')) AS vorbesitzer
+            FROM vehicles v
+            JOIN dealer_vehicles dv ON dv.dealer_vehicle_number = v.dealer_vehicle_number
+            LEFT JOIN customers_suppliers c ON c.customer_number = dv.previous_owner_number
+            WHERE v.vin = ANY(%s) AND dv.previous_owner_number IS NOT NULL AND dv.previous_owner_number != 0
+        """, (vins,))
+        result = {}
+        for r in cur.fetchall():
+            vin = (r[0] or '').strip()
+            name = (r[1] or '').strip()
+            if vin and name:
+                result[vin] = name
+        conn.close()
+        return result
+    except Exception:
+        return {}
+
+
 # out_sale_type (sales) → Kategorie (Konzept Kap. 4.2; DRIVE: F/L/B aus Locosoft)
 TYP_TO_KAT = {
     'F': 'I_neuwagen',   # Neuwagen
@@ -476,6 +504,12 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
     if cfg_i.get('use_zielpraemie'):
         gesamt += stueck_praemie_anteil
 
+    # Vorbesitzer fuer Kat IV laden (aus Locosoft)
+    iv_vins = [p.get('vin') for p in positionen_iv if p.get('vin')]
+    vorbesitzer_map = _get_vorbesitzer_fuer_vins(iv_vins)
+    for p in positionen_iv:
+        p['vorbesitzer_name'] = vorbesitzer_map.get((p.get('vin') or '').strip(), '')
+
     return {
         'monat': monat,
         'verkaufer_id': vkb,
@@ -569,12 +603,12 @@ def create_vorlauf(vkb: int, monat: str, erstellt_von: str) -> Dict[str, Any]:
                 INSERT INTO provision_positionen (
                     lauf_id, kategorie, vin, modell, fahrzeugart, kaeufer_name, einkaeufer_name,
                     rg_netto, deckungsbeitrag, bemessungsgrundlage, provisionssatz,
-                    provision_berechnet, provision_final, locosoft_rg_nr, rg_datum
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    provision_berechnet, provision_final, locosoft_rg_nr, rg_datum, vorbesitzer_name
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 lauf_id, kategorie, pos.get('vin'), pos.get('modell'), pos.get('fahrzeugart'), pos.get('kaeufer_name'), pos.get('einkaeufer_name'),
                 rg_netto, deckungsbeitrag, bem, satz, provision, provision,
-                pos.get('rg_nr'), pos.get('rg_datum') or None
+                pos.get('rg_nr'), pos.get('rg_datum') or None, pos.get('vorbesitzer_name')
             ))
 
         bemessung_i = (cfg_i.get('bemessungsgrundlage') or 'db').strip().lower()
@@ -686,7 +720,7 @@ def get_lauf_detail(lauf_id: int) -> Optional[Dict[str, Any]]:
             SELECT id, kategorie, vin, modell, fahrzeugart, kaeufer_name, einkaeufer_name,
                    rg_netto, deckungsbeitrag, bemessungsgrundlage, kosten_abzug,
                    provisionssatz, provision_berechnet, provision_final,
-                   locosoft_rg_nr, rg_datum, einspruch_flag, einspruch_text
+                   locosoft_rg_nr, rg_datum, einspruch_flag, einspruch_text, vorbesitzer_name
             FROM provision_positionen WHERE lauf_id = %s
             ORDER BY CASE kategorie
                 WHEN 'I_neuwagen' THEN 1 WHEN 'II_testwagen' THEN 2
