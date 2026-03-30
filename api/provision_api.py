@@ -31,6 +31,49 @@ _PROVISION_VOLLZUGRIFF_USERS = {
     'vanessa.groll@auto-greiner.de',
 }
 
+# Genehmiger: Nur diese 2 Personen duerfen Provisionen genehmigen (einer reicht)
+_PROVISION_GENEHMIGER_USERS = {
+    'anton.suess@auto-greiner.de',
+    'florian.greiner@auto-greiner.de',
+}
+
+# E-Mail-Versand: In Testversion deaktiviert
+PROVISION_EMAIL_ENABLED = False
+
+
+def _is_genehmiger():
+    """Anton Suess oder Florian Greiner duerfen genehmigen/ablehnen."""
+    if not current_user.is_authenticated:
+        return False
+    username = getattr(current_user, 'username', '') or ''
+    return username.lower() in _PROVISION_GENEHMIGER_USERS
+
+
+def _may_act_on_own_lauf(lauf_verkaufer_id):
+    """Verkaeufer darf auf eigenen Lauf reagieren (Freigabe/Einspruch). Vollzugriff-User auch (Test)."""
+    if _has_provision_vollzugriff():
+        return True
+    vkb = _get_vkb_for_request()
+    return vkb is not None and vkb == lauf_verkaufer_id
+
+
+def _get_username():
+    """Username des aktuellen Users."""
+    return getattr(current_user, 'username', '') or getattr(current_user, 'display_name', '') or 'system'
+
+
+def _send_provision_email(to_emails, subject, body_html):
+    """E-Mail senden (nur wenn PROVISION_EMAIL_ENABLED=True)."""
+    if not PROVISION_EMAIL_ENABLED:
+        return
+    try:
+        from api.graph_mail_connector import GraphMailConnector
+        connector = GraphMailConnector()
+        connector.send_mail('noreply@auto-greiner.de', to_emails, subject, body_html)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f'Provision-Email fehlgeschlagen: {e}')
+
 
 def _has_provision_vollzugriff():
     """Nur Florian Greiner, Peter Greiner und Vanessa Groll haben Vollzugriff auf Provisionen."""
@@ -213,6 +256,146 @@ def lauf_detail(lauf_id):
 
 
 # =============================================================================
+# Workflow: Zur Pruefung, Freigeben, Einspruch, Genehmigen, Ablehnen
+# =============================================================================
+
+@provision_api.route('/vorlauf/<int:lauf_id>/zur-pruefung', methods=['POST'])
+@login_required
+def zur_pruefung(lauf_id):
+    """POST /api/provision/vorlauf/<id>/zur-pruefung - VORLAUF -> ZUR_PRUEFUNG. Nur Vollzugriff."""
+    if not _has_provision_vollzugriff():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung.'}), 403
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if (lauf['status'] or '').upper() != 'VORLAUF':
+            return jsonify({'success': False, 'error': f'Nur aus Status VORLAUF moeglich (aktuell: {lauf["status"]}).'}), 400
+        cur.execute("""
+            UPDATE provision_laeufe SET
+                status = 'ZUR_PRUEFUNG',
+                pruefung_am = NOW() AT TIME ZONE 'Europe/Berlin',
+                pruefung_von = %s,
+                einspruch_text = NULL, einspruch_von = NULL, einspruch_am = NULL
+            WHERE id = %s
+        """, (_get_username(), lauf_id))
+        conn.commit()
+    return jsonify({'success': True, 'message': 'Zur Pruefung gesendet.'})
+
+
+@provision_api.route('/vorlauf/<int:lauf_id>/freigeben', methods=['POST'])
+@login_required
+def freigeben(lauf_id):
+    """POST /api/provision/vorlauf/<id>/freigeben - ZUR_PRUEFUNG -> FREIGEGEBEN."""
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status, verkaufer_id FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if not _may_act_on_own_lauf(lauf['verkaufer_id']):
+            return jsonify({'success': False, 'error': 'Keine Berechtigung (nur eigener Lauf oder Vollzugriff).'}), 403
+        if (lauf['status'] or '').upper() != 'ZUR_PRUEFUNG':
+            return jsonify({'success': False, 'error': f'Nur aus Status ZUR_PRUEFUNG moeglich (aktuell: {lauf["status"]}).'}), 400
+        cur.execute("""
+            UPDATE provision_laeufe SET
+                status = 'FREIGEGEBEN',
+                freigegeben_am = NOW() AT TIME ZONE 'Europe/Berlin',
+                freigegeben_von = %s
+            WHERE id = %s
+        """, (_get_username(), lauf_id))
+        conn.commit()
+    return jsonify({'success': True, 'message': 'Vorlauf freigegeben.'})
+
+
+@provision_api.route('/vorlauf/<int:lauf_id>/einspruch', methods=['POST'])
+@login_required
+def einspruch(lauf_id):
+    """POST /api/provision/vorlauf/<id>/einspruch - ZUR_PRUEFUNG -> VORLAUF. Pflicht-Text."""
+    data = request.get_json() or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'success': False, 'error': 'Begruendung ist ein Pflichtfeld.'}), 400
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status, verkaufer_id FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if not _may_act_on_own_lauf(lauf['verkaufer_id']):
+            return jsonify({'success': False, 'error': 'Keine Berechtigung.'}), 403
+        if (lauf['status'] or '').upper() != 'ZUR_PRUEFUNG':
+            return jsonify({'success': False, 'error': f'Einspruch nur aus Status ZUR_PRUEFUNG moeglich (aktuell: {lauf["status"]}).'}), 400
+        cur.execute("""
+            UPDATE provision_laeufe SET
+                status = 'VORLAUF',
+                einspruch_text = %s,
+                einspruch_von = %s,
+                einspruch_am = NOW() AT TIME ZONE 'Europe/Berlin'
+            WHERE id = %s
+        """, (text, _get_username(), lauf_id))
+        conn.commit()
+    return jsonify({'success': True, 'message': 'Einspruch gesendet.'})
+
+
+@provision_api.route('/vorlauf/<int:lauf_id>/genehmigen', methods=['POST'])
+@login_required
+def genehmigen(lauf_id):
+    """POST /api/provision/vorlauf/<id>/genehmigen - FREIGEGEBEN -> GENEHMIGT. Nur Genehmiger."""
+    if not _is_genehmiger():
+        return jsonify({'success': False, 'error': 'Nur Anton Suess oder Florian Greiner duerfen genehmigen.'}), 403
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if (lauf['status'] or '').upper() != 'FREIGEGEBEN':
+            return jsonify({'success': False, 'error': f'Nur aus Status FREIGEGEBEN moeglich (aktuell: {lauf["status"]}).'}), 400
+        cur.execute("""
+            UPDATE provision_laeufe SET
+                status = 'GENEHMIGT',
+                genehmigt_am = NOW() AT TIME ZONE 'Europe/Berlin',
+                genehmigt_von = %s
+            WHERE id = %s
+        """, (_get_username(), lauf_id))
+        conn.commit()
+    return jsonify({'success': True, 'message': 'Vorlauf genehmigt.'})
+
+
+@provision_api.route('/vorlauf/<int:lauf_id>/ablehnen', methods=['POST'])
+@login_required
+def ablehnen(lauf_id):
+    """POST /api/provision/vorlauf/<id>/ablehnen - FREIGEGEBEN -> VORLAUF. Nur Genehmiger. Pflicht-Text."""
+    if not _is_genehmiger():
+        return jsonify({'success': False, 'error': 'Nur Anton Suess oder Florian Greiner duerfen ablehnen.'}), 403
+    data = request.get_json() or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'success': False, 'error': 'Begruendung ist ein Pflichtfeld.'}), 400
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if (lauf['status'] or '').upper() != 'FREIGEGEBEN':
+            return jsonify({'success': False, 'error': f'Ablehnung nur aus Status FREIGEGEBEN moeglich (aktuell: {lauf["status"]}).'}), 400
+        cur.execute("""
+            UPDATE provision_laeufe SET
+                status = 'VORLAUF',
+                einspruch_text = %s,
+                einspruch_von = %s,
+                einspruch_am = NOW() AT TIME ZONE 'Europe/Berlin'
+            WHERE id = %s
+        """, (text, _get_username(), lauf_id))
+        conn.commit()
+    return jsonify({'success': True, 'message': 'Vorlauf abgelehnt.'})
+
+
+# =============================================================================
 # Endlauf, Position bearbeiten/löschen
 # =============================================================================
 
@@ -258,8 +441,8 @@ def endlauf_setzen(lauf_id):
         status = (lauf['status'] or '').upper()
         if status == 'ENDLAUF':
             return jsonify({'success': False, 'error': 'Lauf ist bereits Endlauf (gesperrt).'}), 403
-        if status != 'FREIGEGEBEN':
-            return jsonify({'success': False, 'error': f'Endlauf nur aus Status FREIGEGEBEN möglich (aktuell: {status}).'}), 400
+        if status != 'GENEHMIGT':
+            return jsonify({'success': False, 'error': f'Endlauf nur aus Status GENEHMIGT möglich (aktuell: {status}).'}), 400
 
         vkb = lauf['verkaufer_id']
         monat = lauf['abrechnungsmonat'] or ''
