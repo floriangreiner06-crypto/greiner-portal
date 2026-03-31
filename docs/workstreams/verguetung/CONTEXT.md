@@ -76,7 +76,7 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - PDF: Deckblatt + Detail + Kat V + Jahresübersicht, Vorbesitzer bei GW Bestand
 - Neuwagen-Klassifizierung über dealer_vehicle_type (nicht mehr P1)
 - Berechtigungen: Vanessa Groll dauerhaft Vollzugriff + Genehmigerin (nicht mehr temporär)
-- E-Mail-Stubs vorbereitet (PROVISION_EMAIL_ENABLED = False)
+- **E-Mail-Workflow (2026-03-31):** 6 Workflow-Mails implementiert (Zur Prüfung, Freigegeben, Einspruch, Genehmigt/VKL, Abgelehnt, Endlauf). HTML-Template mit Corporate-Design, Verkäufer-Email über ldap_employee_mapping, Anzeigenamen statt E-Mail-Adressen in Texten. PROVISION_EMAIL_ENABLED = False, Mails werden geloggt. Preview: `static/provision_mail_preview.html`
 - Kumulierte Zielprämie: Doppeltes Gate (kum + Monat), Spec: `docs/superpowers/specs/2026-03-30-kumulierte-zielpraemie-design.md`
 - **Admin-Funktionen (2026-03-31):** Endlauf zurücksetzen (ENDLAUF → GENEHMIGT), Vorlauf komplett löschen (jeder Status), Fahrzeug manuell hinzufügen (Modal mit Kategorie, Modell, Käufer, BE, Provisionssatz)
 - **Rechnungsnummer nur für Admin** sichtbar (Verkäufer sehen Spalte nicht)
@@ -89,7 +89,7 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - **Vorlauf aktualisieren (2026-03-31):** Button im Dashboard (grünes Reload-Icon) aktualisiert bestehende Vorläufe mit neuen Sales-Daten. Neue Positionen werden hinzugefügt, manuell geänderte Provisionen bleiben erhalten, manuell gelöschte Positionen kommen nicht wieder (Ausschlussliste in `ausgeschlossene_positionen` JSONB-Spalte auf `provision_laeufe`). Zusatzleistungen und TW-Prämie bleiben erhalten. Zielprämie wird neu berechnet.
 
 ## Offene Punkte / Nächste Schritte
-- E-Mail-Benachrichtigungen aktivieren (nach Testphase)
+- E-Mail-Benachrichtigungen aktivieren: Mails sind fertig implementiert, nur `PROVISION_EMAIL_ENABLED = True` setzen + Links von `drive:5002` auf `drive` ändern (nach Testphase/Prod-Deploy)
 - Test mit Anton Süß (Verkaufsleiter) geplant
 - Lohnbuchhaltung-Export (Phase 3)
 - Werkstatt-Prämien: Konzept in Excel vorhanden, Umsetzung steht aus
