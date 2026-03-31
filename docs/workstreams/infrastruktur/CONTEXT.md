@@ -57,10 +57,29 @@ Infrastruktur umfasst Celery/RedBeat, Redis, Deployment, Locosoft-Mirror, Postgr
 
 - **Docker-Container:** `locodb` (PG 16.2, Image nikoksr/postgres:latest)
 - **SSH:** `ssh root@10.80.80.8` (Key-Auth von ag-admin@drive)
-- **Export:** Full-Export via Pr. 987 DATENBANK-Dienst, ca. 44 Min, taeglich
-- **Problem 2026-03-31:** Container war gestoppt, postgres-Passwort stimmte nicht nach Container-Wechsel (loco -> locodb). DB + User existierten nicht. Behoben: Container gestartet, pg_hba temporaer auf trust, DB+User angelegt, Export durchgefuehrt, pg_hba zurueck auf scram-sha-256.
+- **PGDATA:** `/opt/postgres-data/` (persistentes Volume, ueberlebt Container-Restart!)
+- **Tuning:** shared_buffers=4GB, work_mem=64MB, maintenance_work_mem=1GB, synchronous_commit=off (via ALTER SYSTEM, persistent)
+- **pg_hba.conf:** Aktuell auf `trust` (Locosoft braucht das fuer Live-Zugriff)
+- **Export:** Full-Export via Pr. 987 DATENBANK-Dienst, ca. 36 Min, taeglich
+- **Schemas:** `public` (Export-Daten), `private` (Live-Daten: journal_accountings, times), `app2` (App-Daten)
 - **Analyse:** docs/workstreams/infrastruktur/LOCOSOFT_DB_ANALYSE_2026-03-31.md
 - **Spiegel-Status:** 95 von 102 Tabellen lokal gespiegelt, Daten nahezu identisch. 7 fehlende = Modell-Konfigurator (nicht geschaeftskritisch).
+
+### Reparatur-Historie 2026-03-31
+
+1. Container `locodb` war gestoppt, postgres-Passwort falsch (AHG1234 vs AHG1234!)
+2. Alter Container hatte tmpfs (RAM-Disk) -> alles weg bei Restart
+3. Neuer Container mit persistentem Volume `/opt/postgres-data/` erstellt
+4. PostgreSQL-Tuning (4GB shared_buffers etc.) angewendet
+5. DB-Kopplung in Locosoft neu hergestellt (locoserversetup.exe)
+6. "Drittanbietern Zugriff auf aktuelle Finanzbuchhaltung" aktiviert
+7. App-Geraete-Registrierungen verloren (muessen neu registriert werden)
+
+### Offen (naechste Session)
+
+- Live-Aktualisierung der Rechnungen testen (morgen frueh bei erster neuer Rechnung)
+- Falls nicht live: Locosoft-Support kontaktieren
+- App-Geraete neu registrieren (QR-Code)
 
 ## Erkenntnisse Locosoft Stempelzeiten (2026-03-31)
 
