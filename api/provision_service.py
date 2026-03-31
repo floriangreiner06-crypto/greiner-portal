@@ -741,6 +741,189 @@ def create_vorlauf(vkb: int, monat: str, erstellt_von: str) -> Dict[str, Any]:
     return {'lauf_id': lauf_id, 'error': None, 'pdf_vorlauf': pdf_path}
 
 
+def aktualisiere_vorlauf(lauf_id: int) -> Dict[str, Any]:
+    """
+    Aktualisiert einen bestehenden Vorlauf mit neuen Sales-Daten.
+    - Neue Positionen werden hinzugefügt
+    - Weggefallene Positionen werden entfernt
+    - Manuell geänderte Positionen (provision_final != provision_berechnet) bleiben erhalten
+    - Zusatzleistungen, TW-Prämie bleiben erhalten
+    - Zielprämie/Stückzahl wird neu berechnet
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, verkaufer_id, abrechnungsmonat, status
+            FROM provision_laeufe WHERE id = %s
+        """, (lauf_id,))
+        lauf = cur.fetchone()
+    if not lauf:
+        return {'success': False, 'error': 'Lauf nicht gefunden.'}
+    if (lauf['status'] or '').upper() == 'ENDLAUF':
+        return {'success': False, 'error': 'Endlauf ist gesperrt.'}
+
+    vkb = lauf['verkaufer_id']
+    monat = lauf['abrechnungsmonat']
+
+    # 1. Live-Provision neu berechnen
+    result = berechne_live_provision(vkb, monat)
+
+    # 2. Bestehende Positionen + Ausschlussliste laden
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, kategorie, vin, locosoft_rg_nr, bemessungsgrundlage,
+                   provision_berechnet, provision_final, provisionssatz
+            FROM provision_positionen WHERE lauf_id = %s
+        """, (lauf_id,))
+        existing = cur.fetchall()
+        cur.execute("SELECT COALESCE(ausgeschlossene_positionen, '[]'::jsonb) FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        excluded_raw = cur.fetchone()
+        raw_val = excluded_raw[0] if excluded_raw else []
+        excluded_list = raw_val if isinstance(raw_val, list) else []
+        excluded_keys = set()
+        for ex_item in excluded_list:
+            excluded_keys.add((
+                (ex_item.get('vin') or '').strip(),
+                (ex_item.get('rg_nr') or '').strip(),
+                (ex_item.get('kat') or '').strip()
+            ))
+
+    # Index: (vin, rg_nr, kategorie) → bestehende Position
+    existing_map = {}
+    for pos in existing:
+        key = (
+            (pos.get('vin') or '').strip(),
+            (pos.get('locosoft_rg_nr') or '').strip(),
+            (pos.get('kategorie') or '').strip()
+        )
+        existing_map[key] = pos
+
+    # 3. Neue Positionen aus Live-Berechnung zusammenstellen
+    cfg_i = result['config'].get('I') or {}
+    pct_i = cfg_i.get('prozentsatz') or 0.12
+    stueck_nw = result['stueck_neuwagen']
+    bemessung_i = (cfg_i.get('bemessungsgrundlage') or 'db').strip().lower()
+
+    def build_new_positions():
+        """Alle Positionen aus Live-Berechnung wie bei create_vorlauf."""
+        positions = []
+        for p in result['positionen_i']:
+            if bemessung_i == 'rg_netto':
+                positions.append(('I_neuwagen', p, p.get('rg_netto'), None, p.get('provision') or 0, pct_i))
+            else:
+                db_val = p.get('deckungsbeitrag') or 0
+                prov_anteil = round(db_val * pct_i, 2) if stueck_nw else 0
+                positions.append(('I_neuwagen', p, None, db_val, prov_anteil, pct_i))
+        for p in result['positionen_ii']:
+            positions.append(('II_testwagen', p, p.get('rg_netto'), None, p['provision'], (result['config'].get('II') or {}).get('prozentsatz') or 0.01))
+        for p in result['positionen_iii']:
+            positions.append(('III_gebrauchtwagen', p, p.get('rg_netto'), None, p['provision'], (result['config'].get('III') or {}).get('prozentsatz') or 0.01))
+        for p in result['positionen_iv']:
+            positions.append(('IV_gw_bestand', p, None, p.get('bemessungsgrundlage', p.get('deckungsbeitrag')), p['provision'], (result['config'].get('IV') or {}).get('prozentsatz') or 0.12))
+        return positions
+
+    new_positions = build_new_positions()
+
+    # 4. Vergleich: neu vs. bestehend
+    new_keys = set()
+    added = 0
+    updated = 0
+    removed = 0
+
+    with db_session() as conn:
+        cur = conn.cursor()
+
+        for kategorie, pos, rg_netto, deckungsbeitrag, provision, satz in new_positions:
+            vin = (pos.get('vin') or '').strip()
+            rg_nr = (pos.get('rg_nr') or '').strip()
+            key = (vin, rg_nr, kategorie)
+            new_keys.add(key)
+
+            bem = (deckungsbeitrag if deckungsbeitrag is not None else rg_netto) or 0
+            ex = existing_map.get(key)
+
+            if key in excluded_keys:
+                # Manuell gelöscht → nicht wieder hinzufügen
+                continue
+            elif ex:
+                # Position existiert bereits
+                is_manually_changed = (
+                    ex.get('provision_final') is not None and
+                    ex.get('provision_berechnet') is not None and
+                    round(float(ex['provision_final']), 2) != round(float(ex['provision_berechnet']), 2)
+                )
+                if not is_manually_changed:
+                    # Nicht manuell geändert → Werte aktualisieren
+                    cur.execute("""
+                        UPDATE provision_positionen SET
+                            bemessungsgrundlage = %s, provisionssatz = %s,
+                            provision_berechnet = %s, provision_final = %s
+                        WHERE id = %s
+                    """, (bem, satz, provision, provision, ex['id']))
+                    updated += 1
+                # Manuell geändert → nicht anfassen
+            else:
+                # Neue Position → hinzufügen
+                cur.execute("""
+                    INSERT INTO provision_positionen (
+                        lauf_id, kategorie, vin, modell, fahrzeugart, kaeufer_name, einkaeufer_name,
+                        rg_netto, deckungsbeitrag, bemessungsgrundlage, provisionssatz,
+                        provision_berechnet, provision_final, locosoft_rg_nr, rg_datum, vorbesitzer_name
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    lauf_id, kategorie, pos.get('vin'), pos.get('modell'), pos.get('fahrzeugart'),
+                    pos.get('kaeufer_name'), pos.get('einkaeufer_name'),
+                    rg_netto, deckungsbeitrag, bem, satz, provision, provision,
+                    pos.get('rg_nr'), pos.get('rg_datum') or None, pos.get('vorbesitzer_name')
+                ))
+                added += 1
+
+        # 5. Weggefallene Positionen entfernen (nur nicht-manuell-geänderte)
+        for key, ex in existing_map.items():
+            if key not in new_keys:
+                is_manually_changed = (
+                    ex.get('provision_final') is not None and
+                    ex.get('provision_berechnet') is not None and
+                    round(float(ex['provision_final']), 2) != round(float(ex['provision_berechnet']), 2)
+                )
+                if not is_manually_changed:
+                    cur.execute("DELETE FROM provision_positionen WHERE id = %s", (ex['id'],))
+                    removed += 1
+
+        # 6. Zielprämie aktualisieren
+        cur.execute("""
+            UPDATE provision_laeufe SET
+                summe_stueckpraemie = %s,
+                aktualisiert_am = NOW()
+            WHERE id = %s
+        """, (result['summe_stueckpraemie'], lauf_id))
+
+        # 7. Summen neu berechnen
+        cur.execute("""
+            UPDATE provision_laeufe SET
+                summe_kat_i   = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'I_neuwagen'), 0),
+                summe_kat_ii  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'II_testwagen'), 0),
+                summe_kat_iii = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'III_gebrauchtwagen'), 0),
+                summe_kat_iv  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s AND kategorie = 'IV_gw_bestand'), 0),
+                summe_kat_v   = COALESCE((SELECT SUM(provision_verkaufer) FROM provision_zusatzleistungen WHERE lauf_id = %s), 0),
+                summe_gesamt  = COALESCE((SELECT SUM(provision_final) FROM provision_positionen WHERE lauf_id = %s), 0)
+                              + COALESCE((SELECT SUM(provision_verkaufer) FROM provision_zusatzleistungen WHERE lauf_id = %s), 0)
+                              + COALESCE(summe_stueckpraemie, 0)
+                              + COALESCE(summe_tw_praemie, 0)
+            WHERE id = %s
+        """, (lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id, lauf_id))
+        conn.commit()
+
+    return {
+        'success': True,
+        'added': added,
+        'updated': updated,
+        'removed': removed,
+        'message': f'Vorlauf aktualisiert: {added} neu, {updated} aktualisiert, {removed} entfernt.'
+    }
+
+
 def get_dashboard_daten(monat: str) -> Dict[str, Any]:
     """Läufe für einen Monat + Verkäufer mit Verkäufen (für Vorlauf-Erstellung)."""
     with db_session() as conn:

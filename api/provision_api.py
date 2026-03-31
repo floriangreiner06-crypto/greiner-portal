@@ -5,7 +5,7 @@ Live-Preview nutzt ausschließlich provision_service (SSOT).
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 
-from api.provision_service import berechne_live_provision, create_vorlauf, delete_vorlauf, get_dashboard_daten, get_lauf_detail
+from api.provision_service import berechne_live_provision, create_vorlauf, delete_vorlauf, aktualisiere_vorlauf, get_dashboard_daten, get_lauf_detail
 from api.db_utils import db_session, rows_to_list
 
 provision_api = Blueprint('provision_api', __name__, url_prefix='/api/provision')
@@ -206,6 +206,23 @@ def vorlauf_loeschen(lauf_id):
     if not result.get('success'):
         return jsonify({'success': False, 'error': result.get('error', 'Unbekannter Fehler')}), 400
     return jsonify({'success': True, 'message': 'Vorlauf gelöscht.'})
+
+
+@provision_api.route('/vorlauf/<int:lauf_id>/aktualisieren', methods=['POST'])
+@login_required
+def vorlauf_aktualisieren(lauf_id):
+    """
+    POST /api/provision/vorlauf/<id>/aktualisieren
+    Aktualisiert einen bestehenden Vorlauf mit neuen Sales-Daten.
+    Manuelle Änderungen (provision_final) bleiben erhalten.
+    Nur VKL/Admin. Nicht bei ENDLAUF.
+    """
+    if not _has_provision_vollzugriff():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung.'}), 403
+    result = aktualisiere_vorlauf(lauf_id)
+    if not result.get('success'):
+        return jsonify({'success': False, 'error': result.get('error', 'Unbekannter Fehler')}), 400
+    return jsonify(result)
 
 
 @provision_api.route('/dashboard', methods=['GET'])
@@ -640,7 +657,7 @@ def position_loeschen(pos_id):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT p.id, p.lauf_id, l.status
+            SELECT p.id, p.lauf_id, p.vin, p.locosoft_rg_nr, p.kategorie, l.status
             FROM provision_positionen p
             JOIN provision_laeufe l ON l.id = p.lauf_id
             WHERE p.id = %s
@@ -652,6 +669,16 @@ def position_loeschen(pos_id):
             return jsonify({'success': False, 'error': 'Endlauf ist gesperrt – keine Änderungen möglich.'}), 403
 
         lauf_id = row['lauf_id']
+
+        # Position in Ausschlussliste merken (damit Aktualisieren sie nicht wieder hinzufügt)
+        import json
+        exclude_key = json.dumps({'vin': (row.get('vin') or '').strip(), 'rg_nr': (row.get('locosoft_rg_nr') or '').strip(), 'kat': (row.get('kategorie') or '').strip()})
+        cur.execute("""
+            UPDATE provision_laeufe SET ausgeschlossene_positionen =
+                COALESCE(ausgeschlossene_positionen, '[]'::jsonb) || %s::jsonb
+            WHERE id = %s
+        """, (exclude_key, lauf_id))
+
         cur.execute("DELETE FROM provision_positionen WHERE id = %s", (pos_id,))
         _recalc_lauf_sums(cur, lauf_id)
         conn.commit()

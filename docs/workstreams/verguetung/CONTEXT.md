@@ -86,6 +86,7 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - **Kat IV Bemessungsgrundlage = BE II** (nicht mehr BE I/DB1). Detail-Spalte "BE II", PDF-Header "BE II". calc_gw_bestand gibt jetzt (provision, be2) zurück.
 - **DB-Verbindung Testsystem Fix:** `db_connection.py` lud hardcoded `/opt/greiner-portal/config/.env` (Prod) statt dynamisch. Testsystem arbeitete dadurch gegen Prod-DB. Jetzt dynamischer Pfad via `pathlib`. Versehentlich erstellte Prod-Vorläufe wurden bereinigt.
 - **Einkäufer-Filter GW aus Bestand:** `get_sales_where_einkaeufer_only` filterte nur `out_sale_type IN ('B','G','D','T')`. Fahrzeuge mit `out_sale_type='F'` aber `dealer_vehicle_type='D'` (GW mit Regelbesteuerung) fehlten. Jetzt wird auch `dealer_vehicle_type` geprüft.
+- **Vorlauf aktualisieren (2026-03-31):** Button im Dashboard (grünes Reload-Icon) aktualisiert bestehende Vorläufe mit neuen Sales-Daten. Neue Positionen werden hinzugefügt, manuell geänderte Provisionen bleiben erhalten, manuell gelöschte Positionen kommen nicht wieder (Ausschlussliste in `ausgeschlossene_positionen` JSONB-Spalte auf `provision_laeufe`). Zusatzleistungen und TW-Prämie bleiben erhalten. Zielprämie wird neu berechnet.
 
 ## Offene Punkte / Nächste Schritte
 - E-Mail-Benachrichtigungen aktivieren (nach Testphase)

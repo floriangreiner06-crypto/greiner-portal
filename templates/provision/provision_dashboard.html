@@ -350,8 +350,9 @@
                     var badge = '<span class="badge '+(statusBadge[status]||'bg-secondary')+'"'+tooltip+'>'+(statusText[status]||status)+'</span>';
                     var beleg = l.belegnummer ? '<span style="color:#2563eb;font-weight:500;">'+l.belegnummer+'</span>' : '<span class="text-muted">—</span>';
                     var delBtn = ' <button class="btn btn-sm btn-outline-danger ms-1" data-lauf-id="'+l.id+'" data-lauf-status="'+status+'" data-lauf-name="'+(l.verkaufer_name||'-')+'"><i class="bi bi-trash"></i></button>';
+                    var updBtn = status !== 'ENDLAUF' ? ' <button class="btn btn-sm btn-outline-success ms-1" data-update-id="'+l.id+'" data-lauf-name="'+(l.verkaufer_name||'-')+'" title="Vorlauf aktualisieren"><i class="bi bi-arrow-repeat"></i></button>' : '';
                     var pdfLink = status === 'ENDLAUF' ? ' <span style="color:#cbd5e1;margin:0 4px;">|</span><a href="/provision/pdf/'+l.id+'" download style="color:#2563a8;font-weight:600;">PDF</a>' : '';
-                    html += '<tr><td class="name-cell">'+(l.verkaufer_name||'-')+'</td><td>'+badge+'</td><td>'+beleg+'</td><td class="text-end fw-semibold">'+fmtEuro(l.summe_gesamt)+'</td><td class="text-end"><a href="/provision/detail/'+l.id+'" style="color:#2563eb;font-weight:500;">Detail</a>'+pdfLink+delBtn+'</td></tr>';
+                    html += '<tr><td class="name-cell">'+(l.verkaufer_name||'-')+'</td><td>'+badge+'</td><td>'+beleg+'</td><td class="text-end fw-semibold">'+fmtEuro(l.summe_gesamt)+'</td><td class="text-end"><a href="/provision/detail/'+l.id+'" style="color:#2563eb;font-weight:500;">Detail</a>'+pdfLink+updBtn+delBtn+'</td></tr>';
                 });
                 html += '</tbody></table>';
                 lc.innerHTML = html;
@@ -367,6 +368,29 @@
                         fetch('/api/provision/vorlauf/'+laufId+'/loeschen',{method:'POST',credentials:'same-origin'})
                         .then(function(r){return r.json();})
                         .then(function(res){ if(res.success) load(); else{ alert(res.error||'Fehler'); btn.disabled=false; }});
+                    };
+                });
+                // Update handlers
+                lc.querySelectorAll('[data-update-id]').forEach(function(btn){
+                    btn.onclick = function(){
+                        var laufId = parseInt(this.getAttribute('data-update-id'),10);
+                        var laufName = this.getAttribute('data-lauf-name') || '';
+                        if (!confirm('Vorlauf für ' + laufName + ' aktualisieren?\n\nNeue Positionen werden hinzugefügt, manuelle Änderungen bleiben erhalten.')) return;
+                        this.disabled = true;
+                        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                        var self = this;
+                        fetch('/api/provision/vorlauf/'+laufId+'/aktualisieren',{method:'POST',credentials:'same-origin'})
+                        .then(function(r){return r.json();})
+                        .then(function(res){
+                            if(res.success) {
+                                alert(res.message || 'Vorlauf aktualisiert.');
+                                load();
+                            } else {
+                                alert(res.error||'Fehler');
+                                self.disabled=false;
+                                self.innerHTML='<i class="bi bi-arrow-repeat"></i>';
+                            }
+                        });
                     };
                 });
             }
