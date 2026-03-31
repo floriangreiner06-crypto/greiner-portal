@@ -1,7 +1,7 @@
 # Infrastruktur & DevOps — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-26
+## Letzte Aktualisierung: 2026-03-31
 
 ## Beschreibung
 
@@ -42,17 +42,40 @@ Infrastruktur umfasst Celery/RedBeat, Redis, Deployment, Locosoft-Mirror, Postgr
 
 - Alle Anwendungs-Tabellen; Backup/Schema in `docs/DB_SCHEMA_POSTGRESQL.md`
 
-## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
+## Aktueller Stand (erledigt, in Arbeit, offen)
 
-- ✅ PostgreSQL-Migration (TAG 135), Celery, Redis, Flower, Metabase, Admin-UI im Einsatz
-- ✅ Qualitätscheck Phase 1 (Ruff, Bandit, pip-audit, Checkliste CONTEXT/SSOT); 2 Bandit-High behoben (siehe docs/QUALITAETSCHECK_*.md)
-- 🔧 MCP, Locosoft-Mirror, Backups je nach Projektstand
-- ❌ Offene Punkte ggf. in Session-TODOs
+- Erledigt: PostgreSQL-Migration (TAG 135), Celery, Redis, Flower, Metabase, Admin-UI im Einsatz
+- Erledigt: Qualitaetscheck Phase 1 (Ruff, Bandit, pip-audit, Checkliste CONTEXT/SSOT)
+- Erledigt: SSH-Zugang zu Locosoft-Server (root@10.80.80.8, Key-Auth)
+- Erledigt: Locosoft Docker-Container repariert (locodb, pg_hba.conf, Passwort)
+- Erledigt: Locosoft DB vollstaendig analysiert (102 Tabellen, 11.3 Mio. Datensaetze)
+- In Arbeit: MCP, Locosoft-Mirror, Backups je nach Projektstand
+- Offen: Locosoft Export-Performance verbessern (aktuell 44 Min Full-Export)
+- Offen: Werkstatt Soll-Kapazitaet aus Locosoft (employees_worktimes + times analysiert, Datenqualitaet beachten)
+
+## Locosoft PostgreSQL Server (srvlocodb, 10.80.80.8)
+
+- **Docker-Container:** `locodb` (PG 16.2, Image nikoksr/postgres:latest)
+- **SSH:** `ssh root@10.80.80.8` (Key-Auth von ag-admin@drive)
+- **Export:** Full-Export via Pr. 987 DATENBANK-Dienst, ca. 44 Min, taeglich
+- **Problem 2026-03-31:** Container war gestoppt, postgres-Passwort stimmte nicht nach Container-Wechsel (loco -> locodb). DB + User existierten nicht. Behoben: Container gestartet, pg_hba temporaer auf trust, DB+User angelegt, Export durchgefuehrt, pg_hba zurueck auf scram-sha-256.
+- **Analyse:** docs/workstreams/infrastruktur/LOCOSOFT_DB_ANALYSE_2026-03-31.md
+- **Spiegel-Status:** 95 von 102 Tabellen lokal gespiegelt, Daten nahezu identisch. 7 fehlende = Modell-Konfigurator (nicht geschaeftskritisch).
+
+## Erkenntnisse Locosoft Stempelzeiten (2026-03-31)
+
+- `employees_worktimes` = Soll-Arbeitszeiten (vertraglich), NICHT Ist-Stempelzeiten
+- `times` View: Type 1 = Anwesenheit (Kommen/Gehen), Type 2 = Auftragsstempelung (produktiv)
+- Type 2 hat Duplikate pro order_position - DISTINCT auf (employee, start_time, end_time) noetig
+- Locosoft kann produktive Mechaniker nicht sauber von anderen Werkstatt-MA unterscheiden (kein Flag). Mapping muss aus Portal-employees kommen.
+- Datenqualitaet: Ausreisser moeglich (z.B. 80h-Anwesenheitseintrag durch Doppelbuchung)
+- Produktivitaet Maerz 2026: Top-Mechaniker 93-98%, Azubis/Neue 0-10%
 
 ## Offene Entscheidungen
 
-- (Keine festgehalten)
+- Soll Export-Haeufigkeit reduziert werden (z.B. 1x/Woche statt taeglich)? Live-Aktualisierung ist fuer Kunden+Fahrzeuge bereits aktiv.
+- Soll die Werkstatt-Produktivitaet aus Locosoft-times berechnet werden statt manuell?
 
-## Abhängigkeiten
+## Abhaengigkeiten
 
-- Keine (Basis für andere Workstreams)
+- Keine (Basis fuer andere Workstreams)
