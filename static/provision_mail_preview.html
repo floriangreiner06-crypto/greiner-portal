@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Provisions-Mails — Preview</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 24px; }
+  .mail-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.1); margin: 0 auto 32px; max-width: 700px; overflow: hidden; }
+  .mail-header { background: #e9ecef; padding: 16px 24px; border-bottom: 1px solid #dee2e6; }
+  .mail-header h3 { margin: 0 0 4px; font-size: 14px; color: #6c757d; }
+  .mail-header .subject { font-size: 16px; font-weight: 600; color: #212529; }
+  .mail-header .meta { font-size: 13px; color: #6c757d; margin-top: 8px; }
+  .mail-header .meta span { display: inline-block; margin-right: 16px; }
+  .mail-body { padding: 24px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; color: #fff; }
+  .badge-info { background: #0dcaf0; }
+  .badge-warning { background: #ffc107; color: #212529; }
+  .badge-success { background: #198754; }
+  .badge-danger { background: #dc3545; }
+  .badge-primary { background: #0d6efd; }
+  .badge-secondary { background: #6c757d; }
+  h1 { text-align: center; color: #1a3a5c; margin-bottom: 8px; }
+  .subtitle { text-align: center; color: #6c757d; margin-bottom: 40px; }
+  .nr { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #1a3a5c; color: #fff; font-weight: 700; font-size: 14px; margin-right: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Provisions-Mails — Preview</h1>
+<p class="subtitle">PROVISION_EMAIL_ENABLED = False — Vorschau aller 6 Workflow-E-Mails</p>
+
+<!-- ================================================================ -->
+<!-- MAIL 1: Zur Prüfung → Verkäufer -->
+<!-- ================================================================ -->
+<div class="mail-card">
+  <div class="mail-header">
+    <h3><span class="nr">1</span> VORLAUF → ZUR_PRÜFUNG <span class="badge badge-warning">Zur Prüfung</span></h3>
+    <div class="subject">Provisionsvorlauf 2026-03 liegt zur Prüfung bereit</div>
+    <div class="meta">
+      <span><strong>An:</strong> daniel.fialkowski@auto-greiner.de</span>
+      <span><strong>Von:</strong> noreply@auto-greiner.de</span>
+    </div>
+  </div>
+  <div class="mail-body">
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#1a3a5c;color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:18px;">Provisionsabrechnung</h2>
+      </div>
+      <div style="padding:24px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;">
+        <h3 style="margin:0 0 12px 0;color:#1a3a5c;">Vorlauf zur Prüfung</h3>
+        <p style="margin:4px 0;">Hallo Daniel Fialkowski,</p>
+        <p style="margin:4px 0;">Dein Provisionsvorlauf für <strong>2026-03</strong> wurde erstellt und liegt zur Prüfung bereit.</p>
+        <p style="margin:4px 0;">Bitte prüfe die Positionen und gib den Vorlauf frei.</p>
+        <p style="margin:16px 0;"><a href="http://drive/provision/meine" style="background:#0d6efd;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;">Vorlauf ansehen</a></p>
+        <hr style="border:none;border-top:1px solid #dee2e6;margin:20px 0 12px;">
+        <p style="font-size:12px;color:#6c757d;margin:0;">Diese Nachricht wurde automatisch vom DRIVE Portal erstellt.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- MAIL 2: Freigegeben → Genehmiger -->
+<!-- ================================================================ -->
+<div class="mail-card">
+  <div class="mail-header">
+    <h3><span class="nr">2</span> ZUR_PRÜFUNG → FREIGEGEBEN <span class="badge badge-info">Freigegeben</span></h3>
+    <div class="subject">Provision Daniel Fialkowski (2026-03) wartet auf Genehmigung</div>
+    <div class="meta">
+      <span><strong>An:</strong> anton.suess@auto-greiner.de, florian.greiner@auto-greiner.de</span>
+      <span><strong>Von:</strong> noreply@auto-greiner.de</span>
+    </div>
+  </div>
+  <div class="mail-body">
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#1a3a5c;color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:18px;">Provisionsabrechnung</h2>
+      </div>
+      <div style="padding:24px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;">
+        <h3 style="margin:0 0 12px 0;color:#1a3a5c;">Vorlauf freigegeben — Genehmigung erforderlich</h3>
+        <p style="margin:4px 0;">Der Provisionsvorlauf von <strong>Daniel Fialkowski</strong> für <strong>2026-03</strong> wurde vom Verkäufer freigegeben.</p>
+        <p style="margin:4px 0;">Bitte prüfen und genehmigen oder ablehnen.</p>
+        <p style="margin:16px 0;"><a href="http://drive/provision/detail/42" style="background:#0d6efd;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;">Vorlauf prüfen</a></p>
+        <hr style="border:none;border-top:1px solid #dee2e6;margin:20px 0 12px;">
+        <p style="font-size:12px;color:#6c757d;margin:0;">Diese Nachricht wurde automatisch vom DRIVE Portal erstellt.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- MAIL 3: Einspruch → Vanessa -->
+<!-- ================================================================ -->
+<div class="mail-card">
+  <div class="mail-header">
+    <h3><span class="nr">3</span> Einspruch (ZUR_PRÜFUNG → VORLAUF) <span class="badge badge-danger">Einspruch</span></h3>
+    <div class="subject">Einspruch von Daniel Fialkowski (2026-03)</div>
+    <div class="meta">
+      <span><strong>An:</strong> vanessa.groll@auto-greiner.de</span>
+      <span><strong>Von:</strong> noreply@auto-greiner.de</span>
+    </div>
+  </div>
+  <div class="mail-body">
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#1a3a5c;color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:18px;">Provisionsabrechnung</h2>
+      </div>
+      <div style="padding:24px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;">
+        <h3 style="margin:0 0 12px 0;color:#1a3a5c;">Einspruch eingegangen</h3>
+        <p style="margin:4px 0;"><strong>Daniel Fialkowski</strong> hat Einspruch gegen den Provisionsvorlauf für <strong>2026-03</strong> eingelegt.</p>
+        <p style="margin:4px 0;">Begründung: <em>„Position Opel Corsa (FIN: W0L000...) fehlt, wurde am 28.03. ausgeliefert."</em></p>
+        <p style="margin:4px 0;">Der Vorlauf wurde auf Status VORLAUF zurückgesetzt und kann überarbeitet werden.</p>
+        <p style="margin:16px 0;"><a href="http://drive/provision/detail/42" style="background:#0d6efd;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;">Vorlauf ansehen</a></p>
+        <hr style="border:none;border-top:1px solid #dee2e6;margin:20px 0 12px;">
+        <p style="font-size:12px;color:#6c757d;margin:0;">Diese Nachricht wurde automatisch vom DRIVE Portal erstellt.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- MAIL 4: Genehmigt → Vanessa -->
+<!-- ================================================================ -->
+<div class="mail-card">
+  <div class="mail-header">
+    <h3><span class="nr">4</span> FREIGEGEBEN → GENEHMIGT <span class="badge badge-success">Genehmigt</span></h3>
+    <div class="subject">Provision Daniel Fialkowski (2026-03) durch VKL genehmigt</div>
+    <div class="meta">
+      <span><strong>An:</strong> vanessa.groll@auto-greiner.de</span>
+      <span><strong>Von:</strong> noreply@auto-greiner.de</span>
+    </div>
+  </div>
+  <div class="mail-body">
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#1a3a5c;color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:18px;">Provisionsabrechnung</h2>
+      </div>
+      <div style="padding:24px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;">
+        <h3 style="margin:0 0 12px 0;color:#1a3a5c;">Vorlauf durch VKL genehmigt</h3>
+        <p style="margin:4px 0;">Der Provisionsvorlauf von <strong>Daniel Fialkowski</strong> für <strong>2026-03</strong> wurde von <strong>Anton Süß</strong> genehmigt.</p>
+        <p style="margin:4px 0;">Der Endlauf kann jetzt erstellt werden.</p>
+        <p style="margin:16px 0;"><a href="http://drive/provision/dashboard" style="background:#0d6efd;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;">Zum Dashboard</a></p>
+        <hr style="border:none;border-top:1px solid #dee2e6;margin:20px 0 12px;">
+        <p style="font-size:12px;color:#6c757d;margin:0;">Diese Nachricht wurde automatisch vom DRIVE Portal erstellt.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- MAIL 5: Abgelehnt → Vanessa -->
+<!-- ================================================================ -->
+<div class="mail-card">
+  <div class="mail-header">
+    <h3><span class="nr">5</span> Ablehnung (FREIGEGEBEN → VORLAUF) <span class="badge badge-danger">Abgelehnt</span></h3>
+    <div class="subject">Provision Daniel Fialkowski (2026-03) abgelehnt</div>
+    <div class="meta">
+      <span><strong>An:</strong> vanessa.groll@auto-greiner.de</span>
+      <span><strong>Von:</strong> noreply@auto-greiner.de</span>
+    </div>
+  </div>
+  <div class="mail-body">
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#1a3a5c;color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:18px;">Provisionsabrechnung</h2>
+      </div>
+      <div style="padding:24px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;">
+        <h3 style="margin:0 0 12px 0;color:#1a3a5c;">Vorlauf abgelehnt</h3>
+        <p style="margin:4px 0;"><strong>Anton Süß</strong> hat den Provisionsvorlauf von <strong>Daniel Fialkowski</strong> für <strong>2026-03</strong> abgelehnt.</p>
+        <p style="margin:4px 0;">Begründung: <em>„GW-Bestand Position Hyundai Tucson stimmt nicht — BE II muss nochmal geprüft werden."</em></p>
+        <p style="margin:4px 0;">Der Vorlauf wurde auf Status VORLAUF zurückgesetzt und muss überarbeitet werden.</p>
+        <p style="margin:16px 0;"><a href="http://drive/provision/detail/42" style="background:#0d6efd;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;">Vorlauf ansehen</a></p>
+        <hr style="border:none;border-top:1px solid #dee2e6;margin:20px 0 12px;">
+        <p style="font-size:12px;color:#6c757d;margin:0;">Diese Nachricht wurde automatisch vom DRIVE Portal erstellt.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- MAIL 6: Endlauf → Verkäufer -->
+<!-- ================================================================ -->
+<div class="mail-card">
+  <div class="mail-header">
+    <h3><span class="nr">6</span> GENEHMIGT → ENDLAUF <span class="badge badge-success">Endlauf</span></h3>
+    <div class="subject">Provisionsabrechnung 2026-03 fertig — PDF verfügbar</div>
+    <div class="meta">
+      <span><strong>An:</strong> daniel.fialkowski@auto-greiner.de</span>
+      <span><strong>Von:</strong> noreply@auto-greiner.de</span>
+    </div>
+  </div>
+  <div class="mail-body">
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#1a3a5c;color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:18px;">Provisionsabrechnung</h2>
+      </div>
+      <div style="padding:24px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;">
+        <h3 style="margin:0 0 12px 0;color:#1a3a5c;">Endlauf erstellt</h3>
+        <p style="margin:4px 0;">Hallo Daniel Fialkowski,</p>
+        <p style="margin:4px 0;">Deine Provisionsabrechnung für <strong>2026-03</strong> ist abgeschlossen.</p>
+        <p style="margin:4px 0;">Belegnummer: <strong>VK2003-2026-03</strong></p>
+        <p style="margin:4px 0;">Das PDF steht im Portal zum Download bereit.</p>
+        <p style="margin:16px 0;"><a href="http://drive/provision/meine" style="background:#0d6efd;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;">Abrechnung ansehen</a></p>
+        <hr style="border:none;border-top:1px solid #dee2e6;margin:20px 0 12px;">
+        <p style="font-size:12px;color:#6c757d;margin:0;">Diese Nachricht wurde automatisch vom DRIVE Portal erstellt.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

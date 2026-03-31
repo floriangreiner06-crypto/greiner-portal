@@ -63,17 +63,65 @@ def _get_username():
     return getattr(current_user, 'username', '') or getattr(current_user, 'display_name', '') or 'system'
 
 
+def _get_display_name():
+    """Anzeigename des aktuellen Users (z.B. 'Florian Greiner' statt E-Mail)."""
+    return getattr(current_user, 'display_name', '') or getattr(current_user, 'username', '') or 'system'
+
+
+import logging
+_log = logging.getLogger(__name__)
+
+# E-Mail-Empfänger (feste Adressen)
+_EMAIL_VANESSA = 'vanessa.groll@auto-greiner.de'
+_EMAIL_GENEHMIGER = ['anton.suess@auto-greiner.de', 'florian.greiner@auto-greiner.de']
+
+
+def _get_verkaufer_email(verkaufer_id, cursor):
+    """E-Mail des Verkäufers über locosoft_id → ldap_employee_mapping."""
+    cursor.execute("""
+        SELECT l.ldap_email
+        FROM employees e
+        JOIN ldap_employee_mapping l ON e.id = l.employee_id
+        WHERE e.locosoft_id = %s
+        LIMIT 1
+    """, (verkaufer_id,))
+    row = cursor.fetchone()
+    return row['ldap_email'] if row else None
+
+
 def _send_provision_email(to_emails, subject, body_html):
-    """E-Mail senden (nur wenn PROVISION_EMAIL_ENABLED=True)."""
+    """E-Mail senden. Bei PROVISION_EMAIL_ENABLED=False wird nur geloggt."""
     if not PROVISION_EMAIL_ENABLED:
+        _log.info('[PROVISION-MAIL] (DEAKTIVIERT) An: %s | Betreff: %s', to_emails, subject)
+        _log.debug('[PROVISION-MAIL] Body:\n%s', body_html)
         return
     try:
         from api.graph_mail_connector import GraphMailConnector
         connector = GraphMailConnector()
         connector.send_mail('noreply@auto-greiner.de', to_emails, subject, body_html)
+        _log.info('[PROVISION-MAIL] Gesendet an: %s | Betreff: %s', to_emails, subject)
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f'Provision-Email fehlgeschlagen: {e}')
+        _log.warning('[PROVISION-MAIL] Fehlgeschlagen: %s', e)
+
+
+def _provision_mail_body(titel, inhalt_zeilen, link_text=None, link_url=None):
+    """Einheitliches HTML-Template für Provisions-Mails."""
+    zeilen_html = ''.join(f'<p style="margin:4px 0;">{z}</p>' for z in inhalt_zeilen)
+    link_html = ''
+    if link_text and link_url:
+        link_html = f'<p style="margin:16px 0;"><a href="{link_url}" style="background:#0d6efd;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;">{link_text}</a></p>'
+    return f"""<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+  <div style="background:#1a3a5c;color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
+    <h2 style="margin:0;font-size:18px;">Provisionsabrechnung</h2>
+  </div>
+  <div style="padding:24px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;">
+    <h3 style="margin:0 0 12px 0;color:#1a3a5c;">{titel}</h3>
+    {zeilen_html}
+    {link_html}
+    <hr style="border:none;border-top:1px solid #dee2e6;margin:20px 0 12px;">
+    <p style="font-size:12px;color:#6c757d;margin:0;">Diese Nachricht wurde automatisch vom DRIVE Portal erstellt.</p>
+  </div>
+</div>"""
 
 
 def _has_provision_vollzugriff():
@@ -295,7 +343,7 @@ def zur_pruefung(lauf_id):
         return jsonify({'success': False, 'error': 'Keine Berechtigung.'}), 403
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, status FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        cur.execute("SELECT id, status, verkaufer_id, verkaufer_name, abrechnungsmonat FROM provision_laeufe WHERE id = %s", (lauf_id,))
         lauf = cur.fetchone()
         if not lauf:
             return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
@@ -309,7 +357,25 @@ def zur_pruefung(lauf_id):
                 einspruch_text = NULL, einspruch_von = NULL, einspruch_am = NULL
             WHERE id = %s
         """, (_get_username(), lauf_id))
+        # E-Mail an Verkäufer
+        vk_email = _get_verkaufer_email(lauf['verkaufer_id'], cur)
         conn.commit()
+    if vk_email:
+        monat = lauf['abrechnungsmonat'] or ''
+        _send_provision_email(
+            [vk_email],
+            f'Provisionsvorlauf {monat} liegt zur Prüfung bereit',
+            _provision_mail_body(
+                'Vorlauf zur Prüfung',
+                [
+                    f'Hallo {lauf["verkaufer_name"]},',
+                    f'Dein Provisionsvorlauf für <strong>{monat}</strong> wurde erstellt und liegt zur Prüfung bereit.',
+                    'Bitte prüfe die Positionen und gib den Vorlauf frei.',
+                ],
+                link_text='Vorlauf ansehen',
+                link_url=f'http://drive:5002/provision/meine',
+            )
+        )
     return jsonify({'success': True, 'message': 'Zur Pruefung gesendet.'})
 
 
@@ -319,7 +385,7 @@ def freigeben(lauf_id):
     """POST /api/provision/vorlauf/<id>/freigeben - ZUR_PRUEFUNG -> FREIGEGEBEN."""
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, status, verkaufer_id FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        cur.execute("SELECT id, status, verkaufer_id, verkaufer_name, abrechnungsmonat FROM provision_laeufe WHERE id = %s", (lauf_id,))
         lauf = cur.fetchone()
         if not lauf:
             return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
@@ -335,6 +401,22 @@ def freigeben(lauf_id):
             WHERE id = %s
         """, (_get_username(), lauf_id))
         conn.commit()
+    # E-Mail an Genehmiger
+    name = lauf['verkaufer_name'] or ''
+    monat = lauf['abrechnungsmonat'] or ''
+    _send_provision_email(
+        _EMAIL_GENEHMIGER,
+        f'Provision {name} ({monat}) wartet auf Genehmigung',
+        _provision_mail_body(
+            'Vorlauf freigegeben — Genehmigung erforderlich',
+            [
+                f'Der Provisionsvorlauf von <strong>{name}</strong> für <strong>{monat}</strong> wurde vom Verkäufer freigegeben.',
+                'Bitte prüfen und genehmigen oder ablehnen.',
+            ],
+            link_text='Vorlauf prüfen',
+            link_url=f'http://drive:5002/provision/detail/{lauf_id}',
+        )
+    )
     return jsonify({'success': True, 'message': 'Vorlauf freigegeben.'})
 
 
@@ -348,7 +430,7 @@ def einspruch(lauf_id):
         return jsonify({'success': False, 'error': 'Begruendung ist ein Pflichtfeld.'}), 400
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, status, verkaufer_id FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        cur.execute("SELECT id, status, verkaufer_id, verkaufer_name, abrechnungsmonat FROM provision_laeufe WHERE id = %s", (lauf_id,))
         lauf = cur.fetchone()
         if not lauf:
             return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
@@ -365,6 +447,24 @@ def einspruch(lauf_id):
             WHERE id = %s
         """, (text, _get_username(), lauf_id))
         conn.commit()
+    # E-Mail an Vanessa
+    name = lauf['verkaufer_name'] or ''
+    monat = lauf['abrechnungsmonat'] or ''
+    von = _get_display_name()
+    _send_provision_email(
+        [_EMAIL_VANESSA],
+        f'Einspruch von {name} ({monat})',
+        _provision_mail_body(
+            'Einspruch eingegangen',
+            [
+                f'<strong>{von}</strong> hat Einspruch gegen den Provisionsvorlauf von <strong>{name}</strong> für <strong>{monat}</strong> eingelegt.',
+                f'Begründung: <em>„{text}"</em>',
+                'Der Vorlauf wurde auf Status VORLAUF zurückgesetzt und kann überarbeitet werden.',
+            ],
+            link_text='Vorlauf ansehen',
+            link_url=f'http://drive:5002/provision/detail/{lauf_id}',
+        )
+    )
     return jsonify({'success': True, 'message': 'Einspruch gesendet.'})
 
 
@@ -376,7 +476,7 @@ def genehmigen(lauf_id):
         return jsonify({'success': False, 'error': 'Nur Anton Suess oder Florian Greiner duerfen genehmigen.'}), 403
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, status FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        cur.execute("SELECT id, status, verkaufer_id, verkaufer_name, abrechnungsmonat FROM provision_laeufe WHERE id = %s", (lauf_id,))
         lauf = cur.fetchone()
         if not lauf:
             return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
@@ -390,6 +490,23 @@ def genehmigen(lauf_id):
             WHERE id = %s
         """, (_get_username(), lauf_id))
         conn.commit()
+    # E-Mail an Vanessa
+    name = lauf['verkaufer_name'] or ''
+    monat = lauf['abrechnungsmonat'] or ''
+    von = _get_display_name()
+    _send_provision_email(
+        [_EMAIL_VANESSA],
+        f'Provision {name} ({monat}) durch VKL genehmigt',
+        _provision_mail_body(
+            'Vorlauf durch VKL genehmigt',
+            [
+                f'Der Provisionsvorlauf von <strong>{name}</strong> für <strong>{monat}</strong> wurde von <strong>{von}</strong> genehmigt.',
+                'Der Endlauf kann jetzt erstellt werden.',
+            ],
+            link_text='Zum Dashboard',
+            link_url=f'http://drive:5002/provision/dashboard',
+        )
+    )
     return jsonify({'success': True, 'message': 'Vorlauf genehmigt.'})
 
 
@@ -405,7 +522,7 @@ def ablehnen(lauf_id):
         return jsonify({'success': False, 'error': 'Begruendung ist ein Pflichtfeld.'}), 400
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, status FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        cur.execute("SELECT id, status, verkaufer_id, verkaufer_name, abrechnungsmonat FROM provision_laeufe WHERE id = %s", (lauf_id,))
         lauf = cur.fetchone()
         if not lauf:
             return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
@@ -420,6 +537,24 @@ def ablehnen(lauf_id):
             WHERE id = %s
         """, (text, _get_username(), lauf_id))
         conn.commit()
+    # E-Mail an Vanessa
+    name = lauf['verkaufer_name'] or ''
+    monat = lauf['abrechnungsmonat'] or ''
+    von = _get_display_name()
+    _send_provision_email(
+        [_EMAIL_VANESSA],
+        f'Provision {name} ({monat}) abgelehnt',
+        _provision_mail_body(
+            'Vorlauf abgelehnt',
+            [
+                f'<strong>{von}</strong> hat den Provisionsvorlauf von <strong>{name}</strong> für <strong>{monat}</strong> abgelehnt.',
+                f'Begründung: <em>„{text}"</em>',
+                'Der Vorlauf wurde auf Status VORLAUF zurückgesetzt und muss überarbeitet werden.',
+            ],
+            link_text='Vorlauf ansehen',
+            link_url=f'http://drive:5002/provision/detail/{lauf_id}',
+        )
+    )
     return jsonify({'success': True, 'message': 'Vorlauf abgelehnt.'})
 
 
@@ -460,7 +595,7 @@ def endlauf_setzen(lauf_id):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, verkaufer_id, abrechnungsmonat, status
+            SELECT id, verkaufer_id, verkaufer_name, abrechnungsmonat, status
             FROM provision_laeufe WHERE id = %s
         """, (lauf_id,))
         lauf = cur.fetchone()
@@ -515,6 +650,28 @@ def endlauf_setzen(lauf_id):
                 conn.commit()
     except Exception:
         pdf_rel = None
+
+    # E-Mail an Verkäufer
+    with db_session() as conn:
+        cur = conn.cursor()
+        vk_email = _get_verkaufer_email(vkb, cur)
+    if vk_email:
+        name = lauf['verkaufer_name'] or ''
+        _send_provision_email(
+            [vk_email],
+            f'Provisionsabrechnung {monat} fertig — PDF verfügbar',
+            _provision_mail_body(
+                'Endlauf erstellt',
+                [
+                    f'Hallo {name},',
+                    f'Deine Provisionsabrechnung für <strong>{monat}</strong> ist abgeschlossen.',
+                    f'Belegnummer: <strong>{belegnummer}</strong>',
+                    'Das PDF steht im Portal zum Download bereit.',
+                ],
+                link_text='Abrechnung ansehen',
+                link_url=f'http://drive:5002/provision/meine',
+            )
+        )
 
     return jsonify({
         'success': True,
