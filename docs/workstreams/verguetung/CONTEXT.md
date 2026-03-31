@@ -84,6 +84,8 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - **Einzelpositionen löschen** — Lösch-Button neben Bearbeiten-Button pro Position
 - **Differenzbesteuerung §25a Fix (2026-03-31):** MwSt-Fallback im Sales-Sync korrigiert: Marge = VK - Fahrzeuggrundpreis (statt VK - Einsatzwert). Alle differenzbesteuerten Fahrzeuge haben jetzt exakt den gleichen DB wie Locosoft.
 - **Kat IV Bemessungsgrundlage = BE II** (nicht mehr BE I/DB1). Detail-Spalte "BE II", PDF-Header "BE II". calc_gw_bestand gibt jetzt (provision, be2) zurück.
+- **DB-Verbindung Testsystem Fix:** `db_connection.py` lud hardcoded `/opt/greiner-portal/config/.env` (Prod) statt dynamisch. Testsystem arbeitete dadurch gegen Prod-DB. Jetzt dynamischer Pfad via `pathlib`. Versehentlich erstellte Prod-Vorläufe wurden bereinigt.
+- **Einkäufer-Filter GW aus Bestand:** `get_sales_where_einkaeufer_only` filterte nur `out_sale_type IN ('B','G','D','T')`. Fahrzeuge mit `out_sale_type='F'` aber `dealer_vehicle_type='D'` (GW mit Regelbesteuerung) fehlten. Jetzt wird auch `dealer_vehicle_type` geprüft.
 
 ## Offene Punkte / Nächste Schritte
 - E-Mail-Benachrichtigungen aktivieren (nach Testphase)
@@ -92,7 +94,7 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - Werkstatt-Prämien: Konzept in Excel vorhanden, Umsetzung steht aus
 - Jahresprämie: Existiert in HR, Migration geplant
 - Kumulierte Zielprämie: Config-Validität prüfen (gueltig_bis der Zielerfüllung-Zeile muss ganzjährig gelten)
-- Bestehende März-Vorläufe löschen und neu erstellen (korrigierte DB-Werte nach §25a-Fix)
+- **WICHTIG:** Vor Deploy nach Prod: `db_connection.py`-Fix und §25a-Sync-Fix prüfen — Prod hat noch alten Code
 
 ## Abhängigkeiten
 - werkstatt (TEK-Daten, Stunden, Anwesenheit)

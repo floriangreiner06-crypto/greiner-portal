@@ -189,7 +189,7 @@ def get_sales_where_einkaeufer_only(vkb: int, monat: str) -> List[Dict[str, Any]
               AND s.in_buy_salesman_number = %s
               AND (s.salesman_number IS NULL OR s.salesman_number != %s)
               AND COALESCE(e2.provision_aktiv, true) = true
-              AND s.out_sale_type IN ('B', 'G', 'D', 'T')
+              AND (s.out_sale_type IN ('B', 'G', 'D', 'T', 'F') OR s.dealer_vehicle_type IN ('D', 'G'))
             ORDER BY s.out_invoice_date, s.out_invoice_number
         """, (von, bis, vkb, vkb))
         rows = rows_to_list(cur.fetchall())

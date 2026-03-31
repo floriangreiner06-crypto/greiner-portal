@@ -188,8 +188,10 @@ SQLITE_PATH_LOCAL = os.path.join(os.path.dirname(__file__), '..', 'data', 'grein
 # config/.env enthält die echten Credentials; override=True damit sie .env aus Root überstimmen
 try:
     from dotenv import load_dotenv
-    load_dotenv('/opt/greiner-portal/.env')
-    load_dotenv('/opt/greiner-portal/config/.env', override=True)
+    import pathlib
+    _base = pathlib.Path(__file__).resolve().parent.parent  # /opt/greiner-test/ oder /opt/greiner-portal/
+    load_dotenv(_base / '.env')
+    load_dotenv(_base / 'config' / '.env', override=True)
 except ImportError:
     pass
 
