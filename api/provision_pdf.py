@@ -320,7 +320,7 @@ def _build_detail(elements, lauf, positionen, zusatzleistungen, styles, typ, jah
         if is_gw_bestand:
             table_data = [[
                 Paragraph('MODELL', th), Paragraph('KÄUFER', th),
-                Paragraph('VORBESITZER', th), Paragraph('BE', th_r), Paragraph('PROVISION', th_r),
+                Paragraph('VORBESITZER', th), Paragraph('BE II', th_r), Paragraph('PROVISION', th_r),
             ]]
             for p in rows:
                 table_data.append([

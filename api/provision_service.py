@@ -9,7 +9,7 @@ Keine doppelte Logik: Scripts wie provisions_berechnung_kraus_jan2026.py sollen
 diese Funktionen importieren statt eigene Konstanten zu definieren.
 """
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from api.db_utils import db_session, rows_to_list
 
@@ -359,10 +359,11 @@ def calc_rg_netto_clamp(netto: float, config: Dict[str, Any]) -> float:
     return round(raw, 2)
 
 
-def calc_gw_bestand(db_betrag: float, config: Dict[str, Any]) -> float:
+def calc_gw_bestand(db_betrag: float, config: Dict[str, Any]) -> Tuple[float, float]:
     """
     Kat. IV (GW aus Bestand): DB2 = DB1 minus GW-Umsatzprovision (Anteil) minus Verkaufskostenpauschale;
     Provision = Prozentsatz auf DB2. Operatoren konfigurierbar (provision_config).
+    Returns: (provision, be2) — Provision und Bemessungsgrundlage BE II.
     """
     anteil = config.get('param_j60') or 0
     pauschale = config.get('param_j61') or 0
@@ -379,9 +380,9 @@ def calc_gw_bestand(db_betrag: float, config: Dict[str, Any]) -> float:
     else:
         basis = db_betrag - abzug
     if basis <= 0:
-        return 0.0
+        return (0.0, round(basis, 2))
     pct = config.get('prozentsatz') or 0.12
-    return round(basis * pct, 2)
+    return (round(basis * pct, 2), round(basis, 2))
 
 
 def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
@@ -508,18 +509,18 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
             })
             # DB2 Prov aus Bestand: zusätzlich für Einkäufer (antauschender VB), gleiches Geschäft
             if is_einkaeufer_this_vkb:
-                prov_iv = calc_gw_bestand(db, cfg_iv)
+                prov_iv, be2_iv = calc_gw_bestand(db, cfg_iv)
                 summe_iv += prov_iv
                 positionen_iv.append({
                     'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
-                    'deckungsbeitrag': db, 'provision': prov_iv, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+                    'deckungsbeitrag': db, 'bemessungsgrundlage': be2_iv, 'provision': prov_iv, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
                 })
         elif kat == 'IV_gw_bestand':
-            prov = calc_gw_bestand(db, cfg_iv)
+            prov, be2 = calc_gw_bestand(db, cfg_iv)
             summe_iv += prov
             positionen_iv.append({
                 'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
-                'deckungsbeitrag': db, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+                'deckungsbeitrag': db, 'bemessungsgrundlage': be2, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
             })
         else:
             prov = calc_rg_netto_clamp(netto_vehicle, cfg_iii)
@@ -529,11 +530,11 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
                 'rg_netto': netto_vehicle, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
             })
             if is_einkaeufer_this_vkb:
-                prov_iv = calc_gw_bestand(db, cfg_iv)
+                prov_iv, be2_iv = calc_gw_bestand(db, cfg_iv)
                 summe_iv += prov_iv
                 positionen_iv.append({
                     'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
-                    'deckungsbeitrag': db, 'provision': prov_iv, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+                    'deckungsbeitrag': db, 'bemessungsgrundlage': be2_iv, 'provision': prov_iv, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
                 })
 
     # DB2 Prov aus Bestand: Verkäufe, bei denen vkb nur Einkäufer ist (Verkäufer ist jemand anderes)
@@ -549,11 +550,11 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
         kaeufer = (r.get('kaeufer_name') or '').strip() or None
         einkaeufer = (r.get('einkaeufer_name') or '').strip() or ('VKB ' + str(r.get('in_buy_salesman_number')) if r.get('in_buy_salesman_number') is not None else None)
         db = _get_float(r, 'deckungsbeitrag')
-        prov_iv = calc_gw_bestand(db, cfg_iv)
+        prov_iv, be2_iv = calc_gw_bestand(db, cfg_iv)
         summe_iv += prov_iv
         positionen_iv.append({
             'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
-            'deckungsbeitrag': db, 'provision': prov_iv, 'fahrzeugart': (r.get('out_sale_type') or ''), 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+            'deckungsbeitrag': db, 'bemessungsgrundlage': be2_iv, 'provision': prov_iv, 'fahrzeugart': (r.get('out_sale_type') or ''), 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
         })
 
     bemessung_i = (cfg_i.get('bemessungsgrundlage') or 'db').strip().lower()
@@ -720,7 +721,7 @@ def create_vorlauf(vkb: int, monat: str, erstellt_von: str) -> Dict[str, Any]:
         for p in result['positionen_iii']:
             insert_pos('III_gebrauchtwagen', p, p.get('rg_netto'), None, p['provision'], (result['config'].get('III') or {}).get('prozentsatz') or 0.01)
         for p in result['positionen_iv']:
-            insert_pos('IV_gw_bestand', p, None, p.get('deckungsbeitrag'), p['provision'], (result['config'].get('IV') or {}).get('prozentsatz') or 0.12)
+            insert_pos('IV_gw_bestand', p, None, p.get('bemessungsgrundlage', p.get('deckungsbeitrag')), p['provision'], (result['config'].get('IV') or {}).get('prozentsatz') or 0.12)
 
         conn.commit()
 
@@ -922,8 +923,9 @@ def get_lauf_detail(lauf_id: int) -> Optional[Dict[str, Any]]:
 
 def delete_vorlauf(lauf_id: int) -> Dict[str, Any]:
     """
-    Löscht einen Vorlauf (nur Status VORLAUF).
+    Löscht einen Lauf komplett (jeder Status).
     provision_positionen werden durch ON DELETE CASCADE mit entfernt.
+    provision_zusatzleistungen werden explizit gelöscht (ON DELETE SET NULL).
     Returns: {'success': True} oder {'success': False, 'error': '...'}
     """
     with db_session() as conn:
@@ -932,9 +934,7 @@ def delete_vorlauf(lauf_id: int) -> Dict[str, Any]:
         row = cur.fetchone()
         if not row:
             return {'success': False, 'error': 'Lauf nicht gefunden.'}
-        status = (row.get('status') or '').strip().upper()
-        if status != 'VORLAUF':
-            return {'success': False, 'error': f'Nur Vorläufe können gelöscht werden (aktueller Status: {status}).'}
+        cur.execute("DELETE FROM provision_zusatzleistungen WHERE lauf_id = %s", (lauf_id,))
         cur.execute("DELETE FROM provision_laeufe WHERE id = %s", (lauf_id,))
         conn.commit()
     return {'success': True}

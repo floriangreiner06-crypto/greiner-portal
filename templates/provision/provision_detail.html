@@ -158,9 +158,14 @@
                 <div class="belegnummer" id="endlaufBelegnummer"></div>
                 <div class="datum" id="endlaufDatum"></div>
             </div>
-            <a href="/provision/pdf/{{ lauf_id }}" download class="btn-action btn-action-success ms-auto" id="btnPdfEndlauf">
-                <i class="bi bi-file-earmark-pdf"></i> PDF herunterladen
-            </a>
+            <div class="ms-auto d-flex gap-2 align-items-center">
+                <a href="/provision/pdf/{{ lauf_id }}" download class="btn-action btn-action-success" id="btnPdfEndlauf">
+                    <i class="bi bi-file-earmark-pdf"></i> PDF herunterladen
+                </a>
+                <button type="button" class="btn-action btn-action-danger" id="btnEndlaufLoeschen" style="display:none;">
+                    <i class="bi bi-arrow-counterclockwise"></i> Endlauf zurücksetzen
+                </button>
+            </div>
         </div>
 
         <!-- Accordion Categories -->
@@ -281,6 +286,96 @@
     </div>
 </div>
 
+<!-- Modal: Fahrzeug manuell hinzufügen -->
+<div class="modal fade" id="addPosModal" tabindex="-1" aria-labelledby="addPosModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content modal-edit">
+            <div class="modal-header py-2" style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                <h5 class="modal-title" id="addPosModalLabel" style="font-size:.95rem; font-weight:700;">Fahrzeug hinzufügen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schliessen"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label" for="addKategorie">Kategorie</label>
+                        <select class="form-select form-select-sm" id="addKategorie">
+                            <option value="I_neuwagen">I. Neuwagen</option>
+                            <option value="II_testwagen">II. Testwagen / VFW</option>
+                            <option value="III_gebrauchtwagen">III. Gebrauchtwagen</option>
+                            <option value="IV_gw_bestand">IV. GW aus Bestand</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="addModell">Modell</label>
+                        <input type="text" class="form-control form-control-sm" id="addModell" placeholder="z.B. Corsa">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="addKaeufer">Käufer</label>
+                        <input type="text" class="form-control form-control-sm" id="addKaeufer" placeholder="Kundenname">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="addVin">FIN / VIN</label>
+                        <input type="text" class="form-control form-control-sm" id="addVin" placeholder="optional">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="addRgNr">Rechnungsnr.</label>
+                        <input type="text" class="form-control form-control-sm" id="addRgNr" placeholder="optional">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="addRgDatum">Rechnungsdatum</label>
+                        <input type="date" class="form-control form-control-sm" id="addRgDatum">
+                    </div>
+                </div>
+                <!-- Kat IV Felder -->
+                <div id="addKatIVFelder" style="display:none;" class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label" for="addEinkaeufer">Einkäufer</label>
+                        <input type="text" class="form-control form-control-sm" id="addEinkaeufer" placeholder="Name des Einkäufers">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="addVorbesitzer">Vorbesitzer</label>
+                        <input type="text" class="form-control form-control-sm" id="addVorbesitzer" placeholder="Vorbesitzer-Name">
+                    </div>
+                </div>
+                <hr style="border-color:#e2e8f0;">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label" for="addBemessungsgrundlage">Bemessungsgrundlage</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" class="form-control" id="addBemessungsgrundlage" placeholder="0.00">
+                            <span class="input-group-text">&euro;</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="addProvisionssatz">Provisionssatz</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" class="form-control" id="addProvisionssatz" placeholder="0.00">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="calc-preview">
+                    <div class="label">Berechnet</div>
+                    <div class="value" id="addCalcPreview">0,00 &euro;</div>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label" for="addProvisionFinal">Provision final (manuell überschreibbar)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="number" step="0.01" class="form-control" id="addProvisionFinal" placeholder="0.00">
+                        <span class="input-group-text">&euro;</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2" style="border-top:1px solid #e2e8f0;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btnAddPosSave">
+                    <i class="bi bi-plus-lg"></i> Hinzufügen
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Locosoft-Infos zur Rechnung (bestehende OPOS-API) -->
 <div class="modal fade" id="provision-rechnung-modal" tabindex="-1" aria-labelledby="provision-rechnung-modal-label" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -352,7 +447,16 @@
                 <div class="row g-3">
                     <div class="col-6">
                         <label class="form-label" for="zlBank">Bank</label>
-                        <input type="text" class="form-control form-control-sm" id="zlBank" placeholder="z.B. Santander">
+                        <select class="form-select form-select-sm" id="zlBank">
+                            <option value="">-- Bitte wählen --</option>
+                            <option value="Santander Bank">Santander Bank</option>
+                            <option value="Hyundai Finance">Hyundai Finance</option>
+                            <option value="Allane">Allane</option>
+                            <option value="Stellantis Bank">Stellantis Bank</option>
+                            <option value="Leasys">Leasys</option>
+                            <option value="ALD Lease Finanz">ALD Lease Finanz</option>
+                            <option value="BDK Bank">BDK Bank</option>
+                        </select>
                     </div>
                     <div class="col-6">
                         <label class="form-label" for="zlName">Name / Beschreibung</label>
@@ -363,8 +467,16 @@
                         <input type="date" class="form-control form-control-sm" id="zlDatum">
                     </div>
                     <div class="col-6">
-                        <label class="form-label" for="zlBetrag">Betrag (€)</label>
+                        <label class="form-label" for="zlBetrag">Betrag gesamt (€)</label>
                         <input type="number" step="0.01" class="form-control form-control-sm" id="zlBetrag" placeholder="0,00">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="zlAnteil">Anteil Verkäufer (%)</label>
+                        <input type="number" step="1" min="0" max="100" class="form-control form-control-sm" id="zlAnteil" value="50">
+                    </div>
+                    <div class="col-6">
+                        <div class="form-label">Provision Verkäufer</div>
+                        <div class="readonly-value fw-semibold" id="zlProvPreview" style="font-size:.95rem; color:#2563eb;">0,00 €</div>
                     </div>
                 </div>
             </div>
@@ -722,6 +834,96 @@
     });
 
     // =========================================================================
+    // Fahrzeug hinzufügen Modal
+    // =========================================================================
+    function openAddPosModal(kat) {
+        document.getElementById('addKategorie').value = kat || 'I_neuwagen';
+        document.getElementById('addModell').value = '';
+        document.getElementById('addKaeufer').value = '';
+        document.getElementById('addVin').value = '';
+        document.getElementById('addRgNr').value = '';
+        document.getElementById('addRgDatum').value = '';
+        document.getElementById('addEinkaeufer').value = '';
+        document.getElementById('addVorbesitzer').value = '';
+        document.getElementById('addBemessungsgrundlage').value = '';
+        document.getElementById('addProvisionssatz').value = '';
+        document.getElementById('addProvisionFinal').value = '';
+        document.getElementById('addCalcPreview').innerHTML = '0,00 &euro;';
+        toggleAddKatIV();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('addPosModal')).show();
+    }
+
+    function toggleAddKatIV() {
+        var isIV = document.getElementById('addKategorie').value === 'IV_gw_bestand';
+        document.getElementById('addKatIVFelder').style.display = isIV ? '' : 'none';
+    }
+    document.getElementById('addKategorie').addEventListener('change', toggleAddKatIV);
+
+    // Live calc preview for add modal
+    ['addBemessungsgrundlage', 'addProvisionssatz'].forEach(function(fid) {
+        document.getElementById(fid).addEventListener('input', function() {
+            var bem = parseFloat(document.getElementById('addBemessungsgrundlage').value) || 0;
+            var satzPct = parseFloat(document.getElementById('addProvisionssatz').value) || 0;
+            var berechnet = bem * (satzPct / 100);
+            document.getElementById('addCalcPreview').innerHTML = fmtEuro(berechnet);
+            document.getElementById('addProvisionFinal').value = berechnet.toFixed(2);
+        });
+    });
+
+    // Save new position
+    document.getElementById('btnAddPosSave').addEventListener('click', function() {
+        var btn = this;
+        var bem = parseFloat(document.getElementById('addBemessungsgrundlage').value);
+        var satzPct = parseFloat(document.getElementById('addProvisionssatz').value);
+        var provFinal = parseFloat(document.getElementById('addProvisionFinal').value);
+
+        if (isNaN(bem) || isNaN(satzPct)) {
+            alert('Bemessungsgrundlage und Provisionssatz sind Pflichtfelder.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Speichern...';
+
+        var payload = {
+            kategorie: document.getElementById('addKategorie').value,
+            modell: document.getElementById('addModell').value,
+            kaeufer_name: document.getElementById('addKaeufer').value,
+            vin: document.getElementById('addVin').value,
+            locosoft_rg_nr: document.getElementById('addRgNr').value,
+            rg_datum: document.getElementById('addRgDatum').value || null,
+            einkaeufer_name: document.getElementById('addEinkaeufer').value,
+            vorbesitzer_name: document.getElementById('addVorbesitzer').value,
+            bemessungsgrundlage: bem,
+            provisionssatz: satzPct / 100,
+            provision_final: isNaN(provFinal) ? null : provFinal
+        };
+
+        fetch('/api/provision/lauf/' + id + '/position-hinzufuegen', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res.success) {
+                bootstrap.Modal.getInstance(document.getElementById('addPosModal')).hide();
+                window.location.reload();
+            } else {
+                alert(res.error || 'Fehler');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-plus-lg"></i> Hinzufügen';
+            }
+        })
+        .catch(function(err) {
+            alert('Fehler: ' + (err.message || 'Unbekannt'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-plus-lg"></i> Hinzufügen';
+        });
+    });
+
+    // =========================================================================
     // Build Accordion
     // =========================================================================
     function buildAccordion(lauf, positionen, pvEditable) {
@@ -760,7 +962,7 @@
             html += '<span class="chevron"><i class="bi bi-chevron-right"></i></span>';
             html += '</button></h2>';
 
-            html += '<div id="collapse' + idx + '" class="accordion-collapse collapse" aria-labelledby="heading' + idx + '" data-bs-parent="#katAccordion">';
+            html += '<div id="collapse' + idx + '" class="accordion-collapse collapse" aria-labelledby="heading' + idx + '" >';
             html += '<div class="accordion-body">';
 
             if (count === 0) {
@@ -771,8 +973,9 @@
                 html += '<thead><tr>';
                 html += '<th>Modell</th><th>Käufer</th>';
                 if (isKatIV) html += '<th>Vorbesitzer</th><th>Einkäufer</th>';
-                html += '<th>Rg.Nr.</th><th class="text-end">Bemessungsgrdl.</th><th class="text-end">Provision</th>';
-                if (pvEditable) html += '<th style="width:60px;"></th>';
+                if (pvProvisionVollzugriff) html += '<th>Rg.Nr.</th>';
+                html += '<th class="text-end">' + (isKatIV ? 'BE II' : 'Bemessungsgrdl.') + '</th><th class="text-end">Provision</th>';
+                if (pvEditable) html += '<th style="width:90px;"></th>';
                 html += '</tr></thead><tbody>';
 
                 rows.forEach(function(p) {
@@ -788,20 +991,24 @@
                     html += '<td>' + escapeHtml(p.modell || '--') + '</td>';
                     html += '<td>' + escapeHtml(p.kaeufer_name || '--') + '</td>';
                     if (isKatIV) html += '<td>' + escapeHtml(p.vorbesitzer_name || '--') + '</td><td>' + escapeHtml(p.einkaeufer_name || '--') + '</td>';
-                    html += '<td>' + rgHtml + '</td>';
+                    if (pvProvisionVollzugriff) html += '<td>' + rgHtml + '</td>';
                     html += '<td class="text-end text-nowrap">' + bemGrdl + '</td>';
                     html += '<td class="text-end text-nowrap fw-semibold">' + provFinal + '</td>';
 
                     if (pvEditable) {
                         var posJson = escapeHtml(JSON.stringify(p));
                         html += '<td class="text-end text-nowrap">';
-                        html += '<button class="btn btn-sm btn-outline-primary pv-edit-btn" data-pos=\'' + JSON.stringify(p).replace(/'/g, '&#39;') + '\' title="Bearbeiten"><i class="bi bi-pencil"></i></button>';
+                        html += '<button class="btn btn-sm btn-outline-primary pv-edit-btn" data-pos=\'' + JSON.stringify(p).replace(/'/g, '&#39;') + '\' title="Bearbeiten"><i class="bi bi-pencil"></i></button> ';
+                        html += '<button class="btn btn-sm btn-outline-danger pv-del-btn" data-pos-id="' + p.id + '" title="Löschen"><i class="bi bi-trash"></i></button>';
                         html += '</td>';
                     }
                     html += '</tr>';
                 });
 
                 html += '</tbody></table></div>';
+            }
+            if (pvEditable) {
+                html += '<div class="p-2 text-end"><button class="btn btn-sm btn-outline-primary pv-add-btn" data-kat="' + kat + '"><i class="bi bi-plus-lg"></i> Fahrzeug hinzufügen</button></div>';
             }
 
             html += '</div></div></div>';
@@ -820,7 +1027,7 @@
         html += '<span class="kat-sum">' + fmtEuro(zlSum) + '</span>';
         html += '<span class="chevron"><i class="bi bi-chevron-right"></i></span>';
         html += '</button></h2>';
-        html += '<div id="collapse' + zlIdx + '" class="accordion-collapse collapse" data-bs-parent="#katAccordion">';
+        html += '<div id="collapse' + zlIdx + '" class="accordion-collapse collapse" >';
         html += '<div class="accordion-body">';
         if (zlRows.length > 0) {
             html += '<div class="table-responsive"><table class="prov-table"><thead><tr>';
@@ -874,6 +1081,31 @@
                 });
             });
 
+            // Bind delete buttons
+            acc.querySelectorAll('.pv-del-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    if (!confirm('Position wirklich löschen?')) return;
+                    btn.disabled = true;
+                    fetch('/api/provision/position/' + btn.getAttribute('data-pos-id') + '/loeschen', {
+                        method: 'POST', credentials: 'same-origin'
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        if (res.success) window.location.reload();
+                        else { alert(res.error || 'Fehler'); btn.disabled = false; }
+                    });
+                });
+            });
+
+            // Bind add-position buttons
+            acc.querySelectorAll('.pv-add-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    openAddPosModal(this.getAttribute('data-kat'));
+                });
+            });
+
             // ZL: Neu
             var btnZlNeu = acc.querySelector('#btnZlNeu');
             if (btnZlNeu) {
@@ -908,13 +1140,25 @@
     // =========================================================================
     // Zusatzleistungen Modal
     // =========================================================================
+    function zlCalcPreview() {
+        var betrag = parseFloat(document.getElementById('zlBetrag').value) || 0;
+        var anteil = parseFloat(document.getElementById('zlAnteil').value);
+        if (isNaN(anteil)) anteil = 50;
+        var prov = Math.round(betrag * anteil / 100 * 100) / 100;
+        document.getElementById('zlProvPreview').textContent = fmtEuro(prov);
+    }
+    document.getElementById('zlBetrag').addEventListener('input', zlCalcPreview);
+    document.getElementById('zlAnteil').addEventListener('input', zlCalcPreview);
+
     function openZlModal(zl) {
         document.getElementById('zlId').value = zl ? zl.id : '';
         document.getElementById('zlModalTitle').textContent = zl ? 'Zusatzleistung bearbeiten' : 'Zusatzleistung hinzufügen';
         document.getElementById('zlBank').value = zl ? (zl.beleg_referenz || '') : '';
         document.getElementById('zlName').value = zl ? (zl.bezeichnung || '') : '';
         document.getElementById('zlDatum').value = zl ? (zl.beleg_datum || '') : '';
-        document.getElementById('zlBetrag').value = zl ? (zl.provision_verkaufer || '') : '';
+        document.getElementById('zlBetrag').value = zl ? (zl.betrag_gesamt || '') : '';
+        document.getElementById('zlAnteil').value = zl ? (zl.anteil_prozent != null ? zl.anteil_prozent : 50) : 50;
+        zlCalcPreview();
         bootstrap.Modal.getOrCreateInstance(document.getElementById('zlModal')).show();
     }
 
@@ -923,11 +1167,16 @@
         var btn = this;
         btn.disabled = true;
 
+        var betrag = parseFloat(document.getElementById('zlBetrag').value) || 0;
+        var anteil = parseFloat(document.getElementById('zlAnteil').value);
+        if (isNaN(anteil)) anteil = 50;
+
         var payload = {
             bank: document.getElementById('zlBank').value,
             name: document.getElementById('zlName').value,
             datum: document.getElementById('zlDatum').value,
-            betrag: parseFloat(document.getElementById('zlBetrag').value) || 0
+            betrag: betrag,
+            anteil_prozent: anteil
         };
 
         var url, body;
@@ -999,6 +1248,26 @@
 
         // Build accordion
         buildAccordion(l, posData, pvEditable);
+
+        // Offene Accordion-Kategorien wiederherstellen + merken
+        var storeKey = 'prov_open_' + id;
+        var openPanels = JSON.parse(sessionStorage.getItem(storeKey) || '[]');
+        openPanels.forEach(function(panelId) {
+            var el = document.getElementById(panelId);
+            if (el) el.classList.add('show');
+        });
+        document.getElementById('katAccordion').querySelectorAll('.accordion-collapse').forEach(function(panel) {
+            panel.addEventListener('shown.bs.collapse', function() {
+                var open = [];
+                document.getElementById('katAccordion').querySelectorAll('.accordion-collapse.show').forEach(function(p) { open.push(p.id); });
+                sessionStorage.setItem(storeKey, JSON.stringify(open));
+            });
+            panel.addEventListener('hidden.bs.collapse', function() {
+                var open = [];
+                document.getElementById('katAccordion').querySelectorAll('.accordion-collapse.show').forEach(function(p) { open.push(p.id); });
+                sessionStorage.setItem(storeKey, JSON.stringify(open));
+            });
+        });
 
         // Summentabelle
         var sumRows = [
@@ -1284,6 +1553,28 @@
                 ? 'Abgerechnet am ' + new Date(l.endlauf_am).toLocaleDateString('de-DE') + (l.endlauf_von ? ' von ' + displayName(l.endlauf_von) : '')
                 : '';
             if (!pvUserCanPdf) document.getElementById('btnPdfEndlauf').style.display = 'none';
+            // Endlauf löschen (nur Vollzugriff)
+            if (pvProvisionVollzugriff) {
+                var btnDel = document.getElementById('btnEndlaufLoeschen');
+                btnDel.style.display = '';
+                btnDel.onclick = function() {
+                    if (!confirm('Endlauf wirklich zurücksetzen? Status wird auf GENEHMIGT zurückgesetzt, Belegnummer und PDF werden entfernt.')) return;
+                    btnDel.disabled = true;
+                    fetch('/api/provision/vorlauf/' + id + '/endlauf-loeschen', {
+                        method: 'POST', credentials: 'same-origin'
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        if (res.success) {
+                            alert('Endlauf zurückgesetzt.');
+                            window.location.reload();
+                        } else {
+                            alert(res.error || 'Fehler');
+                            btnDel.disabled = false;
+                        }
+                    });
+                };
+            }
             // Hide lower PDF button when Endlauf has its own
             document.getElementById('btnPdfDownload').style.display = 'none';
         }

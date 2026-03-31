@@ -67,26 +67,32 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - Sehen nur eigene Provision über "Meine Provision"
 - Können bei ZUR_PRUEFUNG freigeben oder Einspruch einlegen
 
-## Aktueller Stand (erledigt am 2026-03-30)
+## Aktueller Stand (erledigt am 2026-03-31)
 - Provisionsabrechnung Phase 1+2 komplett
 - Detail-Seite Redesign: Accordion, Edit-Modal, Einkäufer-Umzuweisung, Vorbesitzer bei Kat IV
-- Zusatzleistungen (Kat. V) CRUD mit Modal
+- Zusatzleistungen (Kat. V) CRUD mit Modal, Bank-Dropdown (7 Banken), Anteil-% (Default 50%, manuell änderbar)
 - TW/VFW-Prämie manuell editierbar (Stückzahl + Betrag)
 - 5-Stufen-Workflow mit Einspruch/Ablehnung (Pflicht-Begründung)
 - PDF: Deckblatt + Detail + Kat V + Jahresübersicht, Vorbesitzer bei GW Bestand
 - Neuwagen-Klassifizierung über dealer_vehicle_type (nicht mehr P1)
-- Berechtigungen auf 3 Personen beschränkt
+- Berechtigungen: Vanessa Groll dauerhaft Vollzugriff + Genehmigerin (nicht mehr temporär)
 - E-Mail-Stubs vorbereitet (PROVISION_EMAIL_ENABLED = False)
-- **Kumulierte Zielprämie (2026-03-31):** Doppeltes Gate: kumuliertes NW-Ziel (Jan bis aktueller Monat) UND Monatsziel müssen BEIDE erreicht sein. Übererfüllung rein monatlich. Neues DB-Feld `use_kumuliert` in `provision_config`, Checkbox im Config-Modal, Info-Block in Detail-Seite, kompakte Darstellung im PDF. Spec: `docs/superpowers/specs/2026-03-30-kumulierte-zielpraemie-design.md`
+- Kumulierte Zielprämie: Doppeltes Gate (kum + Monat), Spec: `docs/superpowers/specs/2026-03-30-kumulierte-zielpraemie-design.md`
+- **Admin-Funktionen (2026-03-31):** Endlauf zurücksetzen (ENDLAUF → GENEHMIGT), Vorlauf komplett löschen (jeder Status), Fahrzeug manuell hinzufügen (Modal mit Kategorie, Modell, Käufer, BE, Provisionssatz)
+- **Rechnungsnummer nur für Admin** sichtbar (Verkäufer sehen Spalte nicht)
+- **Accordion: Mehrere Kategorien gleichzeitig öffenbar**, offene Kategorien bleiben nach Reload/Bearbeiten erhalten (sessionStorage)
+- **Einzelpositionen löschen** — Lösch-Button neben Bearbeiten-Button pro Position
+- **Differenzbesteuerung §25a Fix (2026-03-31):** MwSt-Fallback im Sales-Sync korrigiert: Marge = VK - Fahrzeuggrundpreis (statt VK - Einsatzwert). Alle differenzbesteuerten Fahrzeuge haben jetzt exakt den gleichen DB wie Locosoft.
+- **Kat IV Bemessungsgrundlage = BE II** (nicht mehr BE I/DB1). Detail-Spalte "BE II", PDF-Header "BE II". calc_gw_bestand gibt jetzt (provision, be2) zurück.
 
 ## Offene Punkte / Nächste Schritte
 - E-Mail-Benachrichtigungen aktivieren (nach Testphase)
-- Vanessa Groll als Genehmigerin ist temporär — nach Go-Live entfernen
 - Test mit Anton Süß (Verkaufsleiter) geplant
 - Lohnbuchhaltung-Export (Phase 3)
 - Werkstatt-Prämien: Konzept in Excel vorhanden, Umsetzung steht aus
 - Jahresprämie: Existiert in HR, Migration geplant
 - Kumulierte Zielprämie: Config-Validität prüfen (gueltig_bis der Zielerfüllung-Zeile muss ganzjährig gelten)
+- Bestehende März-Vorläufe löschen und neu erstellen (korrigierte DB-Werte nach §25a-Fix)
 
 ## Abhängigkeiten
 - werkstatt (TEK-Daten, Stunden, Anwesenheit)

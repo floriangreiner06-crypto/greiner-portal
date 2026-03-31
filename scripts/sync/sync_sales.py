@@ -249,7 +249,9 @@ def sync_sales():
                     # Fallback: MwSt berechnen wenn None oder 0
                     is_differenzbesteuert = (out_invoice_type == 8) or (out_sale_type == 'B')
                     if is_differenzbesteuert:  # Differenzbesteuerung §25a
-                        marge_brutto = out_sale_price - einsatzwert
+                        # Locosoft-Formel: Marge = VK - Fahrzeuggrundpreis (NUR calc_basic_charge)
+                        # NICHT einsatzwert (der enthält Einsatzerhöhung, Zubehör, Fracht)
+                        marge_brutto = out_sale_price - fahrzeuggrundpreis
                         mwst = (marge_brutto / 1.19 * 0.19) if marge_brutto > 0 else 0.0
                     else:  # Regelbesteuerung (F) oder andere
                         mwst = out_sale_price / 1.19 * 0.19

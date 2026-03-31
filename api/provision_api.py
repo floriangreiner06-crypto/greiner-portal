@@ -32,7 +32,6 @@ _PROVISION_VOLLZUGRIFF_USERS = {
 }
 
 # Genehmiger: Diese Personen duerfen Provisionen genehmigen (einer reicht)
-# Vanessa Groll temporaer fuer Testphase hinzugefuegt
 _PROVISION_GENEHMIGER_USERS = {
     'anton.suess@auto-greiner.de',
     'florian.greiner@auto-greiner.de',
@@ -52,7 +51,7 @@ def _is_genehmiger():
 
 
 def _may_act_on_own_lauf(lauf_verkaufer_id):
-    """Verkaeufer darf auf eigenen Lauf reagieren (Freigabe/Einspruch). Vollzugriff-User auch (Test)."""
+    """Verkaeufer darf auf eigenen Lauf reagieren (Freigabe/Einspruch). Vollzugriff-User auch."""
     if _has_provision_vollzugriff():
         return True
     vkb = _get_vkb_for_request()
@@ -508,6 +507,41 @@ def endlauf_setzen(lauf_id):
     })
 
 
+@provision_api.route('/vorlauf/<int:lauf_id>/endlauf-loeschen', methods=['POST', 'DELETE'])
+@login_required
+def endlauf_loeschen(lauf_id):
+    """
+    POST/DELETE /api/provision/vorlauf/<id>/endlauf-loeschen
+    Setzt einen ENDLAUF zurück auf GENEHMIGT. Nur Vollzugriff-User.
+    Löscht Belegnummer, Endlauf-Zeitstempel und PDF-Pfad.
+    """
+    if not _has_provision_vollzugriff():
+        return jsonify({'success': False, 'error': 'Keine Berechtigung.'}), 403
+
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status, belegnummer FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if (lauf['status'] or '').upper() != 'ENDLAUF':
+            return jsonify({'success': False, 'error': f'Nur Endläufe können zurückgesetzt werden (aktuell: {lauf["status"]}).'}), 400
+
+        cur.execute("""
+            UPDATE provision_laeufe SET
+                status = 'GENEHMIGT',
+                endlauf_am = NULL,
+                endlauf_von = NULL,
+                belegnummer = NULL,
+                pdf_endlauf = NULL,
+                aktualisiert_am = NOW()
+            WHERE id = %s
+        """, (lauf_id,))
+        conn.commit()
+
+    return jsonify({'success': True, 'message': 'Endlauf zurückgesetzt auf GENEHMIGT.'})
+
+
 @provision_api.route('/position/<int:pos_id>/bearbeiten', methods=['POST'])
 @login_required
 def position_bearbeiten(pos_id):
@@ -623,6 +657,98 @@ def position_loeschen(pos_id):
         conn.commit()
 
     return jsonify({'success': True, 'message': 'Position gelöscht.'})
+
+
+@provision_api.route('/lauf/<int:lauf_id>/position-hinzufuegen', methods=['POST'])
+@login_required
+def position_hinzufuegen(lauf_id):
+    """
+    POST /api/provision/lauf/<id>/position-hinzufuegen
+    Manuelles Hinzufügen eines Fahrzeugs (Position) zu einem Lauf.
+    Body: { "kategorie": "I_neuwagen", "modell": "Corsa", "kaeufer_name": "Max Müller",
+            "bemessungsgrundlage": 1000.0, "provisionssatz": 0.9, "provision_final": 900.0,
+            "vin": "...", "locosoft_rg_nr": "...", "rg_datum": "...",
+            "einkaeufer_name": "...", "vorbesitzer_name": "..." }
+    Nur Vollzugriff-User. Nicht bei ENDLAUF.
+    """
+    if not _has_provision_vollzugriff():
+        return jsonify({'success': False, 'error': 'Nur VKL/Admin dürfen Positionen hinzufügen.'}), 403
+
+    data = request.get_json() or {}
+    kategorie = (data.get('kategorie') or '').strip()
+    if kategorie not in ('I_neuwagen', 'II_testwagen', 'III_gebrauchtwagen', 'IV_gw_bestand'):
+        return jsonify({'success': False, 'error': 'Ungültige Kategorie.'}), 400
+
+    modell = (data.get('modell') or '').strip()
+    kaeufer_name = (data.get('kaeufer_name') or '').strip()
+    bemessungsgrundlage = data.get('bemessungsgrundlage')
+    provisionssatz = data.get('provisionssatz')
+    provision_final = data.get('provision_final')
+
+    if bemessungsgrundlage is None or provisionssatz is None:
+        return jsonify({'success': False, 'error': 'Bemessungsgrundlage und Provisionssatz sind erforderlich.'}), 400
+    try:
+        bemessungsgrundlage = float(bemessungsgrundlage)
+        provisionssatz = float(provisionssatz)
+        provision_final = float(provision_final) if provision_final is not None else round(bemessungsgrundlage * provisionssatz, 2)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Ungültige Zahlenwerte.'}), 400
+
+    provision_berechnet = round(bemessungsgrundlage * provisionssatz, 2)
+
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status, abrechnungsmonat FROM provision_laeufe WHERE id = %s", (lauf_id,))
+        lauf = cur.fetchone()
+        if not lauf:
+            return jsonify({'success': False, 'error': 'Lauf nicht gefunden.'}), 404
+        if (lauf['status'] or '').upper() == 'ENDLAUF':
+            return jsonify({'success': False, 'error': 'Endlauf ist gesperrt – keine Änderungen möglich.'}), 403
+
+        monat = lauf['abrechnungsmonat'] or ''
+
+        # Min/Max Clamping
+        min_betrag = None
+        max_betrag = None
+        if monat and len(monat) == 7:
+            cur.execute("""
+                SELECT min_betrag, max_betrag FROM provision_config
+                WHERE kategorie = %s AND gueltig_ab <= %s
+                  AND (gueltig_bis IS NULL OR gueltig_bis >= %s)
+                LIMIT 1
+            """, (kategorie, monat + '-01', monat + '-01'))
+            cfg = cur.fetchone()
+            if cfg:
+                min_betrag = float(cfg['min_betrag']) if cfg['min_betrag'] is not None else None
+                max_betrag = float(cfg['max_betrag']) if cfg['max_betrag'] is not None else None
+
+        if max_betrag is not None and provision_final > max_betrag:
+            provision_final = max_betrag
+        if min_betrag is not None and provision_final < min_betrag and provision_final > 0:
+            provision_final = min_betrag
+        provision_final = round(provision_final, 2)
+
+        cur.execute("""
+            INSERT INTO provision_positionen
+                (lauf_id, kategorie, modell, kaeufer_name, einkaeufer_name, vorbesitzer_name,
+                 vin, locosoft_rg_nr, rg_datum,
+                 bemessungsgrundlage, provisionssatz, provision_berechnet, provision_final)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            lauf_id, kategorie, modell or None, kaeufer_name or None,
+            (data.get('einkaeufer_name') or '').strip() or None,
+            (data.get('vorbesitzer_name') or '').strip() or None,
+            (data.get('vin') or '').strip() or None,
+            (data.get('locosoft_rg_nr') or '').strip() or None,
+            data.get('rg_datum') or None,
+            bemessungsgrundlage, provisionssatz, provision_berechnet, provision_final
+        ))
+        new_id = cur.fetchone()['id']
+        _recalc_lauf_sums(cur, lauf_id)
+        conn.commit()
+
+    return jsonify({'success': True, 'id': new_id, 'message': 'Position hinzugefügt.'})
 
 
 @provision_api.route('/position/<int:pos_id>/reassign-einkaeufer', methods=['POST'])
@@ -794,14 +920,21 @@ def zusatzleistung_erstellen():
         if (lauf['status'] or '').upper() == 'ENDLAUF':
             return jsonify({'success': False, 'error': 'Endlauf ist gesperrt.'}), 403
 
+        anteil_prozent = data.get('anteil_prozent')
+        try:
+            anteil_prozent = float(anteil_prozent) if anteil_prozent is not None else 50.0
+        except (TypeError, ValueError):
+            anteil_prozent = 50.0
+        provision_verkaufer = round(betrag * anteil_prozent / 100, 2)
+
         cur.execute("""
             INSERT INTO provision_zusatzleistungen
                 (lauf_id, verkaufer_id, abrechnungsmonat, typ, bezeichnung, beleg_referenz, beleg_datum,
                  provision_verkaufer, betrag_gesamt, anteil_prozent, erfasst_von)
-            VALUES (%s, %s, %s, 'Finanzierung', %s, %s, %s, %s, %s, 100, %s)
+            VALUES (%s, %s, %s, 'Finanzierung', %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (lauf_id, lauf['verkaufer_id'], lauf['abrechnungsmonat'],
-              name, bank, datum, betrag, betrag, erstellt_von))
+              name, bank, datum, provision_verkaufer, betrag, anteil_prozent, erstellt_von))
         new_id = cur.fetchone()[0]
         _recalc_lauf_sums(cur, lauf_id)
         conn.commit()
@@ -843,13 +976,26 @@ def zusatzleistung_bearbeiten(zl_id):
             sets.append("bezeichnung = %s"); vals.append((data['name'] or '').strip())
         if 'datum' in data:
             sets.append("beleg_datum = %s"); vals.append((data['datum'] or '').strip() or None)
-        if 'betrag' in data:
+        if 'betrag' in data or 'anteil_prozent' in data:
             try:
-                b = float(data['betrag'])
-                sets.append("provision_verkaufer = %s"); vals.append(b)
-                sets.append("betrag_gesamt = %s"); vals.append(b)
+                b = float(data['betrag']) if 'betrag' in data else None
+                a = float(data['anteil_prozent']) if 'anteil_prozent' in data else None
             except (TypeError, ValueError):
-                return jsonify({'success': False, 'error': 'betrag muss eine Zahl sein.'}), 400
+                return jsonify({'success': False, 'error': 'betrag/anteil_prozent muss eine Zahl sein.'}), 400
+            if b is not None:
+                sets.append("betrag_gesamt = %s"); vals.append(b)
+            if a is not None:
+                sets.append("anteil_prozent = %s"); vals.append(a)
+            # provision_verkaufer neu berechnen
+            if b is not None or a is not None:
+                # Aktuelle Werte laden falls nicht beides übergeben
+                if b is None or a is None:
+                    cur.execute("SELECT betrag_gesamt, anteil_prozent FROM provision_zusatzleistungen WHERE id = %s", (zl_id,))
+                    curr = cur.fetchone()
+                    if b is None: b = float(curr['betrag_gesamt'] or 0)
+                    if a is None: a = float(curr['anteil_prozent'] or 50)
+                prov_vk = round(b * a / 100, 2)
+                sets.append("provision_verkaufer = %s"); vals.append(prov_vk)
 
         if not sets:
             return jsonify({'success': False, 'error': 'Keine Änderungen.'}), 400

@@ -349,7 +349,7 @@
                     var tooltip = tp.length ? ' title="' + tp.join('&#10;') + '" style="cursor:help;"' : '';
                     var badge = '<span class="badge '+(statusBadge[status]||'bg-secondary')+'"'+tooltip+'>'+(statusText[status]||status)+'</span>';
                     var beleg = l.belegnummer ? '<span style="color:#2563eb;font-weight:500;">'+l.belegnummer+'</span>' : '<span class="text-muted">—</span>';
-                    var delBtn = status === 'VORLAUF' ? ' <button class="btn btn-sm btn-outline-danger ms-1" data-lauf-id="'+l.id+'">Löschen</button>' : '';
+                    var delBtn = ' <button class="btn btn-sm btn-outline-danger ms-1" data-lauf-id="'+l.id+'" data-lauf-status="'+status+'" data-lauf-name="'+(l.verkaufer_name||'-')+'"><i class="bi bi-trash"></i></button>';
                     var pdfLink = status === 'ENDLAUF' ? ' <span style="color:#cbd5e1;margin:0 4px;">|</span><a href="/provision/pdf/'+l.id+'" download style="color:#2563a8;font-weight:600;">PDF</a>' : '';
                     html += '<tr><td class="name-cell">'+(l.verkaufer_name||'-')+'</td><td>'+badge+'</td><td>'+beleg+'</td><td class="text-end fw-semibold">'+fmtEuro(l.summe_gesamt)+'</td><td class="text-end"><a href="/provision/detail/'+l.id+'" style="color:#2563eb;font-weight:500;">Detail</a>'+pdfLink+delBtn+'</td></tr>';
                 });
@@ -358,10 +358,13 @@
                 // Delete handlers
                 lc.querySelectorAll('[data-lauf-id]').forEach(function(btn){
                     btn.onclick = function(){
-                        var id = parseInt(this.getAttribute('data-lauf-id'),10);
-                        if (!confirm('Vorlauf wirklich löschen?')) return;
+                        var laufId = parseInt(this.getAttribute('data-lauf-id'),10);
+                        var laufStatus = this.getAttribute('data-lauf-status') || '';
+                        var laufName = this.getAttribute('data-lauf-name') || '';
+                        var msg = 'Vorlauf für ' + laufName + ' (Status: ' + laufStatus + ') komplett löschen?\n\nAlle Positionen und Zusatzleistungen werden entfernt. Danach kann der Vorlauf neu erstellt werden.';
+                        if (!confirm(msg)) return;
                         this.disabled = true;
-                        fetch('/api/provision/vorlauf/'+id+'/loeschen',{method:'POST',credentials:'same-origin'})
+                        fetch('/api/provision/vorlauf/'+laufId+'/loeschen',{method:'POST',credentials:'same-origin'})
                         .then(function(r){return r.json();})
                         .then(function(res){ if(res.success) load(); else{ alert(res.error||'Fehler'); btn.disabled=false; }});
                     };
