@@ -71,6 +71,28 @@ Infrastruktur umfasst Celery/RedBeat, Redis, Deployment, Locosoft-Mirror, Postgr
 - Datenqualitaet: Ausreisser moeglich (z.B. 80h-Anwesenheitseintrag durch Doppelbuchung)
 - Produktivitaet Maerz 2026: Top-Mechaniker 93-98%, Azubis/Neue 0-10%
 
+## Werkstatt Leistungsuebersicht - KPI-Datenquellen (2026-03-31)
+
+Die Werkstatt-Leistungsuebersicht holt alle Daten **LIVE von Locosoft** (10.80.80.8), NICHT aus dem lokalen Spiegel.
+
+SSOT: `api/werkstatt_data.py` -> `WerkstattData.get_mechaniker_leistung()` (Zeile 280)
+
+Drei Locosoft-Tabellen liefern alles:
+1. `times` (type=1) -> Anwesenheit (Kommen/Gehen)
+2. `times` (type=2) -> Stempelzeit (Auftragsstempelungen, dedupliziert per Auftrag)
+3. `labours` -> Vorgabezeit (verrechnete AW auf Rechnungen)
+
+KPI-Formeln:
+- Leistungsgrad = AW x 6 / Stempelzeit x 100 (labours.time_units / times type=2)
+- Produktivitaet = Stempelzeit / Anwesenheit x 100 (times type=2 / times type=1)
+- Anwesenheitsgrad = Anwesend / Bezahlt x 100 (times type=1 / employees_worktimes Soll)
+- Effizienz = Leistung x Produktivitaet
+- Entgangener Umsatz = Verlorene Std x Durchschnitts-Stundensatz
+
+Berechnung nach Locosoft-Logik (TAG 185/196):
+- Stempelzeit = Zeitspanne (erste bis letzte Stempelung pro Tag) minus Luecken minus Pausen
+- Fallback wenn type=1 unvollstaendig: Zeitspanne aus type=2 oder Stempelzeit x 1.2
+
 ## Offene Entscheidungen
 
 - Soll Export-Haeufigkeit reduziert werden (z.B. 1x/Woche statt taeglich)? Live-Aktualisierung ist fuer Kunden+Fahrzeuge bereits aktiv.
