@@ -413,23 +413,29 @@ def get_mechaniker_detail(mechaniker_nr):
             # Lösung: Zeige auch LIVE-Aufträge aus times + labours (noch nicht abgerechnet)
             
             # 1. ABGERECHNETE Aufträge (Portal-DB)
+            # FIX: GROUP BY auftrags_nr statt pro Rechnung, da ein Auftrag
+            # mehrere Rechnungen haben kann (Teilrechnung, Split etc.)
+            # Stempelzeit ist pro Auftrag identisch → MAX, AW wird summiert
             cursor.execute(convert_placeholders("""
-                SELECT DISTINCT
-                    a.rechnungs_datum as datum,
-                    a.rechnungs_nr,
+                SELECT
+                    MAX(a.rechnungs_datum) as datum,
+                    MAX(a.rechnungs_nr) as rechnungs_nr,
                     a.auftrags_nr,
-                    a.kennzeichen,
-                    a.summe_aw as aw,
-                    a.summe_stempelzeit_min as stempelzeit_min,
-                    a.leistungsgrad,
-                    a.lohn_netto as umsatz
+                    MAX(a.kennzeichen) as kennzeichen,
+                    SUM(a.summe_aw) as aw,
+                    MAX(a.summe_stempelzeit_min) as stempelzeit_min,
+                    ROUND(SUM(a.summe_aw) * 6.0 / NULLIF(MAX(a.summe_stempelzeit_min), 0) * 100, 1) as leistungsgrad,
+                    SUM(a.lohn_netto) as umsatz
                 FROM werkstatt_auftraege_abgerechnet a
-                INNER JOIN loco_labours l ON a.rechnungs_nr = l.invoice_number
-                    AND a.rechnungs_typ = l.invoice_type
-                    AND l.mechanic_no = %s
-                    AND l.mechanic_no IS NOT NULL
-                WHERE a.rechnungs_datum >= ? AND a.rechnungs_datum <= ?
-                    AND a.summe_stempelzeit_min > 0
+                WHERE EXISTS (
+                    SELECT 1 FROM loco_labours l
+                    WHERE l.invoice_number = a.rechnungs_nr
+                      AND l.invoice_type = a.rechnungs_typ
+                      AND l.mechanic_no = %s
+                )
+                AND a.rechnungs_datum >= ? AND a.rechnungs_datum <= ?
+                AND a.summe_stempelzeit_min > 0
+                GROUP BY a.auftrags_nr
             """), [mechaniker_nr, datum_von, datum_bis])
             auftraege_abgerechnet = rows_to_list(cursor.fetchall())
             
@@ -602,18 +608,15 @@ def get_schlechteste_auftraege():
         with db_session() as conn:
             cursor = conn.cursor()
 
+            # FIX: GROUP BY auftrags_nr + mechaniker, da ein Auftrag mehrere
+            # Rechnungen haben kann. AW summieren, Stempelzeit MAX (pro Auftrag identisch),
+            # Leistungsgrad neu berechnen.
             query = """
-                WITH auftraege_mit_mechaniker AS (
+                WITH auftraege_mechaniker_roh AS (
                     SELECT DISTINCT
-                        a.rechnungs_datum,
-                        a.rechnungs_nr,
-                        a.auftrags_nr,
-                        a.kennzeichen,
-                        a.betrieb,
-                        a.summe_aw,
-                        a.summe_stempelzeit_min,
-                        a.leistungsgrad,
-                        a.lohn_netto,
+                        a.rechnungs_nr, a.rechnungs_typ, a.rechnungs_datum,
+                        a.auftrags_nr, a.kennzeichen, a.betrieb,
+                        a.summe_aw, a.summe_stempelzeit_min, a.lohn_netto,
                         l.mechanic_no as mechaniker_nr,
                         e.name as mechaniker_name
                     FROM werkstatt_auftraege_abgerechnet a
@@ -622,9 +625,6 @@ def get_schlechteste_auftraege():
                     LEFT JOIN loco_employees e ON l.mechanic_no = e.employee_number
                         AND e.is_latest_record = {'true' if get_db_type() == 'postgresql' else '1'}
                     WHERE a.rechnungs_datum >= ? AND a.rechnungs_datum <= ?
-                    AND a.leistungsgrad IS NOT NULL
-                    AND a.leistungsgrad > 0
-                    AND a.leistungsgrad < 500
                     AND a.summe_stempelzeit_min >= ?
                     AND l.mechanic_no IS NOT NULL
                     AND l.mechanic_no > 0
@@ -636,6 +636,23 @@ def get_schlechteste_auftraege():
                 params.append(int(betrieb))
 
             query += """
+                ),
+                auftraege_mit_mechaniker AS (
+                    SELECT
+                        mechaniker_nr,
+                        MAX(mechaniker_name) as mechaniker_name,
+                        MAX(rechnungs_datum) as rechnungs_datum,
+                        MAX(rechnungs_nr) as rechnungs_nr,
+                        auftrags_nr,
+                        MAX(kennzeichen) as kennzeichen,
+                        SUM(summe_aw) as summe_aw,
+                        MAX(summe_stempelzeit_min) as summe_stempelzeit_min,
+                        ROUND(SUM(summe_aw) * 6.0 / NULLIF(MAX(summe_stempelzeit_min), 0) * 100, 1) as leistungsgrad,
+                        SUM(lohn_netto) as lohn_netto
+                    FROM auftraege_mechaniker_roh
+                    GROUP BY mechaniker_nr, auftrags_nr
+                    HAVING ROUND(SUM(summe_aw) * 6.0 / NULLIF(MAX(summe_stempelzeit_min), 0) * 100, 1) > 0
+                       AND ROUND(SUM(summe_aw) * 6.0 / NULLIF(MAX(summe_stempelzeit_min), 0) * 100, 1) < 500
                 ),
                 ranked AS (
                     SELECT *,
@@ -897,18 +914,20 @@ def get_problemfaelle():
         with db_session() as conn:
             cursor = conn.cursor()
 
+            # FIX: GROUP BY auftrags_nr, da ein Auftrag mehrere Rechnungen
+            # haben kann. AW summieren, Stempelzeit MAX, LG neu berechnen.
             query = """
                 SELECT
-                    w.rechnungs_datum as datum,
+                    MAX(w.rechnungs_datum) as datum,
                     w.auftrags_nr,
-                    w.kennzeichen,
-                    w.serviceberater_nr as mechaniker_nr,
-                    w.serviceberater_name as mechaniker_name,
-                    w.summe_aw as vorgabe_aw,
-                    w.summe_stempelzeit_min as gestempelt_min,
-                    ROUND(w.summe_aw * 6.0 / NULLIF(w.summe_stempelzeit_min, 0) * 100, 1) as leistungsgrad,
-                    w.betrieb as betrieb_nr,
-                    CASE w.betrieb
+                    MAX(w.kennzeichen) as kennzeichen,
+                    MAX(w.serviceberater_nr) as mechaniker_nr,
+                    MAX(w.serviceberater_name) as mechaniker_name,
+                    SUM(w.summe_aw) as vorgabe_aw,
+                    MAX(w.summe_stempelzeit_min) as gestempelt_min,
+                    ROUND(SUM(w.summe_aw) * 6.0 / NULLIF(MAX(w.summe_stempelzeit_min), 0) * 100, 1) as leistungsgrad,
+                    MAX(w.betrieb) as betrieb_nr,
+                    CASE MAX(w.betrieb)
                         WHEN 1 THEN 'Deggendorf'
                         WHEN 3 THEN 'Landau'
                         ELSE 'Unbekannt'
@@ -918,9 +937,8 @@ def get_problemfaelle():
                   AND w.summe_stempelzeit_min >= ?
                   AND w.summe_aw > 0
                   AND w.storniert = 0
-                  AND (w.summe_aw * 6.0 / NULLIF(w.summe_stempelzeit_min, 0) * 100) < ?
             """
-            params = [datum_von, datum_bis, min_stempelzeit, max_lg]
+            params = [datum_von, datum_bis, min_stempelzeit]
 
             if betrieb and betrieb != 'alle':
                 betrieb_nr = int(betrieb)
@@ -930,7 +948,12 @@ def get_problemfaelle():
                     query += " AND w.betrieb = %s"
                     params.append(betrieb_nr)
 
-            query += " ORDER BY leistungsgrad ASC LIMIT 200"
+            query += """
+                GROUP BY w.auftrags_nr
+                HAVING (SUM(w.summe_aw) * 6.0 / NULLIF(MAX(w.summe_stempelzeit_min), 0) * 100) < %s
+                ORDER BY leistungsgrad ASC LIMIT 200
+            """
+            params.append(max_lg)
 
             cursor.execute(query, params)
             auftraege = [dict(row) for row in cursor.fetchall()]
