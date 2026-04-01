@@ -75,11 +75,11 @@ Infrastruktur umfasst Celery/RedBeat, Redis, Deployment, Locosoft-Mirror, Postgr
 6. "Drittanbietern Zugriff auf aktuelle Finanzbuchhaltung" aktiviert
 7. App-Geraete-Registrierungen verloren (muessen neu registriert werden)
 
-### Offen (naechste Session)
+### Erledigt (2026-04-01)
 
-- Live-Aktualisierung der Rechnungen testen (morgen frueh bei erster neuer Rechnung)
-- Falls nicht live: Locosoft-Support kontaktieren
-- App-Geraete neu registrieren (QR-Code)
+- Live-Aktualisierung der Rechnungen funktioniert (Schluessel: "Drittanbietern Zugriff auf aktuelle Finanzbuchhaltung gestatten" in Pr. 987)
+- App-Geraete neu registriert (QR-Code)
+- Tagesumsatz und TEK zeigen wieder korrekte Live-Daten
 
 ## Erkenntnisse Locosoft Stempelzeiten (2026-03-31)
 
