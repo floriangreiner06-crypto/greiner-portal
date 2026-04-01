@@ -1,7 +1,7 @@
 # Controlling (BWA, Bankenspiegel, Finanzreporting) — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-26 (Session: Einkaufsfinanzierung Stand aus stash@{0} nach Git-Cleanup wiederhergestellt)
+## Letzte Aktualisierung: 2026-04-01 (Session: TEK Werkstatt-Einsatz FIBU-Vollständigkeitsprüfung)
 
 ## Beschreibung
 
@@ -138,6 +138,8 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - ✅ **Session 2026-02-25 (Fahrzeugfinanzierungen / Zinsfreiheit):** (1) **Zinsfreiheit-Doku:** `ZINSFREIHEIT_STELLANTIS_HYUNDAI.md` – Stellantis (zinsfreiheit_tage aus Excel, Zinsen 9,03 % berechnet), Santander (Zins Startdatum + Zinsen aus CSV), Hyundai (Zinsbeginn aus CSV, zinsfreiheit_tage nicht in DB). (2) **Fahrzeugdetails „Typ“:** Anzeige aus Locosoft `out_sale_type` / `pre_owned_car_code` / `is_rental_or_school_vehicle` (wie Provisions-/AfA-Modul), nicht nur `dealer_vehicle_type`. (3) **Modell in Listen:** Stellantis/Santander/Hyundai-Listen und Warnungen/Top10/Fahrzeuge-mit-Zinsen mit Modell aus Locosoft angereichert, wenn DB leer. (4) **Kennzeichen:** Spalte `kennzeichen` in `fahrzeugfinanzierungen` (Migration), Sync aus Locosoft in `sync_stammdaten`/`sync_fahrzeug_stammdaten`. (5) **Hyundai CSV:** Spalte 9 = „Zinsbeginn“ auf Mount bestätigt, im Import bereits genutzt. (6) **Seite „nicht aufrufbar“ als Gast:** Erwartbar – APIs liefern bei nicht eingeloggt HTML (Login) statt JSON → Frontend-Fehler „is not valid JSON“. Nach Login funktioniert die Seite.
 - ✅ **Locosoft Programm 132 / Erstzulassung → Santander-Mobilität (2026-03-18):** Stellantis-Fahrzeuge, die in Locosoft noch als „Neuwagen“ (dealer_vehicle_type N) geführt werden, aber bereits **zugelassen** sind (vehicles.first_registration_date gesetzt), zählen bei Santander als **Mobilität** (Tageszulassung). Anpassung in `api/zins_optimierung_api.py`: `_locosoft_fahrzeuge_fuer_vins()` wertet `vehicles.first_registration_date` aus; zusätzlich gilt dealer_vehicle_type 'T' (Tageszulassung) immer als Mobilität. So zeigen die Umfinanzierungs-Modale „Mobilität (Santander): Ja“ für zugelassene Fahrzeuge und die Empfehlung bleibt im Mobilität-Rahmen (500k). Doku: **`LOCOSOFT_PROGRAMM_132_ERSTZULASSUNG_MOBILITAET.md`**.
 
+- ✅ **TEK Werkstatt-Einsatz: FIBU-Vollständigkeitsprüfung (2026-04-01):** Nach Monatswechsel (z. B. 1. April) wurde der abgelaufene Monat (März) nicht mehr als „laufend" erkannt → 6M-Schnitt deaktiviert, obwohl FIBU-Gehaltsbuchungen (74xxxx) noch fehlten. DB1-Abweichung Portal vs. Report: 72.570 € (Werkstatt-Einsatz 45k statt ~119k). **Fix:** `get_tek_data` berechnet den 6M-Schnitt jetzt immer und vergleicht den FIBU-Ist-Einsatz mit dem erwarteten Wert. Wenn FIBU < 70% des Erwartungswerts → rollierender 6M-Schnitt wird weiter angewendet (Hinweis „FIBU unvollst."). Sobald Buchungen vollständig vorliegen (≥ 70%), wechselt die Anzeige automatisch auf FIBU-Ist. Datei: `api/controlling_data.py`.
+
 ## Offene Entscheidungen
 
 - **Liquiditätsvorschau:** Phase 1 ist funktional (Saldo + Transaktionen + Tilgungen). User-Feedback: „kann aber noch nicht stimmen“ – Validierung der Zahlen/Logik (Saldo-Quelle, Transaktionen-Zeitraum, Tilgungen-Anrechnung) steht noch aus; ggf. Data-Audit-Schritte 3–6 und 8–9 nachziehen.
@@ -148,8 +150,9 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - **TODO Florian + Buchhaltung: Zuordnung Verkaufserlös → Finanzierungslinie (z. B. Brief Geno):** Der Liquiditätszugang bei Verkauf soll einer **Linienentilgung** zuordenbar sein (z. B. „diese Einzahlung tilgt diese Genobank-Linie“), unabhängig vom Finanzierer. Zu klären: Mehr Info in Locosoft? Oder Kennzeichnung im DRIVE-Modul Bankenspiegel (Konto-Editor/Transaktion)? Konzept und Datenmodell noch offen. **Doku:** `docs/workstreams/controlling/TODO_BRIEF_GENO_LINIENENTILGUNG_ZUORDNUNG.md`.
 
 ## TEK 4-Lohn: Rollierender Schnitt (SSOT)
-- **Vereinbarung:** 4-Lohn-Einsatz im laufenden Monat = **rollierender 6-Monats-Schnitt** (Einsatz_aktuell = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M)). SSOT: `api/controlling_data.get_tek_data`; siehe CLAUDE.md (SSOT für alle KPIs/Berechnungen) und `docs/TEK_LOHNKOSTEN_LOCOSOFT_6_MONATE.md`.
+- **Vereinbarung:** 4-Lohn-Einsatz = **rollierender 6-Monats-Schnitt** (Einsatz_aktuell = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M)). SSOT: `api/controlling_data.get_tek_data`; siehe CLAUDE.md und `docs/TEK_LOHNKOSTEN_LOCOSOFT_6_MONATE.md`.
 - **SSOT umgesetzt (2026-02-17):** Portal (api_tek) bezieht alle TEK-KPIs aus get_tek_data; 4-Lohn = rollierender Schnitt wie in Reports. Standort-DB1 (Deggendorf/Landau) ebenfalls aus get_tek_data(standort=1/2). Prognose aus api_data.prognose_detail.
+- **FIBU-Vollständigkeitsprüfung (2026-04-01):** 6M-Schnitt wird nicht nur im laufenden Monat angewendet, sondern auch für abgeschlossene Monate, deren FIBU-Einsatz < 70% des erwarteten Werts liegt. Automatischer Wechsel auf FIBU-Ist sobald Buchungen vollständig.
 
 ## TEK 4-Lohn vs. Globalcube 40 % (2026-02)
 - **Verbleibende Abweichung:** Globalcube nutzt **statisch 40 %** Einsatzquote (EW) für Service; Drive nutzt den **rollierenden 6-Monats-Schnitt**. Die Zahlenabweichung ist damit fachlich plausibel. Optional: 40 %-Option in Drive anbieten, wenn Abgleich gewünscht.
