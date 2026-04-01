@@ -148,7 +148,7 @@ def _build_deckblatt(elements, lauf, positionen, zusatzleistungen, styles, kum_d
         """Kompakte Kategorie-Zeile mit farbigem Akzent links."""
         data = [[
             Paragraph(f'<b>{title}</b>', lbl_b),
-            Paragraph(f'{stueck} Stk.', lbl),
+            Paragraph(f'{stueck} Stk.' if isinstance(stueck, (int, float)) else str(stueck), lbl),
             Paragraph(bezeichnung, lbl),
             Paragraph(_fmt_eur(provision), val_r),
         ]]

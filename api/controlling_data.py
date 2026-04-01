@@ -159,43 +159,50 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
             })
 
         # 4-Lohn-Einsatz (SSOT, vereinbart): Rollierender 6-Monats-Schnitt
-        # Im laufenden Monat: FIBU-Einsatz 74xxxx ist oft noch nicht voll gebucht → Marge würde verfälscht.
-        # Vereinbarung: Wir nehmen den rollierenden Schnitt – Einsatz = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M).
+        # FIBU-Einsatz 74xxxx ist im laufenden Monat und oft auch Anfang des Folgemonats
+        # noch nicht voll gebucht (Lohn/Gehalt wird verzögert gebucht) → Marge würde verfälscht.
+        # Lösung: 6M-Schnitt wird angewendet solange FIBU-Einsatz < 70% des erwarteten Werts.
+        # Erst wenn die Buchungen vollständig vorliegen, werden die FIBU-Ist-Werte genommen.
         # Diese eine Logik gilt für Portal und alle Reports; keine abweichende Berechnung in den Routes.
         heute_ref = heute if isinstance(heute, date) else date.today()
         ist_laufender_monat = (jahr == heute_ref.year and monat == heute_ref.month)
-        if ist_laufender_monat:
-            werkstatt_item = next((b for b in bereiche if b['id'] == '4-Lohn'), None)
-            werkstatt_umsatz = werkstatt_item['umsatz'] if werkstatt_item else 0
-            if werkstatt_item and werkstatt_umsatz > 0:
-                bis_6m = date(jahr, monat, 1)
-                von_6m = bis_6m
-                for _ in range(6):
-                    von_6m = (von_6m - timedelta(days=1)).replace(day=1)
-                von_6m_str = von_6m.strftime('%Y-%m-%d')
-                bis_6m_str = bis_6m.strftime('%Y-%m-%d')
-                cursor.execute(f"""
-                    SELECT COALESCE(SUM(CASE WHEN nominal_account_number BETWEEN 840000 AND 849999 AND nominal_account_number != 847301 AND debit_or_credit = 'H' THEN posted_value
-                               WHEN nominal_account_number BETWEEN 840000 AND 849999 AND nominal_account_number != 847301 AND debit_or_credit = 'S' THEN -posted_value ELSE 0 END) / 100.0, 0) as umsatz
-                    FROM loco_journal_accountings
-                    WHERE accounting_date >= %s AND accounting_date < %s
-                    {firma_filter_umsatz}
-                    {guv_filter}
-                """, (von_6m_str, bis_6m_str))
-                row_umsatz = cursor.fetchone()
-                umsatz_6m = float(row_to_dict(row_umsatz).get('umsatz', 0) or 0) if row_umsatz else 0
-                cursor.execute(f"""
-                    SELECT COALESCE(SUM(CASE WHEN nominal_account_number BETWEEN 740000 AND 749999 AND nominal_account_number != 747301 AND debit_or_credit = 'S' THEN posted_value
-                               WHEN nominal_account_number BETWEEN 740000 AND 749999 AND nominal_account_number != 747301 AND debit_or_credit = 'H' THEN -posted_value ELSE 0 END) / 100.0, 0) as einsatz
-                    FROM loco_journal_accountings
-                    WHERE accounting_date >= %s AND accounting_date < %s
-                    {firma_filter_umsatz}
-                    {guv_filter}
-                """, (von_6m_str, bis_6m_str))
-                row_einsatz = cursor.fetchone()
-                einsatz_6m = float(row_to_dict(row_einsatz).get('einsatz', 0) or 0) if row_einsatz else 0
-                einsatz_quote_6m = (einsatz_6m / umsatz_6m) if umsatz_6m > 0 else 0.36
-                gesamt_einsatz = round(werkstatt_umsatz * einsatz_quote_6m, 2)
+        werkstatt_item = next((b for b in bereiche if b['id'] == '4-Lohn'), None)
+        werkstatt_umsatz = werkstatt_item['umsatz'] if werkstatt_item else 0
+        werkstatt_einsatz_fibu = werkstatt_item['einsatz'] if werkstatt_item else 0
+        if werkstatt_item and werkstatt_umsatz > 0:
+            # 6M-Schnitt immer berechnen (für Vergleich und ggf. Anwendung)
+            bis_6m = date(jahr, monat, 1)
+            von_6m = bis_6m
+            for _ in range(6):
+                von_6m = (von_6m - timedelta(days=1)).replace(day=1)
+            von_6m_str = von_6m.strftime('%Y-%m-%d')
+            bis_6m_str = bis_6m.strftime('%Y-%m-%d')
+            cursor.execute(f"""
+                SELECT COALESCE(SUM(CASE WHEN nominal_account_number BETWEEN 840000 AND 849999 AND nominal_account_number != 847301 AND debit_or_credit = 'H' THEN posted_value
+                           WHEN nominal_account_number BETWEEN 840000 AND 849999 AND nominal_account_number != 847301 AND debit_or_credit = 'S' THEN -posted_value ELSE 0 END) / 100.0, 0) as umsatz
+                FROM loco_journal_accountings
+                WHERE accounting_date >= %s AND accounting_date < %s
+                {firma_filter_umsatz}
+                {guv_filter}
+            """, (von_6m_str, bis_6m_str))
+            row_umsatz = cursor.fetchone()
+            umsatz_6m = float(row_to_dict(row_umsatz).get('umsatz', 0) or 0) if row_umsatz else 0
+            cursor.execute(f"""
+                SELECT COALESCE(SUM(CASE WHEN nominal_account_number BETWEEN 740000 AND 749999 AND nominal_account_number != 747301 AND debit_or_credit = 'S' THEN posted_value
+                           WHEN nominal_account_number BETWEEN 740000 AND 749999 AND nominal_account_number != 747301 AND debit_or_credit = 'H' THEN -posted_value ELSE 0 END) / 100.0, 0) as einsatz
+                FROM loco_journal_accountings
+                WHERE accounting_date >= %s AND accounting_date < %s
+                {firma_filter_umsatz}
+                {guv_filter}
+            """, (von_6m_str, bis_6m_str))
+            row_einsatz = cursor.fetchone()
+            einsatz_6m = float(row_to_dict(row_einsatz).get('einsatz', 0) or 0) if row_einsatz else 0
+            einsatz_quote_6m = (einsatz_6m / umsatz_6m) if umsatz_6m > 0 else 0.36
+            erwarteter_einsatz = werkstatt_umsatz * einsatz_quote_6m
+            # FIBU-Buchungen gelten als unvollständig wenn < 70% des erwarteten Einsatzes
+            fibu_unvollstaendig = werkstatt_einsatz_fibu < (erwarteter_einsatz * 0.70)
+            if ist_laufender_monat or fibu_unvollstaendig:
+                gesamt_einsatz = round(erwarteter_einsatz, 2)
                 werkstatt_db1 = werkstatt_umsatz - gesamt_einsatz
                 werkstatt_marge = round((werkstatt_db1 / werkstatt_umsatz * 100), 1)
                 werkstatt_item['einsatz'] = gesamt_einsatz
@@ -204,7 +211,8 @@ def get_tek_data(monat=None, jahr=None, firma='0', standort='0', modus='teil', u
                 werkstatt_item['einsatz_kalk'] = gesamt_einsatz
                 werkstatt_item['db1_kalk'] = round(werkstatt_db1, 2)
                 werkstatt_item['marge_kalk'] = werkstatt_marge
-                werkstatt_item['hinweis'] = f"Einsatz kalk. (6M-Quote {round(einsatz_quote_6m*100)}%): {round(gesamt_einsatz/1000)}k"
+                grund = "lfd. Monat" if ist_laufender_monat else "FIBU unvollst."
+                werkstatt_item['hinweis'] = f"Einsatz kalk. (6M-Quote {round(einsatz_quote_6m*100)}%, {grund}): {round(gesamt_einsatz/1000)}k"
 
         # Gesamt: Bereiche (4-Lohn ohne Clean Park) + Clean Park 847301/747301 + 9-Andere (wie Portal)
         # Portal (controlling_routes) addiert 6-8932 und 9-Andere zu totals; hier nur 9-Andere (8932 landet in 9-Andere)

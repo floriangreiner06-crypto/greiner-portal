@@ -1,6 +1,6 @@
 # Vergütung & Prämien — Arbeitskontext
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-30
+## Letzte Aktualisierung: 2026-04-01
 ## Beschreibung
 Zentrales Modul für alle leistungsbasierten Vergütungskomponenten:
 Werkstatt-Prämien (TEK-KPIs), Verkäufer-Provisionen (Locosoft/Deckungsbeitrag),
@@ -86,7 +86,10 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - **Kat IV Bemessungsgrundlage = BE II** (nicht mehr BE I/DB1). Detail-Spalte "BE II", PDF-Header "BE II". calc_gw_bestand gibt jetzt (provision, be2) zurück.
 - **DB-Verbindung Testsystem Fix:** `db_connection.py` lud hardcoded `/opt/greiner-portal/config/.env` (Prod) statt dynamisch. Testsystem arbeitete dadurch gegen Prod-DB. Jetzt dynamischer Pfad via `pathlib`. Versehentlich erstellte Prod-Vorläufe wurden bereinigt.
 - **Einkäufer-Filter GW aus Bestand:** `get_sales_where_einkaeufer_only` filterte nur `out_sale_type IN ('B','G','D','T')`. Fahrzeuge mit `out_sale_type='F'` aber `dealer_vehicle_type='D'` (GW mit Regelbesteuerung) fehlten. Jetzt wird auch `dealer_vehicle_type` geprüft.
-- **Vorlauf aktualisieren (2026-03-31):** Button im Dashboard (grünes Reload-Icon) aktualisiert bestehende Vorläufe mit neuen Sales-Daten. Neue Positionen werden hinzugefügt, manuell geänderte Provisionen bleiben erhalten, manuell gelöschte Positionen kommen nicht wieder (Ausschlussliste in `ausgeschlossene_positionen` JSONB-Spalte auf `provision_laeufe`). Zusatzleistungen und TW-Prämie bleiben erhalten. Zielprämie wird neu berechnet.
+- **Vorlauf aktualisieren (2026-04-01):** "Alle aktualisieren"-Button im Dashboard-Header aktualisiert alle Vorläufe eines Monats gleichzeitig. Aktualisierung ändert NUR bestehende Positionen — gelöschte Positionen werden NICHT wieder eingefügt. Manuell bearbeitete Positionen (`manuell_geaendert`-Flag auf `provision_positionen`) werden geschützt. Migration: `migrations/add_manuell_geaendert_provision_positionen.sql`.
+- **Zielprämie Auftragseingang-Zählung (2026-04-01):** IST-Stückzahl für kumulierte Zielprämie liest jetzt aus synced `sales`-Tabelle (gleiche Quelle wie Auftragseingang-Seite). N/V = immer NW, T = nur ≤1 Jahr nach EZ. Kaufmännische Rundung des Monatsziels (`math.floor(x + 0.5)`).
+- **Zielprämie-Ausschluss (2026-04-01):** Daniel Fialkowski (VKB 2003) als reiner GW-Verkäufer von Zielprämie ausgeschlossen — kein Kumuliert-Block, keine Ia-Zeile in Detail/PDF, keine Stückprämie in Gesamtsumme. Konfiguriert über `ZIELPRAEMIE_AUSSCHLUSS` in `provision_service.py`.
+- **PDF Stk.-Dopplung behoben (2026-04-01):** `summary_row` in `provision_pdf.py` hängt "Stk." nur noch bei Zahlen an, nicht bei Text wie "erfüllt / +3 Stk.".
 
 ## Offene Punkte / Nächste Schritte
 - E-Mail-Benachrichtigungen aktivieren: Mails sind fertig implementiert, nur `PROVISION_EMAIL_ENABLED = True` setzen + Links von `drive:5002` auf `drive` ändern (nach Testphase/Prod-Deploy)
@@ -94,7 +97,6 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - Lohnbuchhaltung-Export (Phase 3)
 - Werkstatt-Prämien: Konzept in Excel vorhanden, Umsetzung steht aus
 - Jahresprämie: Existiert in HR, Migration geplant
-- Kumulierte Zielprämie: Config-Validität prüfen (gueltig_bis der Zielerfüllung-Zeile muss ganzjährig gelten)
 - **WICHTIG:** Vor Deploy nach Prod: `db_connection.py`-Fix und §25a-Sync-Fix prüfen — Prod hat noch alten Code
 
 ## Abhängigkeiten

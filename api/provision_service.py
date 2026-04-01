@@ -18,6 +18,9 @@ try:
 except ImportError:
     get_nw_ziel_verkaeufer_monat = None
 
+# Verkäufer ohne Zielprämie (reine GW-Verkäufer etc.)
+ZIELPRAEMIE_AUSSCHLUSS = {2003}  # 2003 = Daniel Fialkowski
+
 
 def _get_vorbesitzer_fuer_vins(vins: list) -> Dict[str, str]:
     """Vorbesitzer-Namen aus Locosoft fuer eine Liste von VINs laden."""
@@ -568,7 +571,10 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
     kum_daten = None  # Kumulierte Daten für Detail/PDF
 
     # Zielprämie (NW): Ziel aus Verkäufer-Zielplanung; Basis konfigurierbar (Auslieferung/Auftragseingang)
-    if cfg_i.get('use_zielpraemie') and get_nw_ziel_verkaeufer_monat:
+    # Ausgeschlossene VKBs (reine GW-Verkäufer) erhalten keine Zielprämie
+    if vkb in ZIELPRAEMIE_AUSSCHLUSS:
+        stueck_praemie_anteil = 0.0
+    elif cfg_i.get('use_zielpraemie') and get_nw_ziel_verkaeufer_monat:
         if cfg_i.get('use_kumuliert'):
             # Kumulierte Zielprämie: Gate = kum. IST >= kum. Ziel (Jan..Monat)
             kum_daten = get_kumulierte_zielpraemie_daten(vkb, monat, cfg_i)

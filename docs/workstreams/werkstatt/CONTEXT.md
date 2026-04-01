@@ -1,7 +1,7 @@
 # Werkstatt & Aftersales — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-18
+## Letzte Aktualisierung: 2026-04-01
 
 ## Beschreibung
 
@@ -39,6 +39,8 @@ Werkstatt und Aftersales umfassen Stempeluhr/Live-Monitoring, Mechaniker-Leistun
 
 ## Aktueller Stand (✅ erledigt, 🔧 in Arbeit, ❌ offen)
 
+- ✅ **Doppelte Aufträge in Mechaniker-Auftragsliste (2026-04-01):** Aufträge mit mehreren Rechnungen (Split-Rechnungen) erschienen mehrfach in der Mechaniker-Detail-Ansicht und Problemfälle-Übersicht. Ursache: `werkstatt_auftraege_abgerechnet` speichert eine Zeile pro Rechnung, nicht pro Auftrag. Fix: 3 Queries in `api/werkstatt_api.py` auf `GROUP BY auftrags_nr` umgestellt (SUM AW, MAX Stempelzeit, LG neu berechnet). Betraf ~1.514 von 14.148 Aufträgen (~11%). Beispiel: Auftrag 41283 zeigte 98.5% + 17.9% statt korrekt 116.4%.
+- ✅ **Locosoft times-Duplikate analysiert (2026-04-01):** Die Locosoft `times`-Tabelle speichert Stempeleinträge pro `order_position_line` (Eingriff-Zeile). Bei Aufträgen mit mehreren Eingriffen wird jeder Zeitblock N-fach gespeichert. Betrifft 2.481 Aufträge seit Jan 2026 (max 51-fach!), nicht nur Garantie/ServiceBox. DRIVE korrigiert dies korrekt via `DISTINCT ON (employee_number, order_number, start_time, end_time)` in allen Stempelzeit-Funktionen (TAG 196/211). Locosoft L211PR summiert die Duplikate falsch auf — das ist ein Locosoft-UI-Problem, keine SOAP-Korrektur nötig/empfohlen.
 - ✅ **Workstream-Zuordnung (2026-02-12):** TEK in Workstream Controlling verschoben (Scope + CONTEXT.md, CLAUDE.md, .cursorrules angepasst).
 - ✅ **Alarm-E-Mail Doppelversand (2026-02-12):** Race-Condition behoben: „INSERT first“ statt „SELECT → SEND → INSERT“. Pro Auftrag/Empfänger/Tag wird nur noch 1 E-Mail gesendet, auch bei überlappenden Celery-Läufen (z. B. 09:45 und 10:00). Siehe `docs/BUGFIX_ALARM_EMAIL_DOPPELT_TAG213.md`.
 - ✅ Stempeluhr, Serviceberater, Gudat-Anbindung in Nutzung

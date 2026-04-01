@@ -26,6 +26,7 @@ Endpoints:
 """
 import logging
 import copy
+import math
 import threading
 import time
 from flask import Blueprint, jsonify, request
@@ -495,7 +496,7 @@ def get_nw_ziel_verkaeufer_monat(mitarbeiter_nr: int, jahr: int, monat: int) -> 
             for v in gespeichert:
                 if v.get("mitarbeiter_nr") == mitarbeiter_nr:
                     ziel_jahr = int(v.get("ziel_nw") or 0)
-                    return max(0, int(ziel_jahr * nw_pct))
+                    return max(0, math.floor(ziel_jahr * nw_pct + 0.5))
             return 0
 
         # Ohne Freigabe: Vorschlag nutzen (Verteilung × Saisonalität) – zum Testen ohne Zielplanung-Freigabe
@@ -511,7 +512,7 @@ def get_nw_ziel_verkaeufer_monat(mitarbeiter_nr: int, jahr: int, monat: int) -> 
         for v in verteilung.get("verkaeufer", []):
             if v.get("mitarbeiter_nr") == mitarbeiter_nr:
                 ziel_jahr = int(v.get("ziel_nw") or 0)
-                return max(0, int(ziel_jahr * nw_pct))
+                return max(0, math.floor(ziel_jahr * nw_pct + 0.5))
         return 0
     except Exception:
         return 0

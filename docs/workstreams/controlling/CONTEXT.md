@@ -1,7 +1,7 @@
 # Controlling (BWA, Bankenspiegel, Finanzreporting) — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-30 (Session: Ertragsvorschau-Modul komplett aufgebaut + validiert)
+## Letzte Aktualisierung: 2026-04-01 (Session: TEK Werkstatt-Einsatz FIBU-Vollständigkeitsprüfung)
 
 ## Beschreibung
 
@@ -139,6 +139,7 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - ✅ **Locosoft Programm 132 / Erstzulassung → Santander-Mobilität (2026-03-18):** Stellantis-Fahrzeuge, die in Locosoft noch als „Neuwagen“ (dealer_vehicle_type N) geführt werden, aber bereits **zugelassen** sind (vehicles.first_registration_date gesetzt), zählen bei Santander als **Mobilität** (Tageszulassung). Anpassung in `api/zins_optimierung_api.py`: `_locosoft_fahrzeuge_fuer_vins()` wertet `vehicles.first_registration_date` aus; zusätzlich gilt dealer_vehicle_type 'T' (Tageszulassung) immer als Mobilität. So zeigen die Umfinanzierungs-Modale „Mobilität (Santander): Ja“ für zugelassene Fahrzeuge und die Empfehlung bleibt im Mobilität-Rahmen (500k). Doku: **`LOCOSOFT_PROGRAMM_132_ERSTZULASSUNG_MOBILITAET.md`**.
 
 - 🔧 **Ertragsvorschau-Modul (2026-03-30):** Neues Dashboard `/controlling/ertragsvorschau` mit Multi-Company-Support (Autohaus Greiner / Auto Greiner / Gruppe). **Implementiert:** FIBU GuV Sync aus Locosoft (`scripts/sync/sync_fibu_guv.py`, Celery 20:15 Mo-Fr), JA-PDF-Import (`api/jahresabschluss_import.py`, parst RAW-Partner PDFs), SSOT Data Layer (`api/ertragsvorschau_data.py`), REST API (10 Endpunkte), Dashboard mit 7 Sektionen (GuV, Verkauf, WS+Teile, Standzeiten, EK, Mehrjahr, Prognose), saisonale Hochrechnung (VJ-Verteilung). **Validiert:** GJ 24/25 EBT -193.162 vs. JA -193.200 (Δ 38€); GJ 25/26 EBT vs. BWA UE Δ 25K (7,5%). **3 Sync-Bugs gefixt:** Company-Filter, Kontenbereich 740-809, kalk. Verrechnungen 294xxx. **Unvollständiger Monat:** Kalenderbasiert erkannt, aus Kumulierung ausgeschlossen. **5 GJs importiert** pro Gesellschaft. **Offen:** Intercompany-Entnahmen klären (CSV an Buchhaltung übergeben: `entnahmen_pruefung_gj2526.csv`), Standzeiten Saldo-Trend, Santander-Antwort finalisieren. **Design-Spec:** `docs/superpowers/specs/2026-03-30-ertragsvorschau-design.md`. **Tabellen:** `fibu_guv_monatswerte`, `jahresabschluss_daten`, `ertragsvorschau_snapshots`.
+- ✅ **TEK Werkstatt-Einsatz: FIBU-Vollständigkeitsprüfung (2026-04-01):** Nach Monatswechsel (z. B. 1. April) wurde der abgelaufene Monat (März) nicht mehr als „laufend" erkannt → 6M-Schnitt deaktiviert, obwohl FIBU-Gehaltsbuchungen (74xxxx) noch fehlten. DB1-Abweichung Portal vs. Report: 72.570 € (Werkstatt-Einsatz 45k statt ~119k). **Fix:** `get_tek_data` berechnet den 6M-Schnitt jetzt immer und vergleicht den FIBU-Ist-Einsatz mit dem erwarteten Wert. Wenn FIBU < 70% des Erwartungswerts → rollierender 6M-Schnitt wird weiter angewendet (Hinweis „FIBU unvollst."). Sobald Buchungen vollständig vorliegen (≥ 70%), wechselt die Anzeige automatisch auf FIBU-Ist. Datei: `api/controlling_data.py`.
 
 ## Offene Entscheidungen
 
@@ -150,8 +151,9 @@ Controlling umfasst BWA-Berechnung, Bankenspiegel mit Konten und Transaktionen, 
 - **TODO Florian + Buchhaltung: Zuordnung Verkaufserlös → Finanzierungslinie (z. B. Brief Geno):** Der Liquiditätszugang bei Verkauf soll einer **Linienentilgung** zuordenbar sein (z. B. „diese Einzahlung tilgt diese Genobank-Linie“), unabhängig vom Finanzierer. Zu klären: Mehr Info in Locosoft? Oder Kennzeichnung im DRIVE-Modul Bankenspiegel (Konto-Editor/Transaktion)? Konzept und Datenmodell noch offen. **Doku:** `docs/workstreams/controlling/TODO_BRIEF_GENO_LINIENENTILGUNG_ZUORDNUNG.md`.
 
 ## TEK 4-Lohn: Rollierender Schnitt (SSOT)
-- **Vereinbarung:** 4-Lohn-Einsatz im laufenden Monat = **rollierender 6-Monats-Schnitt** (Einsatz_aktuell = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M)). SSOT: `api/controlling_data.get_tek_data`; siehe CLAUDE.md (SSOT für alle KPIs/Berechnungen) und `docs/TEK_LOHNKOSTEN_LOCOSOFT_6_MONATE.md`.
+- **Vereinbarung:** 4-Lohn-Einsatz = **rollierender 6-Monats-Schnitt** (Einsatz_aktuell = Umsatz_aktuell × (Einsatz_6M / Umsatz_6M)). SSOT: `api/controlling_data.get_tek_data`; siehe CLAUDE.md und `docs/TEK_LOHNKOSTEN_LOCOSOFT_6_MONATE.md`.
 - **SSOT umgesetzt (2026-02-17):** Portal (api_tek) bezieht alle TEK-KPIs aus get_tek_data; 4-Lohn = rollierender Schnitt wie in Reports. Standort-DB1 (Deggendorf/Landau) ebenfalls aus get_tek_data(standort=1/2). Prognose aus api_data.prognose_detail.
+- **FIBU-Vollständigkeitsprüfung (2026-04-01):** 6M-Schnitt wird nicht nur im laufenden Monat angewendet, sondern auch für abgeschlossene Monate, deren FIBU-Einsatz < 70% des erwarteten Werts liegt. Automatischer Wechsel auf FIBU-Ist sobald Buchungen vollständig.
 
 ## TEK 4-Lohn vs. Globalcube 40 % (2026-02)
 - **Verbleibende Abweichung:** Globalcube nutzt **statisch 40 %** Einsatzquote (EW) für Service; Drive nutzt den **rollierenden 6-Monats-Schnitt**. Die Zahlenabweichung ist damit fachlich plausibel. Optional: 40 %-Option in Drive anbieten, wenn Abgleich gewünscht.

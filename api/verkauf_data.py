@@ -47,26 +47,29 @@ MARKEN = {
 }
 
 # SSOT: NW/GW für Auftragseingang, Zielplanung, Auslieferung.
-# Verkaufsleitung: T (Tageszulassung) = NW nur bis 1 Jahr ab Erstzulassung; älter als 1 Jahr = GW.
-# N,V = NW; D,G = GW. first_registration_date aus sales (Sync Locosoft vehicles).
-FAHRZEUGTYP_NW = ('N', 'V', 'T')  # T nur wenn Ez-Regel erfüllt (siehe _NW_GW_*)
+# Verkaufsleitung: T und V (VFW) = NW nur bis 1 Jahr ab Erstzulassung; älter als 1 Jahr = GW.
+# N = NW; D,G = GW; V,T = EZ-Regel. first_registration_date aus sales (Sync Locosoft vehicles).
+FAHRZEUGTYP_NW = ('N', 'V', 'T')  # V,T nur wenn Ez-Regel erfüllt (siehe _NW_GW_*)
 FAHRZEUGTYP_GW = ('D', 'G')
 
-# SQL: fahrzeugart für Abfragen mit T-Regel (sales.first_registration_date)
+# SQL: fahrzeugart für Abfragen mit EZ-Regel (sales.first_registration_date)
+# V und T: NW nur wenn <= 12 Monate ab Erstzulassung, sonst GW
 _NW_GW_CASE_ART = """CASE
-            WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 'NW'
-            WHEN s.dealer_vehicle_type = 'T' AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 'NW'
-            WHEN s.dealer_vehicle_type = 'T' THEN 'GW'
+            WHEN s.dealer_vehicle_type = 'N' THEN 'NW'
+            WHEN s.dealer_vehicle_type IN ('V', 'T') AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 'NW'
+            WHEN s.dealer_vehicle_type IN ('V', 'T') THEN 'GW'
             WHEN s.dealer_vehicle_type IN ('D', 'G') THEN 'GW'
             ELSE 'Sonstige'
         END"""
 
 # SQL: 1/0 für NW bzw. GW (für SUM in get_verkaufer_performance)
-_NW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('N', 'V') THEN 1 WHEN s.dealer_vehicle_type = 'T' AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 1 ELSE 0 END"
-_GW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('D', 'G') THEN 1 WHEN s.dealer_vehicle_type = 'T' AND s.first_registration_date IS NOT NULL AND (s.out_sales_contract_date::date - s.first_registration_date) > 365 THEN 1 ELSE 0 END"
+_NW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type = 'N' THEN 1 WHEN s.dealer_vehicle_type IN ('V', 'T') AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 1 ELSE 0 END"
+_GW_SUM_CASE = "CASE WHEN s.dealer_vehicle_type IN ('D', 'G') THEN 1 WHEN s.dealer_vehicle_type IN ('V', 'T') AND s.first_registration_date IS NOT NULL AND (s.out_sales_contract_date::date - s.first_registration_date) > 365 THEN 1 ELSE 0 END"
 
-# Dedup-Filter: Verhindert Doppelzählungen bei N→T/V Umsetzungen
-# Regel: Wenn T oder V existiert, ignoriere N für dieselbe VIN am gleichen Datum
+# Dedup-Filter: Verhindert Doppelzählungen bei Locosoft-Mehrfacheinträgen
+# Regel 1: Wenn T oder V existiert, ignoriere N für dieselbe VIN am gleichen Datum
+# Regel 2: Wenn G oder D existiert, ignoriere V/T für dieselbe VIN am gleichen Datum
+#           (Locosoft legt bei VFW-Verkauf V-Abgang + G-Verkauf an)
 DEDUP_FILTER = """
     AND NOT EXISTS (
         SELECT 1
@@ -75,6 +78,15 @@ DEDUP_FILTER = """
             AND s2.out_sales_contract_date = s.out_sales_contract_date
             AND s2.dealer_vehicle_type IN ('T', 'V')
             AND s.dealer_vehicle_type = 'N'
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM sales s2
+        WHERE s2.vin = s.vin
+            AND s2.vin IS NOT NULL AND s2.vin != ''
+            AND s2.out_sales_contract_date = s.out_sales_contract_date
+            AND s2.dealer_vehicle_type IN ('G', 'D')
+            AND s.dealer_vehicle_type IN ('T', 'V')
     )
 """
 
@@ -857,6 +869,14 @@ class VerkaufData:
                           AND s2.dealer_vehicle_type IN ('T', 'V')
                           AND s.dealer_vehicle_type = 'N'
                       )
+                      AND NOT EXISTS (
+                        SELECT 1 FROM sales s2
+                        WHERE s2.vin = s.vin
+                          AND s2.vin IS NOT NULL AND s2.vin != ''
+                          AND s2.out_sales_contract_date = s.out_sales_contract_date
+                          AND s2.dealer_vehicle_type IN ('G', 'D')
+                          AND s.dealer_vehicle_type IN ('T', 'V')
+                      )
                     GROUP BY s.make_number
                     ORDER BY s.make_number
                     """,
@@ -967,7 +987,7 @@ class VerkaufData:
                     where_clauses.append("s.salesman_number = %s")
                     params.append(int(verkaufer))
 
-                # Dedup-Filter
+                # Dedup-Filter (N→T/V und V/T→G/D)
                 where_clauses.append("""
                     NOT EXISTS (
                         SELECT 1 FROM sales s2
@@ -976,23 +996,40 @@ class VerkaufData:
                             AND s2.dealer_vehicle_type IN ('T', 'V')
                             AND s.dealer_vehicle_type = 'N'
                     )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM sales s2
+                        WHERE s2.vin = s.vin
+                            AND s2.vin IS NOT NULL AND s2.vin != ''
+                            AND s2.out_sales_contract_date = s.out_sales_contract_date
+                            AND s2.dealer_vehicle_type IN ('G', 'D')
+                            AND s.dealer_vehicle_type IN ('T', 'V')
+                    )
                 """)
 
                 where_sql = " AND ".join(where_clauses)
+
+                # Kategorie per SQL mit EZ-Regel: V/T > 12 Monate ab EZ = gebraucht
+                kategorie_case = """CASE
+                    WHEN s.dealer_vehicle_type = 'N' THEN 'neu'
+                    WHEN s.dealer_vehicle_type IN ('V', 'T') AND (s.first_registration_date IS NULL OR (s.out_sales_contract_date::date - s.first_registration_date) <= 365) THEN 'test_vorfuehr'
+                    WHEN s.dealer_vehicle_type IN ('V', 'T') THEN 'gebraucht'
+                    WHEN s.dealer_vehicle_type IN ('G', 'D') THEN 'gebraucht'
+                    ELSE 'sonstige'
+                END"""
 
                 cursor.execute(f"""
                     SELECT
                         s.salesman_number,
                         COALESCE(e.first_name || ' ' || e.last_name,
                                  'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
-                        s.dealer_vehicle_type,
+                        {kategorie_case} as kategorie,
                         s.model_description,
                         COUNT(*) as anzahl
                     FROM sales s
                     LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
                     WHERE {where_sql}
-                    GROUP BY s.salesman_number, verkaufer_name, s.dealer_vehicle_type, s.model_description
-                    ORDER BY verkaufer_name, s.dealer_vehicle_type, s.model_description
+                    GROUP BY s.salesman_number, verkaufer_name, kategorie, s.model_description
+                    ORDER BY verkaufer_name, kategorie, s.model_description
                 """, params)
 
                 rows = cursor.fetchall()
@@ -1002,7 +1039,7 @@ class VerkaufData:
                 for row in rows:
                     vk_nr = row['salesman_number']
                     vk_name = row['verkaufer_name']
-                    typ = row['dealer_vehicle_type']
+                    kat = row['kategorie']
                     modell = row['model_description'] or 'Unbekannt'
                     anzahl = row['anzahl']
 
@@ -1021,13 +1058,13 @@ class VerkaufData:
 
                     modell_info = {'modell': modell, 'anzahl': anzahl}
 
-                    if typ == 'N':
+                    if kat == 'neu':
                         verkaufer_dict[vk_nr]['neu'].append(modell_info)
                         verkaufer_dict[vk_nr]['summe_neu'] += anzahl
-                    elif typ in ('T', 'V'):
+                    elif kat == 'test_vorfuehr':
                         verkaufer_dict[vk_nr]['test_vorfuehr'].append(modell_info)
                         verkaufer_dict[vk_nr]['summe_test_vorfuehr'] += anzahl
-                    elif typ in ('G', 'D'):
+                    elif kat == 'gebraucht':
                         verkaufer_dict[vk_nr]['gebraucht'].append(modell_info)
                         verkaufer_dict[vk_nr]['summe_gebraucht'] += anzahl
 
@@ -1271,7 +1308,7 @@ class VerkaufData:
                     where_clauses.append("s.vin LIKE %s")
                     params.append(f"%{vin_search}%")
 
-                # Dedup-Filter
+                # Dedup-Filter (N→T/V und V/T→G/D)
                 where_clauses.append("""
                     NOT EXISTS (
                         SELECT 1 FROM sales s2
@@ -1280,9 +1317,26 @@ class VerkaufData:
                             AND s2.dealer_vehicle_type IN ('T', 'V')
                             AND s.dealer_vehicle_type = 'N'
                     )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM sales s2
+                        WHERE s2.vin = s.vin
+                            AND s2.vin IS NOT NULL AND s2.vin != ''
+                            AND s2.out_sales_contract_date = s.out_sales_contract_date
+                            AND s2.dealer_vehicle_type IN ('G', 'D')
+                            AND s.dealer_vehicle_type IN ('T', 'V')
+                    )
                 """)
 
                 where_sql = " AND ".join(where_clauses)
+
+                # EZ-Regel: V/T > 12 Monate ab Erstzulassung = gebraucht
+                kategorie_case = """CASE
+                    WHEN s.dealer_vehicle_type = 'N' THEN 'neu'
+                    WHEN s.dealer_vehicle_type IN ('V', 'T') AND (s.first_registration_date IS NULL OR (s.out_invoice_date::date - s.first_registration_date) <= 365) THEN 'test_vorfuehr'
+                    WHEN s.dealer_vehicle_type IN ('V', 'T') THEN 'gebraucht'
+                    WHEN s.dealer_vehicle_type IN ('G', 'D') THEN 'gebraucht'
+                    ELSE 'sonstige'
+                END"""
 
                 cursor.execute(f"""
                     SELECT
@@ -1290,6 +1344,7 @@ class VerkaufData:
                         COALESCE(e.first_name || ' ' || e.last_name,
                                  'Verkäufer #' || s.salesman_number || ' (nicht in LocoSoft)') as verkaufer_name,
                         s.dealer_vehicle_type,
+                        {kategorie_case} as kategorie,
                         s.make_number,
                         s.model_description,
                         s.vin,
@@ -1300,7 +1355,7 @@ class VerkaufData:
                     FROM sales s
                     LEFT JOIN employees e ON s.salesman_number = e.locosoft_id
                     WHERE {where_sql}
-                    ORDER BY verkaufer_name, s.dealer_vehicle_type, s.model_description
+                    ORDER BY verkaufer_name, kategorie, s.model_description
                 """, params)
 
                 rows = cursor.fetchall()
@@ -1311,6 +1366,7 @@ class VerkaufData:
                     vk_nr = row['salesman_number']
                     vk_name = row['verkaufer_name']
                     typ = row['dealer_vehicle_type']
+                    kat = row['kategorie']
                     modell = row['model_description'] or 'Unbekannt'
                     vin = row['vin'] or ''
                     invoice_date = row['out_invoice_date']
@@ -1336,6 +1392,7 @@ class VerkaufData:
 
                     fahrzeug_info = {
                         'typ': typ,
+                        'kategorie': kat,
                         'marke': marke,
                         'modell': modell,
                         'vin': vin,
@@ -1348,9 +1405,9 @@ class VerkaufData:
 
                     verkaufer_dict[vk_nr]['fahrzeuge'].append(fahrzeug_info)
 
-                    if typ == 'N':
+                    if kat == 'neu':
                         verkaufer_dict[vk_nr]['summe_neu'] += 1
-                    elif typ in ('T', 'V'):
+                    elif kat == 'test_vorfuehr':
                         verkaufer_dict[vk_nr]['summe_test_vorfuehr'] += 1
                     elif typ in ('G', 'D'):
                         verkaufer_dict[vk_nr]['summe_gebraucht'] += 1
@@ -1669,6 +1726,7 @@ class VerkaufData:
                     where_clauses.append("s.salesman_number = %s")
                     params.append(int(verkaufer))
 
+                # Dedup-Filter (N→T/V und V/T→G/D)
                 where_clauses.append("""
                     NOT EXISTS (
                         SELECT 1 FROM sales s2
@@ -1676,6 +1734,14 @@ class VerkaufData:
                             AND s2.out_sales_contract_date = s.out_sales_contract_date
                             AND s2.dealer_vehicle_type IN ('T', 'V')
                             AND s.dealer_vehicle_type = 'N'
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM sales s2
+                        WHERE s2.vin = s.vin
+                            AND s2.vin IS NOT NULL AND s2.vin != ''
+                            AND s2.out_sales_contract_date = s.out_sales_contract_date
+                            AND s2.dealer_vehicle_type IN ('G', 'D')
+                            AND s.dealer_vehicle_type IN ('T', 'V')
                     )
                 """)
 

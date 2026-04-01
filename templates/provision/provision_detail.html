@@ -1291,10 +1291,10 @@
         sumHtml += '<tr style="background:#f1f5f9; font-weight:700; font-size:.95rem;"><td>Gesamt</td><td class="text-end text-nowrap">' + fmtEuro(l.summe_gesamt) + '</td></tr>';
         sumBody.innerHTML = sumHtml;
 
-        // Kumulierte Zielprämie Info-Block
+        // Kumulierte Zielprämie Info-Block (nicht bei ausgeschlossenen VKBs)
         var kumBlock = document.getElementById('kumInfo');
         if (kumBlock) {
-            var kd = l.kum_daten;
+            var kd = l.zielpraemie_ausgeschlossen ? null : l.kum_daten;
             if (kd) {
                 var kumMonat = l.abrechnungsmonat || '';
                 var mm = kumMonat.substring(5);
