@@ -92,3 +92,32 @@ def pdf_download(lauf_id):
     download_name = f"Provision_{vk_name}_{monat}.pdf"
 
     return send_file(filepath, as_attachment=True, download_name=download_name, mimetype='application/pdf')
+
+
+@provision_bp.route('/pdf-preview/<int:lauf_id>')
+@login_required
+def pdf_preview(lauf_id):
+    """HTML-Preview der Provisionsabrechnung (gleiche Daten wie PDF)."""
+    from api.provision_pdf import _lauf_daten, _fmt_eur
+    data = _lauf_daten(lauf_id)
+    if not data:
+        abort(404)
+    lauf = data['lauf']
+
+    # Zugriffskontrolle
+    vkb = lauf['verkaufer_id']
+    from api.provision_api import _get_vkb_for_request, _may_see_all_verkaufer
+    my_vkb = _get_vkb_for_request()
+    if not _may_see_all_verkaufer() and my_vkb != vkb:
+        abort(403)
+
+    # Positionen nach Kategorie gruppieren
+    by_kat = {}
+    for p in data['positionen']:
+        by_kat.setdefault(p.get('kategorie') or '', []).append(p)
+
+    return render_template('provision/provision_pdf_preview.html',
+                           lauf=lauf, positionen=data['positionen'], by_kat=by_kat,
+                           zusatzleistungen=data.get('zusatzleistungen', []),
+                           jahresuebersicht=data['jahresuebersicht'],
+                           fmt_eur=_fmt_eur)

@@ -92,6 +92,9 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - **PDF Stk.-Dopplung behoben (2026-04-01):** `summary_row` in `provision_pdf.py` hängt "Stk." nur noch bei Zahlen an, nicht bei Text wie "erfüllt / +3 Stk.".
 - **Dashboard Monatspersistenz (2026-04-01):** Gewählter Monat wird als URL-Parameter (`?monat=YYYY-MM`) persistiert. Nach Aktionen (Vorlauf erstellen, aktualisieren, löschen) bleibt der Monat erhalten statt auf den aktuellen Monat zurückzuspringen. Detail-Seite übergibt Monat beim Zurücknavigieren ans Dashboard.
 
+- **PDF Jahresübersicht: Stückzahlen aus Auftragseingang (2026-04-01):** Stückzahlen in der Jahresübersicht (NW, TW/VFW, GW) kommen jetzt aus dem Auftragseingang (`sales.out_sales_contract_date`) statt aus `provision_positionen`. Aufteilung rein nach `dealer_vehicle_type` (N=NW, T/V=TW, D/G=GW), keine EZ-Regel. Dedup wie Standard (N→T/V, V/T→G/D). Provisionssumme bleibt aus `provision_laeufe`.
+- **HTML-Preview Route (2026-04-01, WIP):** `/provision/pdf-preview/<lauf_id>` zeigt Provisionsabrechnung als HTML (Deckblatt + Detail + Jahresübersicht). Template: `templates/provision/provision_pdf_preview.html`. **FEHLER:** Route wirft aktuell einen Fehler — muss noch debuggt werden.
+
 ## Offene Punkte / Nächste Schritte
 - E-Mail-Benachrichtigungen aktivieren: Mails sind fertig implementiert, nur `PROVISION_EMAIL_ENABLED = True` setzen + Links von `drive:5002` auf `drive` ändern (nach Testphase/Prod-Deploy)
 - Test mit Anton Süß (Verkaufsleiter) geplant

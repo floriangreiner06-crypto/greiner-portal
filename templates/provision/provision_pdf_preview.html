@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Provisionsabrechnung – {{ lauf.verkaufer_name }} – {{ lauf.abrechnungsmonat }}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Helvetica, Arial, sans-serif; background: #e2e8f0; color: #334155; padding: 2rem; }
+  .page { background: #fff; max-width: 800px; margin: 0 auto 2rem; padding: 2.5rem; box-shadow: 0 2px 12px rgba(0,0,0,.12); border-radius: 6px; }
+  h1 { font-size: 22px; color: #1e293b; margin-bottom: 2px; }
+  .subtitle { font-size: 13px; color: #334155; margin-bottom: 4px; }
+  .beleg { font-size: 11px; color: #2563eb; font-weight: bold; margin-bottom: 16px; }
+  .topline { height: 3px; background: #2563eb; margin-bottom: 14px; border-radius: 2px; }
+  .topline-thin { height: 2px; background: #2563eb; margin-bottom: 10px; border-radius: 2px; }
+
+  /* Deckblatt Kategorie-Zeilen */
+  .kat-row { display: flex; align-items: center; border-left: 3px solid #2563eb; border-bottom: 1px solid #e2e8f0; padding: 10px 12px; }
+  .kat-row .title { font-weight: bold; width: 200px; font-size: 11px; }
+  .kat-row .stueck { width: 80px; font-size: 11px; }
+  .kat-row .bez { flex: 1; font-size: 11px; }
+  .kat-row .val { text-align: right; font-weight: bold; font-size: 12px; width: 130px; }
+
+  .gesamt-bar { display: flex; align-items: center; background: #1e40af; color: #fff; padding: 12px 14px; border-radius: 4px; margin-top: 10px; }
+  .gesamt-bar .label { font-size: 13px; font-weight: bold; flex: 1; }
+  .gesamt-bar .val { font-size: 15px; font-weight: bold; text-align: right; }
+
+  /* Detail-Tabellen */
+  .kat-header { display: flex; align-items: center; border-bottom: 2px solid #2563eb; padding: 4px 0 6px; margin-top: 18px; }
+  .kat-header .title { font-weight: bold; font-size: 10px; color: #1e293b; flex: 1; }
+  .kat-header .total { font-weight: bold; font-size: 10px; text-align: right; }
+  table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 10px; }
+  th { text-align: left; font-weight: bold; color: #334155; font-size: 9px; padding: 5px 6px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; }
+  th.r { text-align: right; }
+  td { padding: 5px 6px; border-bottom: 1px solid #e2e8f0; }
+  td.r { text-align: right; }
+  td.rb { text-align: right; font-weight: bold; }
+  tr:nth-child(even) td { background: #f1f5f9; }
+  tr:nth-child(odd) td { background: #f8fafc; }
+
+  /* Jahresuebersicht */
+  .jahr-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .jahr-table td { padding: 8px 10px; font-size: 11px; border-bottom: 1px solid #e2e8f0; }
+  .jahr-table tr:nth-child(odd) td { background: #f1f5f9; }
+  .jahr-table tr:nth-child(even) td { background: #f8fafc; }
+  .jahr-table .val { text-align: right; font-weight: bold; }
+  .jahr-total td { background: #1e40af !important; color: #fff; font-weight: bold; font-size: 12px; padding: 10px; }
+  .jahr-total .val { text-align: right; }
+
+  .footer { text-align: center; font-size: 9px; color: #94a3b8; margin-top: 20px; }
+  .page-label { text-align: center; font-size: 11px; color: #1e293b; font-weight: bold; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+{# ==================== SEITE 1: DECKBLATT ==================== #}
+<div class="page">
+  <div class="topline"></div>
+  <h1>Provisionsabrechnung</h1>
+  <div class="subtitle">{{ lauf.verkaufer_name }} &mdash;
+    {% set m = lauf.abrechnungsmonat or '' %}
+    {% set monate = ['Januar','Februar','M&auml;rz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'] %}
+    {% if m|length == 7 %}{{ monate[m[5:7]|int - 1] }} {{ m[:4] }}{% else %}{{ m }}{% endif %}
+  </div>
+  {% if lauf.belegnummer %}<div class="beleg">Belegnummer {{ lauf.belegnummer }}</div>{% endif %}
+
+  {% set nw = by_kat.get('I_neuwagen', []) %}
+  {% set nw_prov = nw|sum(attribute='provision_final', default=0) %}
+  <div class="kat-row"><span class="title">I. Neuwagen</span><span class="stueck">{{ nw|length }} Stk.</span><span class="bez">Verk&auml;ufe</span><span class="val">{{ fmt_eur(nw_prov) }}</span></div>
+
+  {% set sp = lauf.summe_stueckpraemie or 0 %}
+  <div class="kat-row"><span class="title">Ia. Zielpr&auml;mie NW</span><span class="stueck">{% if sp > 0 %}erf&uuml;llt{% else %}nicht erf&uuml;llt{% endif %}</span><span class="bez">Zielpr&auml;mie</span><span class="val">{{ fmt_eur(sp) }}</span></div>
+
+  {% set tw = by_kat.get('II_testwagen', []) %}
+  {% set tw_prov = tw|sum(attribute='provision_final', default=0) %}
+  <div class="kat-row"><span class="title">II. Testwagen / VFW</span><span class="stueck">{{ tw|length }} Stk.</span><span class="bez">Verk&auml;ufe</span><span class="val">{{ fmt_eur(tw_prov) }}</span></div>
+
+  {% set twp = lauf.summe_tw_praemie or 0 %}
+  {% set twps = lauf.tw_praemie_stueck or 0 %}
+  <div class="kat-row"><span class="title">IIa. TW/VFW-Pr&auml;mie</span><span class="stueck">{{ twps }}</span><span class="bez">Pr&auml;mie</span><span class="val">{{ fmt_eur(twp) }}</span></div>
+
+  {% set gw = by_kat.get('III_gebrauchtwagen', []) %}
+  {% set gw_prov = gw|sum(attribute='provision_final', default=0) %}
+  <div class="kat-row"><span class="title">III. Gebrauchtwagen</span><span class="stueck">{{ gw|length }} Stk.</span><span class="bez">Verk&auml;ufe</span><span class="val">{{ fmt_eur(gw_prov) }}</span></div>
+
+  {% set gwb = by_kat.get('IV_gw_bestand', []) %}
+  {% set gwb_prov = gwb|sum(attribute='provision_final', default=0) %}
+  <div class="kat-row"><span class="title">IV. GW aus Bestand</span><span class="stueck">{{ gwb|length }} Stk.</span><span class="bez">Bruttoertragsprovision</span><span class="val">{{ fmt_eur(gwb_prov) }}</span></div>
+
+  {% set zl_total = lauf.summe_kat_v or 0 %}
+  {% set zl_count = zusatzleistungen|length %}
+  <div class="kat-row"><span class="title">V. Zusatzleistungen</span><span class="stueck">{{ zl_count }} Stk.</span><span class="bez">Finanzdienstleistung</span><span class="val">{{ fmt_eur(zl_total) }}</span></div>
+
+  {% set gesamt = (nw_prov|float) + (sp|float) + (tw_prov|float) + (twp|float) + (gw_prov|float) + (gwb_prov|float) + (zl_total|float) %}
+  <div class="gesamt-bar"><span class="label">Gesamtprovision</span><span class="val">{{ fmt_eur(gesamt) }}</span></div>
+
+  <div class="footer">
+    {% if lauf.endlauf_am %}Abgerechnet am {{ lauf.endlauf_am.strftime('%d.%m.%Y') if lauf.endlauf_am.strftime is defined else lauf.endlauf_am }}{% else %}Erstellt am {{ now.strftime('%d.%m.%Y') }}{% endif %}
+    {% if lauf.belegnummer %} &middot; Belegnummer {{ lauf.belegnummer }}{% endif %}
+  </div>
+</div>
+
+{# ==================== SEITE 2+: DETAIL ==================== #}
+<div class="page">
+  <div class="topline-thin"></div>
+  <div class="page-label">
+    Provisionsabrechnung
+    {% if m|length == 7 %}{{ monate[m[5:7]|int - 1] }} {{ m[:4] }}{% else %}{{ m }}{% endif %}
+    <br>{{ lauf.verkaufer_name }} &mdash; {% if lauf.status == 'ENDLAUF' %}Endlauf{% else %}Vorlauf{% endif %}
+  </div>
+  {% if lauf.belegnummer %}<div class="beleg" style="text-align:center;">Belegnummer: {{ lauf.belegnummer }}</div>{% endif %}
+
+  {# Kategorien I-IV #}
+  {% set kat_config = [
+    ('I_neuwagen', 'I. Neuwagen'),
+    ('II_testwagen', 'II. Testwagen / VFW'),
+    ('III_gebrauchtwagen', 'III. Gebrauchtwagen'),
+    ('IV_gw_bestand', 'IV. GW aus Bestand'),
+  ] %}
+
+  {% for kat_key, kat_label in kat_config %}
+    {% set rows = by_kat.get(kat_key, []) %}
+    {% if rows %}
+      {% set kat_sum = rows|sum(attribute='provision_final', default=0) %}
+      <div class="kat-header">
+        <span class="title">{{ kat_label }} ({{ rows|length }} Fahrzeuge)</span>
+        <span class="total">Gesamt: {{ fmt_eur(kat_sum) }}</span>
+      </div>
+      <table>
+        {% if kat_key == 'IV_gw_bestand' %}
+        <tr><th>MODELL</th><th>K&Auml;UFER</th><th>VORBESITZER</th><th class="r">BE II</th><th class="r">PROVISION</th></tr>
+        {% for p in rows %}
+        <tr>
+          <td>{{ (p.modell or '-')[:40] }}</td>
+          <td>{{ (p.kaeufer_name or '-')[:35] }}</td>
+          <td>{{ (p.vorbesitzer_name or '-')[:35] }}</td>
+          <td class="r">{{ fmt_eur(p.bemessungsgrundlage) }}</td>
+          <td class="rb">{{ fmt_eur(p.provision_final) }}</td>
+        </tr>
+        {% endfor %}
+        {% else %}
+        <tr><th>MODELL</th><th>K&Auml;UFER</th><th class="r">ERL&Ouml;S</th><th class="r">PROVISION</th></tr>
+        {% for p in rows %}
+        <tr>
+          <td>{{ (p.modell or '-')[:50] }}</td>
+          <td>{{ (p.kaeufer_name or '-')[:45] }}</td>
+          <td class="r">{{ fmt_eur(p.bemessungsgrundlage) }}</td>
+          <td class="rb">{{ fmt_eur(p.provision_final) }}</td>
+        </tr>
+        {% endfor %}
+        {% endif %}
+      </table>
+    {% endif %}
+  {% endfor %}
+
+  {# V. Zusatzleistungen #}
+  {% if zusatzleistungen %}
+    {% set zl_sum = zusatzleistungen|sum(attribute='provision_verkaufer', default=0) %}
+    <div class="kat-header">
+      <span class="title">V. Zusatzleistungen ({{ zusatzleistungen|length }} Positionen)</span>
+      <span class="total">Gesamt: {{ fmt_eur(zl_sum) }}</span>
+    </div>
+    <table>
+      <tr><th>BANK</th><th>NAME</th><th>DATUM</th><th class="r">PROVISION</th></tr>
+      {% for z in zusatzleistungen %}
+      <tr>
+        <td>{{ (z.beleg_referenz or '-')[:30] }}</td>
+        <td>{{ (z.bezeichnung or '-')[:40] }}</td>
+        <td>{% if z.beleg_datum %}{{ z.beleg_datum.strftime('%d.%m.%Y') if z.beleg_datum.strftime is defined else z.beleg_datum }}{% endif %}</td>
+        <td class="rb">{{ fmt_eur(z.provision_verkaufer) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+
+  {# Jahresuebersicht #}
+  {% if jahresuebersicht %}
+  {% set j = jahresuebersicht %}
+  <div style="margin-top: 2rem;">
+    <div class="topline-thin"></div>
+    <h2 style="font-size: 14px; margin-bottom: 6px;">Jahres&uuml;bersicht {{ j.jahr }}</h2>
+    <table class="jahr-table">
+      <tr><td>Neuwagen</td><td class="val">{{ j.stueck_nw }} St&uuml;ck</td></tr>
+      <tr><td>Testwagen / VFW</td><td class="val">{{ j.stueck_tw }} St&uuml;ck</td></tr>
+      <tr><td>Gebrauchtwagen</td><td class="val">{{ j.stueck_gw }} St&uuml;ck</td></tr>
+      <tr class="jahr-total"><td>Gesamtprovision {{ j.jahr }}</td><td class="val">{{ fmt_eur(j.provision_jahr) }}</td></tr>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="footer">
+    {% if lauf.endlauf_am %}Abgerechnet am {{ lauf.endlauf_am.strftime('%d.%m.%Y') if lauf.endlauf_am.strftime is defined else lauf.endlauf_am }}{% else %}Erstellt am {{ now.strftime('%d.%m.%Y') }}{% endif %}
+    {% if lauf.belegnummer %} &middot; Belegnummer {{ lauf.belegnummer }}{% endif %}
+  </div>
+</div>
+
+</body>
+</html>
