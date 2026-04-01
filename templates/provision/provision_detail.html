@@ -1221,10 +1221,12 @@
         var statusUpper = (l.status || '').toUpperCase();
         var pvEditable = statusUpper === 'VORLAUF' && pvUserCanEdit;
 
-        // Header
+        // Header + Dashboard-Links mit Monat-Parameter versehen
+        var dashUrl = '/provision/dashboard?monat=' + encodeURIComponent(l.abrechnungsmonat || '');
         document.getElementById('bcName').textContent = l.verkaufer_name || 'Detail';
         document.getElementById('headerName').textContent = l.verkaufer_name ? '- ' + l.verkaufer_name : '';
         document.getElementById('headerMonat').textContent = monatLabel(l.abrechnungsmonat);
+        document.querySelectorAll('a[href="/provision/dashboard"]').forEach(function(a){ a.href = dashUrl; });
 
         var statusEl = document.getElementById('headerStatus');
         var statusLabels = {'VORLAUF':'Vorlauf','ZUR_PRUEFUNG':'Zur Prüfung','FREIGEGEBEN':'Freigegeben','GENEHMIGT':'Genehmigt','ENDLAUF':'Endlauf'};
@@ -1498,7 +1500,7 @@
                 fetch('/api/provision/vorlauf/' + id + '/loeschen', { method: 'POST', credentials: 'same-origin' })
                 .then(function(r) { return r.json(); })
                 .then(function(res) {
-                    if (res.success) window.location.href = '/provision/dashboard';
+                    if (res.success) window.location.href = dashUrl;
                     else { alert(res.error || 'Fehler'); btnDel.disabled = false; }
                 });
             };

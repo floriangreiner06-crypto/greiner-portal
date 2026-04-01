@@ -90,6 +90,7 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - **Zielprämie Auftragseingang-Zählung (2026-04-01):** IST-Stückzahl für kumulierte Zielprämie liest jetzt aus synced `sales`-Tabelle (gleiche Quelle wie Auftragseingang-Seite). N/V = immer NW, T = nur ≤1 Jahr nach EZ. Kaufmännische Rundung des Monatsziels (`math.floor(x + 0.5)`).
 - **Zielprämie-Ausschluss (2026-04-01):** Daniel Fialkowski (VKB 2003) als reiner GW-Verkäufer von Zielprämie ausgeschlossen — kein Kumuliert-Block, keine Ia-Zeile in Detail/PDF, keine Stückprämie in Gesamtsumme. Konfiguriert über `ZIELPRAEMIE_AUSSCHLUSS` in `provision_service.py`.
 - **PDF Stk.-Dopplung behoben (2026-04-01):** `summary_row` in `provision_pdf.py` hängt "Stk." nur noch bei Zahlen an, nicht bei Text wie "erfüllt / +3 Stk.".
+- **Dashboard Monatspersistenz (2026-04-01):** Gewählter Monat wird als URL-Parameter (`?monat=YYYY-MM`) persistiert. Nach Aktionen (Vorlauf erstellen, aktualisieren, löschen) bleibt der Monat erhalten statt auf den aktuellen Monat zurückzuspringen. Detail-Seite übergibt Monat beim Zurücknavigieren ans Dashboard.
 
 ## Offene Punkte / Nächste Schritte
 - E-Mail-Benachrichtigungen aktivieren: Mails sind fertig implementiert, nur `PROVISION_EMAIL_ENABLED = True` setzen + Links von `drive:5002` auf `drive` ändern (nach Testphase/Prod-Deploy)

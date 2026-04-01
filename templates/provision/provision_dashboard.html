@@ -302,8 +302,15 @@
         return parts.map(function(p){ return p.charAt(0).toUpperCase() + p.slice(1); }).join(' ');
     }
 
+    function updateUrl(monat) {
+        var url = new URL(window.location);
+        url.searchParams.set('monat', monat);
+        history.replaceState(null, '', url);
+    }
+
     function load(){
         var monat = M.value; if (!monat) return;
+        updateUrl(monat);
         L.style.display = 'block'; E.style.display = 'none';
         document.getElementById('monthNavLabel').textContent = monatLabel(monat);
 

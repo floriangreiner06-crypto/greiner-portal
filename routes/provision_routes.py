@@ -3,7 +3,7 @@ Provisionsmodul - HTML-Views.
 Live-Preview: Daten kommen ausschliesslich aus provision_service (SSOT).
 """
 import os
-from flask import Blueprint, render_template, abort, send_file
+from flask import Blueprint, render_template, abort, send_file, request
 from flask_login import login_required, current_user
 from datetime import datetime
 
@@ -31,7 +31,12 @@ def dashboard():
     if not _has_provision_vollzugriff():
         abort(403)
     now = datetime.now()
-    default_monat = now.strftime('%Y-%m')
+    monat_param = request.args.get('monat', '')
+    # Validierung: YYYY-MM Format
+    if monat_param and len(monat_param) == 7 and monat_param[4] == '-':
+        default_monat = monat_param
+    else:
+        default_monat = now.strftime('%Y-%m')
     return render_template('provision/provision_dashboard.html', default_monat=default_monat)
 
 
