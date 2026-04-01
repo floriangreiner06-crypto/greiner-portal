@@ -165,6 +165,9 @@ FEATURE_ACCESS = {
 
     # AfA Verkaufsempfehlungen (GF/VKL) – positiver Cashflow, hoher Umschlag, inkl. Zinsen
     'afa_verkaufsempfehlungen': ['admin', 'verkauf_leitung', 'geschaeftsleitung'],
+
+    # Jahresprämie – nur GL und Vanessa Groll
+    'jahrespraemie': ['geschaeftsleitung'],
 }
 
 

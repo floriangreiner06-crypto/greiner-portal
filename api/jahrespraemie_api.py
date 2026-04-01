@@ -17,7 +17,9 @@ Endpoints:
 - GET  /api/jahrespraemie/health                - Health Check
 """
 
+from functools import wraps
 from flask import Blueprint, request, jsonify
+from flask_login import login_required, current_user
 import pandas as pd
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
@@ -29,6 +31,25 @@ from api.db_utils import db_session, row_to_dict, rows_to_list
 from api.db_connection import sql_placeholder, convert_placeholders
 
 jahrespraemie_api = Blueprint('jahrespraemie_api', __name__, url_prefix='/api/jahrespraemie')
+
+_JAHRESPRAEMIE_EXTRA_USERS = {'vanessa.groll@auto-greiner.de'}
+
+
+def _darf_jahrespraemie():
+    if not current_user.is_authenticated:
+        return False
+    if current_user.can_access_feature('jahrespraemie'):
+        return True
+    return (getattr(current_user, 'username', '') or '').lower() in _JAHRESPRAEMIE_EXTRA_USERS
+
+
+def jahrespraemie_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not _darf_jahrespraemie():
+            return jsonify({'success': False, 'error': 'Keine Berechtigung.'}), 403
+        return f(*args, **kwargs)
+    return decorated
 
 
 def parse_date(d):
@@ -419,6 +440,8 @@ class PraemienRechner:
 # ============================================================================
 
 @jahrespraemie_api.route('/berechnungen', methods=['GET'])
+@login_required
+@jahrespraemie_required
 def get_berechnungen():
     """Liste aller Berechnungen"""
     with db_session() as conn:
@@ -432,6 +455,8 @@ def get_berechnungen():
 
 
 @jahrespraemie_api.route('/berechnung/<int:id>', methods=['GET'])
+@login_required
+@jahrespraemie_required
 def get_berechnung(id):
     """Details einer Berechnung"""
     with db_session() as conn:
@@ -463,6 +488,8 @@ def get_berechnung(id):
 
 
 @jahrespraemie_api.route('/berechnung/neu', methods=['POST'])
+@login_required
+@jahrespraemie_required
 def neue_berechnung():
     """Neue Berechnung anlegen"""
     data = request.get_json()
@@ -504,6 +531,8 @@ def neue_berechnung():
 
 
 @jahrespraemie_api.route('/upload/<int:berechnung_id>', methods=['POST'])
+@login_required
+@jahrespraemie_required
 def upload_lohnjournal(berechnung_id):
     """Lohnjournal hochladen und Mitarbeiter importieren"""
     if 'file' not in request.files:
@@ -661,6 +690,8 @@ def upload_lohnjournal(berechnung_id):
 
 
 @jahrespraemie_api.route('/berechnen/<int:berechnung_id>', methods=['POST'])
+@login_required
+@jahrespraemie_required
 def berechne_praemien(berechnung_id):
     """Prämien berechnen"""
     from api.db_connection import get_db
@@ -692,6 +723,8 @@ def berechne_praemien(berechnung_id):
 
 
 @jahrespraemie_api.route('/kulanz/<int:berechnung_id>', methods=['POST'])
+@login_required
+@jahrespraemie_required
 def setze_kulanz(berechnung_id):
     """Kulanz-Regeln setzen"""
     data = request.get_json()
@@ -726,6 +759,8 @@ def setze_kulanz(berechnung_id):
 
 
 @jahrespraemie_api.route('/mitarbeiter/<int:ma_id>/ausschliessen', methods=['POST'])
+@login_required
+@jahrespraemie_required
 def mitarbeiter_ausschliessen(ma_id):
     """Mitarbeiter manuell von Prämie ausschließen (TAG 144)"""
     grund = request.form.get('grund', 'Manuell ausgeschlossen')
@@ -748,6 +783,8 @@ def mitarbeiter_ausschliessen(ma_id):
 
 
 @jahrespraemie_api.route('/mitarbeiter/<int:ma_id>/wiederherstellen', methods=['POST'])
+@login_required
+@jahrespraemie_required
 def mitarbeiter_wiederherstellen(ma_id):
     """Mitarbeiter wieder als berechtigt markieren (TAG 144)"""
     with db_session() as conn:
@@ -764,6 +801,8 @@ def mitarbeiter_wiederherstellen(ma_id):
 
 
 @jahrespraemie_api.route('/mitarbeiter/<int:ma_id>', methods=['PUT'])
+@login_required
+@jahrespraemie_required
 def mitarbeiter_update(ma_id):
     """
     Mitarbeiter vollständig bearbeiten (TAG 144)
@@ -821,6 +860,8 @@ def mitarbeiter_update(ma_id):
 
 
 @jahrespraemie_api.route('/freigeben/<int:berechnung_id>', methods=['POST'])
+@login_required
+@jahrespraemie_required
 def freigeben(berechnung_id):
     """Berechnung freigeben"""
     with db_session() as conn:

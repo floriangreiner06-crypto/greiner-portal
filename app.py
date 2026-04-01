@@ -27,13 +27,22 @@ else:
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 Jahr in Produktion
 
 # Globale Static-Version (ändert sich bei jedem Flask-Neustart)
-STATIC_VERSION = '20260324093000'  # Cache-Bust: Dashboard KPI "Freie Linien"
+STATIC_VERSION = '20260401150000'  # Cache-Bust: Dashboard Redesign + Navbar + Jahresprämie
 print(f"📦 Static Version: {STATIC_VERSION}")
 
 # Template-Kontext: Macht STATIC_VERSION in allen Templates verfügbar
 @app.context_processor
 def inject_version():
     return {'STATIC_VERSION': STATIC_VERSION}
+
+# Jinja2-Filter: Deutsches Datumsformat (ohne Locale-Abhängigkeit)
+@app.template_filter('deutsch_datum')
+def deutsch_datum_filter(dt):
+    """Formatiert datetime als 'Mittwoch, 01. April 2026'"""
+    tage = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+    monate = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+              'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+    return f"{tage[dt.weekday()]}, {dt.strftime('%d')}. {monate[dt.month - 1]} {dt.year}"
 
 
 # Template-Funktion: Navigation aus DB laden (TAG 190)

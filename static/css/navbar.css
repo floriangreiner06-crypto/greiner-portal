@@ -28,7 +28,8 @@ footer {
 /* === NAVBAR CUSTOM === */
 .navbar {
     box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-    background: linear-gradient(135deg, #6B7FDB 0%, #8B9AE0 100%) !important;
+    background: #2563a8 !important;
+    border-bottom: 1px solid #1a4a8a;
     padding: 0.5rem 1.5rem;
 }
 
