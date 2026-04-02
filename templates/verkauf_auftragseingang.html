@@ -581,7 +581,7 @@ async function loadSummary() {
             }
             const pctNw = zNw > 0 ? Math.round((istNW / zNw) * 100) : '-';
             const pctGw = zGw > 0 ? Math.round((istGW / zGw) * 100) : '-';
-            html += '<div class="row mt-2"><div class="col-12"><p class="mb-0 small text-muted">Zielerfüllung (Zielplanung): <strong>NW</strong> ' + istNW + ' / ' + zNw + ' (' + pctNw + '%) &nbsp;|&nbsp; <strong>GW</strong> ' + istGW + ' / ' + zGw + ' (' + pctGw + '%)</p></div></div>';
+            html += '<div class="row mt-2"><div class="col-12"><p class="mb-0 small text-muted">Zielerfüllung (Zielplanung): <strong>NW</strong> ' + zNw + ' / ' + istNW + ' (' + pctNw + '%) &nbsp;|&nbsp; <strong>GW</strong> ' + zGw + ' / ' + istGW + ' (' + pctGw + '%)</p></div></div>';
         }
 
         const markenOrder = ['Opel', 'Leapmotor', 'Hyundai'];
@@ -728,10 +728,10 @@ async function loadDetails() {
                         const kumPct = zsVk.kum_ziel_nw > 0 ? Math.round((zsVk.kum_ist_nw / zsVk.kum_ziel_nw) * 100) : 0;
                         const kumCheck = kumPct >= 100 ? ' <span style="color:#198754;">&#10003;</span>' : '';
                         zielCells = `<td>
-                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctNw,100)}%;background:${zeitstrahlColor(pctNw)};"></div><div class="inline-progress-text">${istNw}/${zsVk.monats_ziel_nw} (${pctNw}%)</div></div>
-                            <div class="inline-kum">kum. ${zsVk.kum_ist_nw}/${zsVk.kum_ziel_nw} (${kumPct}%)${kumCheck}</div>
+                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctNw,100)}%;background:${zeitstrahlColor(pctNw)};"></div><div class="inline-progress-text">${zsVk.monats_ziel_nw}/${istNw} (${pctNw}%)</div></div>
+                            <div class="inline-kum">kum. ${zsVk.kum_ziel_nw}/${zsVk.kum_ist_nw} (${kumPct}%)${kumCheck}</div>
                         </td><td>
-                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctGw,100)}%;background:${zeitstrahlColor(pctGw)};"></div><div class="inline-progress-text">${istGw}/${zsVk.monats_ziel_gw} (${pctGw}%)</div></div>
+                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctGw,100)}%;background:${zeitstrahlColor(pctGw)};"></div><div class="inline-progress-text">${zsVk.monats_ziel_gw}/${istGw} (${pctGw}%)</div></div>
                         </td>`;
                     } else {
                         // year/fiscal
@@ -740,10 +740,10 @@ async function loadDetails() {
                         const kumPct = zsVk.kum_ziel_nw > 0 ? Math.round((zsVk.kum_ist_nw / zsVk.kum_ziel_nw) * 100) : 0;
                         const kumCheck = kumPct >= 100 ? ' <span style="color:#198754;">&#10003;</span>' : '';
                         zielCells = `<td>
-                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctNw,100)}%;background:${zeitstrahlColor(pctNw)};"></div><div class="inline-progress-text">${istNw}/${zsVk.jahres_ziel_nw} (${pctNw}%)</div></div>
-                            <div class="inline-kum">kum. ${zsVk.kum_ist_nw}/${zsVk.kum_ziel_nw} (${kumPct}%)${kumCheck}</div>
+                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctNw,100)}%;background:${zeitstrahlColor(pctNw)};"></div><div class="inline-progress-text">${zsVk.jahres_ziel_nw}/${istNw} (${pctNw}%)</div></div>
+                            <div class="inline-kum">kum. ${zsVk.kum_ziel_nw}/${zsVk.kum_ist_nw} (${kumPct}%)${kumCheck}</div>
                         </td><td>
-                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctGw,100)}%;background:${zeitstrahlColor(pctGw)};"></div><div class="inline-progress-text">${istGw}/${zsVk.jahres_ziel_gw} (${pctGw}%)</div></div>
+                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctGw,100)}%;background:${zeitstrahlColor(pctGw)};"></div><div class="inline-progress-text">${zsVk.jahres_ziel_gw}/${istGw} (${pctGw}%)</div></div>
                         </td>`;
                     }
                 } else {
@@ -861,7 +861,7 @@ async function loadZielauswertung(period, year, location, verkaufer, verkauferNa
                                         const zsVk = zeitstrahlData.find(z => String(z.mitarbeiter_nr) === String(verkaufer));
                                         if (zsVk && zsVk.kum_ziel_nw > 0) {
                                             const kp = Math.round((zsVk.kum_ist_nw / zsVk.kum_ziel_nw) * 100);
-                                            return '<div style="font-size:0.65rem;color:#6c757d;margin-top:4px;padding-top:4px;border-top:1px dashed #dee2e6;"><i class="bi bi-bar-chart-steps"></i> kum. ' + zsVk.kum_ist_nw + '/' + zsVk.kum_ziel_nw + ' (' + kp + '%)</div>';
+                                            return '<div style="font-size:0.65rem;color:#6c757d;margin-top:4px;padding-top:4px;border-top:1px dashed #dee2e6;"><i class="bi bi-bar-chart-steps"></i> kum. ' + zsVk.kum_ziel_nw + '/' + zsVk.kum_ist_nw + ' (' + kp + '%)</div>';
                                         }
                                         return '';
                                     })() : ''}
@@ -1064,18 +1064,18 @@ function renderZeitstrahlHeroCard() {
                     <div class="col-md-4">
                         <div style="background:#f8f9fa;border-radius:8px;padding:12px 16px;text-align:center;">
                             <div style="font-size:0.75rem;color:#6c757d;text-transform:uppercase;">Neuwagen</div>
-                            <div style="font-size:1.8rem;font-weight:700;color:${zeitstrahlColor(pctNw)};">${monatIstNw} <small style="font-size:0.9rem;color:#6c757d;">/ ${mzNw}</small></div>
+                            <div style="font-size:1.8rem;font-weight:700;color:${zeitstrahlColor(pctNw)};">${mzNw} <small style="font-size:0.9rem;color:#6c757d;">/ ${monatIstNw}</small></div>
                             <div class="progress mt-1" style="height:8px;"><div class="progress-bar" style="width:${Math.min(pctNw,100)}%;background:${zeitstrahlColor(pctNw)};"></div></div>
                             <div style="font-size:0.8rem;color:#6c757d;" class="mt-1">${pctNw}% Zielerfüllung</div>
                             <div style="font-size:0.72rem;color:#6c757d;margin-top:6px;padding-top:6px;border-top:1px dashed #dee2e6;">
-                                <i class="bi bi-bar-chart-steps"></i> Kum. Jan–${mShort}: <span style="font-weight:700;color:${zeitstrahlColor(kumPct)};">${kumIst}</span> / ${kumZiel} (${kumPct}%)
+                                <i class="bi bi-bar-chart-steps"></i> Kum. Jan–${mShort}: <span style="font-weight:700;color:${zeitstrahlColor(kumPct)};">${kumZiel}</span> / ${kumIst} (${kumPct}%)
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div style="background:#f8f9fa;border-radius:8px;padding:12px 16px;text-align:center;">
                             <div style="font-size:0.75rem;color:#6c757d;text-transform:uppercase;">Gebrauchtwagen</div>
-                            <div style="font-size:1.8rem;font-weight:700;color:${zeitstrahlColor(pctGw)};">${monatIstGw} <small style="font-size:0.9rem;color:#6c757d;">/ ${mzGw}</small></div>
+                            <div style="font-size:1.8rem;font-weight:700;color:${zeitstrahlColor(pctGw)};">${mzGw} <small style="font-size:0.9rem;color:#6c757d;">/ ${monatIstGw}</small></div>
                             <div class="progress mt-1" style="height:8px;"><div class="progress-bar" style="width:${Math.min(pctGw,100)}%;background:${zeitstrahlColor(pctGw)};"></div></div>
                             <div style="font-size:0.8rem;color:#6c757d;" class="mt-1">${pctGw}% Zielerfüllung</div>
                         </div>
@@ -1115,7 +1115,7 @@ async function loadZeitstrahlMiniTimeline(jahr, verkaufer) {
             const height = isFuture ? 15 : Math.max(15, Math.min(90, kumPct));
             const color = isFuture ? '' : `background:${zeitstrahlColor(kumPct)};`;
             const cls = isFuture ? 'future' : (isCurrent ? 'current' : '');
-            barsHtml += `<div class="month-bar ${cls}" style="height:${height}%;${color}" title="${labels[m.monat-1]}: ${m.kum_ist_nw}/${m.kum_ziel_nw} kum (${kumPct}%)"></div>`;
+            barsHtml += `<div class="month-bar ${cls}" style="height:${height}%;${color}" title="${labels[m.monat-1]}: ${m.kum_ziel_nw}/${m.kum_ist_nw} kum (${kumPct}%)"></div>`;
             labelsHtml += `<span class="${isCurrent ? 'current' : ''}">${labels[m.monat-1]}</span>`;
         });
         container.innerHTML = `
