@@ -1,7 +1,7 @@
 # Verkauf & Fahrzeuge — Arbeitskontext
 
 ## Status: Aktiv
-## Letzte Aktualisierung: 2026-03-25
+## Letzte Aktualisierung: 2026-04-02
 
 ## Beschreibung
 
@@ -58,9 +58,12 @@ Verkauf umfasst Auftragseingang, Auslieferungen, Deckungsbeitrag, Profitabilitä
 - ✅ **Sync_sales INSERT-Bug (2026-03-09):** Auftragseingang zeigte nur 2 statt aller März-2026-Aufträge. Ursache: INSERT in `scripts/sync/sync_sales.py` hatte 30 Platzhalter bei 31 Spalten; neue Verträge (nur INSERT, kein UPDATE) schlugen mit „not all arguments converted during string formatting“ fehl. Fix: 31. %s ergänzt, Parameter mit _scalar() gegen Tuple-Werte aus Locosoft abgesichert, out_subsidiary=0 korrekt (nicht zu None). 31 neue Aufträge danach fehlerfrei übernommen (u. a. Debitor 3008888 / Kaufvertrag 71731).
 - ✅ **Dedup V/T→G/D + EZ-Regel für V (2026-04-01):** Locosoft legt bei VFW-Verkauf zwei Datensätze an (V-Abgang + G-Verkauf) → Doppelzählung in Verkäufer-Übersicht. Fix: `DEDUP_FILTER` um V/T→G/D erweitert (gleiche VIN + Vertragsdatum); 12-Monats-EZ-Regel nun auch für V (nicht nur T): VFW > 12 Monate ab EZ = GW. Betrifft `_NW_GW_CASE_ART`, `_NW_SUM_CASE`, `_GW_SUM_CASE`, alle Inline-Dedups in `get_auftragseingang_detail`, `get_auslieferung_detail`, `get_verkaufer_performance`, `get_db_marken_split_monat`. Python-Kategorisierung in Detail-Funktionen nutzt jetzt SQL `CASE` mit EZ-Regel statt harter `dealer_vehicle_type`-Zuordnung.
 - 🔧 **Test mit Anton (Verkaufsleiter)** geplant (nächster Schritt).
+- ✅ **Verkäufer-Zeitstrahl im Auftragseingang (2026-04-02):** Persönlicher NW/GW-Zielfortschritt pro Verkäufer. **Monatsansicht:** Hero-Card (Einzelverkäufer) mit NW-Box (Monatsziel + Fortschrittsbalken + kum. NW-Reminder aus Zielprämie) + GW-Box + Mini-Timeline (12 Monate, farbig nach kum. NW-Erfüllung); VKL-Tabelle mit Inline-Fortschrittsbalken pro Verkäufer (Ziel NW + kum. Reminder, Ziel GW). **Jahresansicht:** Kum.-Reminder im bestehenden NW-Box; VKL-Tabelle mit NW/GW-Jahresziel-Balken + kum. Reminder. Sichtbarkeit: Verkäufer sieht nur eigene (feature_filter_mode), VKL/GL sehen alle. Farben: grün ≥100%, orange ≥75%, rot <75%. Darstellung: Soll/Ist (Ziel vorne). API: `GET /api/verkauf/auftragseingang/zeitstrahl` kombiniert Monatsziele, kum. NW-Ziel (SSOT `get_nw_ziel_verkaeufer_monat`), kum. IST aus Auftragseingang, Jahresziele. Spec: `docs/superpowers/specs/2026-04-02-verkaufer-zeitstrahl-design.md`, Mockup: `static/mockups/zeitstrahl_verkauf_v3.html`.
+- ✅ **Kaufmännische Rundung Monatsziele (2026-04-02):** Bug in `get_monatsziele_konzern_dict()`: `int()` schnitt ab statt kaufmännisch zu runden. Fix: `math.floor(x + 0.5)` — konsistent mit `get_nw_ziel_verkaeufer_monat()`. Betraf z.B. Roland März: 90 × 7.78% = 7.002 → war 6, jetzt 7.
 
 ## Offene Entscheidungen / Nächste Schritte
 
+- **Zeitstrahl Feinschliff:** Feedback aus Praxistest einarbeiten (Layout, Farben, zusätzliche Kennzahlen).
 - **VFW-Vermarktung:** Offene Punkte aus `VFW_VERMARKTUNG_IMPLEMENTIERUNGSPLAN.md` klären (VFW-Definition V/D/T, Ampelschwellen, LBO/CSI-Quellen, Snapshot vs. Live); danach Phase 1 starten.
 - **Verkäufer-Zielplanung:** Test mit Anton (Verkaufsleiter) durchführen; Feedback einarbeiten.
 - AHK-Portal (Die Autohauskenner): Keine REST-API gefunden; Integration nur via Link/Deep-Link sinnvoll. Siehe `AHK_PORTAL_ANALYSE.md`.
