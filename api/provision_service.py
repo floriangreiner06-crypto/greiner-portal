@@ -305,7 +305,7 @@ def get_kumulierte_zielpraemie_daten(vkb: int, monat: str, config: Dict[str, Any
             monats_ziel = ziel_m
             monats_ist = ist_m
 
-    gate = monats_ziel > 0 and monats_ist >= monats_ziel
+    gate = kum_ziel > 0 and kum_ist >= kum_ziel and monats_ist >= monats_ziel
     ziel_eur = float(config.get('zielerreichung_betrag') or 0) if gate else 0.0
     monats_ueber = max(0, monats_ist - monats_ziel) if gate else 0
     ueber_eur_pro_stueck = float(config.get('stueck_praemie') or 0)
