@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockup v2: Verkäufer-Zeitstrahl Auftragseingang</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background: #f5f6fa; font-family: 'Segoe UI', sans-serif; }
+        .mockup-label {
+            background: #6f42c1; color: #fff; padding: 4px 12px; border-radius: 4px;
+            font-size: 0.75rem; font-weight: 600; display: inline-block; margin-bottom: 8px;
+        }
+        .section-divider {
+            border-top: 3px dashed #6f42c1; margin: 40px 0 20px; position: relative;
+        }
+        .section-divider::after {
+            content: attr(data-label); position: absolute; top: -12px; left: 20px;
+            background: #6f42c1; color: #fff; padding: 2px 12px; border-radius: 4px;
+            font-size: 0.75rem; font-weight: 600;
+        }
+
+        /* Farben: Grün=erreicht, Orange=auf Kurs, Rot=unter Ziel */
+        .color-ok { color: #198754; }       /* grün */
+        .color-warn { color: #e67e22; }     /* kräftiges Orange statt Gelb */
+        .color-danger { color: #dc3545; }   /* rot */
+        .bg-ok { background: #198754; }
+        .bg-warn { background: #e67e22; }
+        .bg-danger { background: #dc3545; }
+
+        /* Hero Card */
+        .hero-zeitstrahl { border-left: 4px solid #0d6efd; }
+        .hero-zeitstrahl .ziel-box {
+            background: #f8f9fa; border-radius: 8px; padding: 12px 16px; text-align: center;
+        }
+        .hero-zeitstrahl .ziel-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
+        .hero-zeitstrahl .ziel-wert { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+        .hero-zeitstrahl .ziel-sub { font-size: 0.8rem; color: #6c757d; }
+
+        /* Mini-Timeline */
+        .mini-timeline { display: flex; gap: 3px; align-items: flex-end; height: 40px; }
+        .mini-timeline .month-bar {
+            flex: 1; border-radius: 2px 2px 0 0; position: relative; min-width: 0;
+            transition: all 0.2s;
+        }
+        .mini-timeline .month-bar.current { outline: 2px solid #0d6efd; outline-offset: 1px; }
+        .mini-timeline .month-bar.future { background: #e9ecef !important; opacity: 0.5; }
+        .mini-timeline-labels { display: flex; gap: 3px; }
+        .mini-timeline-labels span {
+            flex: 1; text-align: center; font-size: 0.6rem; color: #6c757d;
+        }
+        .mini-timeline-labels span.current { font-weight: 700; color: #0d6efd; }
+
+        /* Inline-Balken in Tabelle */
+        .inline-progress {
+            height: 18px; border-radius: 3px; background: #e9ecef;
+            position: relative; min-width: 80px;
+        }
+        .inline-progress-bar {
+            height: 100%; border-radius: 3px; transition: width 0.3s;
+        }
+        .inline-progress-text {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; font-weight: 600; color: #333;
+        }
+
+        /* Kumulierte Jahres-Timeline Dots */
+        .kum-timeline { display: flex; gap: 2px; margin-top: 4px; }
+        .kum-timeline .kum-dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        }
+        .kum-timeline .kum-dot.current { width: 10px; height: 10px; outline: 2px solid #0d6efd; }
+
+        /* Monats-Detail-Tabelle */
+        .detail-table { font-size: 0.7rem; }
+        .detail-table th { font-weight: 600; padding: 3px 4px !important; }
+        .detail-table td { padding: 3px 4px !important; }
+        .detail-table .current-month { background: #dbeafe !important; }
+        .detail-table .future { color: #adb5bd; }
+        .detail-table .kum-row td { border-top: 2px solid #333; font-weight: 600; }
+    </style>
+</head>
+<body>
+<div class="container-fluid mt-3">
+    <div class="alert alert-info mb-4">
+        <strong><i class="bi bi-palette"></i> MOCKUP v2</strong> — Kräftiges Orange statt Gelb. NW mit kumulierten Zielen (Zielprämie). GW mit normalem Jahresziel.
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- TEIL 1: MONATSANSICHT -->
+    <!-- ============================================================== -->
+    <div class="section-divider" data-label="MONATSANSICHT — April 2026"></div>
+
+    <!-- Hero-Card: Persönlicher Monatsfortschritt -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card hero-zeitstrahl shadow-sm">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <h5 class="mb-1"><i class="bi bi-person-circle text-primary"></i> Dein Monatsfortschritt</h5>
+                            <p class="text-muted mb-0" style="font-size:0.85rem;">April 2026 — Roland Huber</p>
+                        </div>
+                        <!-- NW: Monatsziel aus Zielprämie -->
+                        <div class="col-md-4">
+                            <div class="ziel-box">
+                                <div class="ziel-label">Neuwagen (Monat)</div>
+                                <div class="ziel-wert color-warn">8 <small class="text-muted" style="font-size:0.9rem;">/ 12</small></div>
+                                <div class="progress mt-1" style="height: 8px;">
+                                    <div class="progress-bar bg-warn" style="width: 67%;"></div>
+                                </div>
+                                <div class="ziel-sub mt-1">67% Zielerfüllung</div>
+                                <!-- Kumuliert darunter -->
+                                <div class="mt-2 pt-2 border-top" style="font-size:0.78rem;">
+                                    <i class="bi bi-arrow-right-circle"></i> <strong>Kumuliert Jan–Apr:</strong>
+                                    <span class="color-warn fw-bold">33</span> / 42
+                                    <span class="color-warn">(79%)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- GW: normales Monatsziel -->
+                        <div class="col-md-4">
+                            <div class="ziel-box">
+                                <div class="ziel-label">Gebrauchtwagen (Monat)</div>
+                                <div class="ziel-wert color-warn">3 <small class="text-muted" style="font-size:0.9rem;">/ 5</small></div>
+                                <div class="progress mt-1" style="height: 8px;">
+                                    <div class="progress-bar bg-warn" style="width: 60%;"></div>
+                                </div>
+                                <div class="ziel-sub mt-1">60% Zielerfüllung</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Mini-Timeline: Jahresverlauf NW kumuliert -->
+                    <div class="mt-3 pt-2 border-top">
+                        <small class="text-muted"><i class="bi bi-calendar3"></i> Jahresverlauf NW — kumulierte Zielerfüllung pro Monat</small>
+                        <div class="mini-timeline mt-1">
+                            <div class="month-bar bg-ok" style="height:90%;" title="Jan: 11/10 (110%)"></div>
+                            <div class="month-bar bg-ok" style="height:80%;" title="Feb: 20/19 kum (105%)"></div>
+                            <div class="month-bar bg-warn" style="height:55%;" title="Mär: 25/30 kum (83%)"></div>
+                            <div class="month-bar bg-warn current" style="height:45%;" title="Apr: 33/42 kum (79%)"></div>
+                            <div class="month-bar future" style="height:15%;"></div>
+                            <div class="month-bar future" style="height:15%;"></div>
+                            <div class="month-bar future" style="height:15%;"></div>
+                            <div class="month-bar future" style="height:15%;"></div>
+                            <div class="month-bar future" style="height:15%;"></div>
+                            <div class="month-bar future" style="height:15%;"></div>
+                            <div class="month-bar future" style="height:15%;"></div>
+                            <div class="month-bar future" style="height:15%;"></div>
+                        </div>
+                        <div class="mini-timeline-labels">
+                            <span>J</span><span>F</span><span>M</span><span class="current">A</span>
+                            <span>M</span><span>J</span><span>J</span><span>A</span>
+                            <span>S</span><span>O</span><span>N</span><span>D</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Verkäufer-Tabelle mit Inline-Balken (Monatsansicht, VKL-Sicht) -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <span class="mockup-label">VKL/GL-Sicht: Tabelle mit Inline-Balken (Monat)</span>
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Verkäufer-Übersicht — April 2026</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Verkäufer</th>
+                                <th class="text-center">NW</th>
+                                <th class="text-center">VFW</th>
+                                <th class="text-center">GW</th>
+                                <th class="text-center">Gesamt</th>
+                                <th style="min-width:150px;">Ziel NW (kum.)</th>
+                                <th style="min-width:140px;">Ziel GW</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Huber Roland</strong></td>
+                                <td class="text-center">8</td>
+                                <td class="text-center">1</td>
+                                <td class="text-center">3</td>
+                                <td class="text-center"><strong>12</strong></td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-warn" style="width:79%;"></div>
+                                        <div class="inline-progress-text">33/42 kum (79%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-warn" style="width:60%;"></div>
+                                        <div class="inline-progress-text">3/5 (60%)</div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Meier Thomas</strong></td>
+                                <td class="text-center">5</td>
+                                <td class="text-center">0</td>
+                                <td class="text-center">7</td>
+                                <td class="text-center"><strong>12</strong></td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-ok" style="width:100%;"></div>
+                                        <div class="inline-progress-text">35/32 kum (109%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-ok" style="width:100%;"></div>
+                                        <div class="inline-progress-text">7/6 (117%)</div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Schmidt Anna</strong></td>
+                                <td class="text-center">2</td>
+                                <td class="text-center">1</td>
+                                <td class="text-center">1</td>
+                                <td class="text-center"><strong>4</strong></td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-danger" style="width:50%;"></div>
+                                        <div class="inline-progress-text">16/28 kum (57%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-danger" style="width:25%;"></div>
+                                        <div class="inline-progress-text">1/4 (25%)</div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- TEIL 2: JAHRESANSICHT -->
+    <!-- ============================================================== -->
+    <div class="section-divider" data-label="JAHRESANSICHT — Kalenderjahr 2026"></div>
+
+    <!-- Hero-Card: Persönlicher Jahresfortschritt -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card hero-zeitstrahl shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h5 class="mb-1"><i class="bi bi-trophy" style="color:#e67e22;"></i> Dein Jahresfortschritt 2026</h5>
+                            <p class="text-muted mb-0" style="font-size:0.85rem;">Roland Huber — Kalenderjahr</p>
+                        </div>
+                        <span class="badge fs-6" style="background:#e67e22;">79% NW kum.</span>
+                    </div>
+
+                    <div class="row g-3">
+                        <!-- NW Jahresfortschritt mit kumuliertem Ziel -->
+                        <div class="col-md-6">
+                            <div class="ziel-box">
+                                <div class="ziel-label">Neuwagen — kumuliertes Ziel (Zielprämie)</div>
+                                <div class="ziel-wert">
+                                    <span class="color-warn">33</span>
+                                    <small class="text-muted" style="font-size:0.9rem;">/ 42 kum. Ziel</small>
+                                </div>
+                                <div class="progress mt-2" style="height: 10px;">
+                                    <div class="progress-bar bg-warn" style="width: 79%;"></div>
+                                </div>
+                                <div class="ziel-sub mt-1">79% kumulierte Zielerfüllung &middot; Jahresziel: 120</div>
+
+                                <!-- Monats-Detail mit Kumuliert-Zeile -->
+                                <div class="mt-3">
+                                    <table class="table table-sm table-bordered detail-table mb-0">
+                                        <thead>
+                                            <tr class="table-light">
+                                                <th></th>
+                                                <th>Jan</th><th>Feb</th><th>Mär</th><th class="current-month">Apr</th>
+                                                <th>Mai</th><th>Jun</th><th>Jul</th><th>Aug</th>
+                                                <th>Sep</th><th>Okt</th><th>Nov</th><th>Dez</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td class="fw-bold">Monat</td>
+                                                <td><span class="color-ok">11</span>/10</td>
+                                                <td><span class="color-ok">9</span>/9</td>
+                                                <td><span class="color-danger">5</span>/11</td>
+                                                <td class="current-month"><strong><span class="color-warn">8</span>/12</strong></td>
+                                                <td class="future">-/11</td>
+                                                <td class="future">-/10</td>
+                                                <td class="future">-/8</td>
+                                                <td class="future">-/9</td>
+                                                <td class="future">-/10</td>
+                                                <td class="future">-/11</td>
+                                                <td class="future">-/10</td>
+                                                <td class="future">-/9</td>
+                                            </tr>
+                                            <tr class="kum-row">
+                                                <td class="fw-bold">Kum.</td>
+                                                <td><span class="color-ok">11</span>/10</td>
+                                                <td><span class="color-ok">20</span>/19</td>
+                                                <td><span class="color-warn">25</span>/30</td>
+                                                <td class="current-month"><strong><span class="color-warn">33</span>/42</strong></td>
+                                                <td class="future">-/53</td>
+                                                <td class="future">-/63</td>
+                                                <td class="future">-/71</td>
+                                                <td class="future">-/80</td>
+                                                <td class="future">-/90</td>
+                                                <td class="future">-/101</td>
+                                                <td class="future">-/111</td>
+                                                <td class="future">-/120</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- GW Jahresfortschritt mit normalem Jahresziel -->
+                        <div class="col-md-6">
+                            <div class="ziel-box">
+                                <div class="ziel-label">Gebrauchtwagen — Jahresziel</div>
+                                <div class="ziel-wert">
+                                    <span class="color-ok">21</span>
+                                    <small class="text-muted" style="font-size:0.9rem;">/ 60 Jahresziel</small>
+                                </div>
+                                <div class="progress mt-2" style="height: 10px;">
+                                    <div class="progress-bar bg-ok" style="width: 35%;"></div>
+                                </div>
+                                <div class="ziel-sub mt-1">35% Zielerfüllung</div>
+
+                                <!-- Monats-Detail GW (nur Monat, keine Kum.-Zeile) -->
+                                <div class="mt-3">
+                                    <table class="table table-sm table-bordered detail-table mb-0">
+                                        <thead>
+                                            <tr class="table-light">
+                                                <th></th>
+                                                <th>Jan</th><th>Feb</th><th>Mär</th><th class="current-month">Apr</th>
+                                                <th>Mai</th><th>Jun</th><th>Jul</th><th>Aug</th>
+                                                <th>Sep</th><th>Okt</th><th>Nov</th><th>Dez</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td class="fw-bold">Monat</td>
+                                                <td><span class="color-ok">6</span>/5</td>
+                                                <td><span class="color-ok">7</span>/5</td>
+                                                <td><span class="color-ok">5</span>/5</td>
+                                                <td class="current-month"><strong><span class="color-warn">3</span>/5</strong></td>
+                                                <td class="future">-/5</td>
+                                                <td class="future">-/5</td>
+                                                <td class="future">-/5</td>
+                                                <td class="future">-/5</td>
+                                                <td class="future">-/5</td>
+                                                <td class="future">-/5</td>
+                                                <td class="future">-/5</td>
+                                                <td class="future">-/5</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Verkäufer-Tabelle Jahresansicht (VKL/GL-Sicht) -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <span class="mockup-label">VKL/GL-Sicht: Kompakt-Tabelle Jahresfortschritt</span>
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Verkäufer-Übersicht — Kalenderjahr 2026</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Verkäufer</th>
+                                <th class="text-center">NW Ist</th>
+                                <th class="text-center">GW Ist</th>
+                                <th class="text-center">Gesamt</th>
+                                <th style="min-width:170px;">NW kum. Ziel (Zielprämie)</th>
+                                <th style="min-width:160px;">GW Jahresziel</th>
+                                <th style="min-width:100px;">NW Timeline</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Huber Roland</strong></td>
+                                <td class="text-center">33</td>
+                                <td class="text-center">21</td>
+                                <td class="text-center"><strong>54</strong></td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-warn" style="width:79%;"></div>
+                                        <div class="inline-progress-text">33/42 kum (79%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-ok" style="width:35%;"></div>
+                                        <div class="inline-progress-text">21/60 (35%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="kum-timeline" title="NW kum. Zielerfüllung pro Monat">
+                                        <div class="kum-dot bg-ok" title="Jan: 110%"></div>
+                                        <div class="kum-dot bg-ok" title="Feb: 105%"></div>
+                                        <div class="kum-dot bg-warn" title="Mär: 83%"></div>
+                                        <div class="kum-dot bg-warn current" title="Apr: 79%"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Meier Thomas</strong></td>
+                                <td class="text-center">28</td>
+                                <td class="text-center">30</td>
+                                <td class="text-center"><strong>58</strong></td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-ok" style="width:100%;"></div>
+                                        <div class="inline-progress-text">35/32 kum (109%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-ok" style="width:43%;"></div>
+                                        <div class="inline-progress-text">30/70 (43%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="kum-timeline" title="NW kum. Zielerfüllung pro Monat">
+                                        <div class="kum-dot bg-ok"></div>
+                                        <div class="kum-dot bg-ok"></div>
+                                        <div class="kum-dot bg-ok"></div>
+                                        <div class="kum-dot bg-ok current"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Schmidt Anna</strong></td>
+                                <td class="text-center">15</td>
+                                <td class="text-center">12</td>
+                                <td class="text-center"><strong>27</strong></td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-danger" style="width:54%;"></div>
+                                        <div class="inline-progress-text">15/28 kum (54%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="inline-progress">
+                                        <div class="inline-progress-bar bg-danger" style="width:24%;"></div>
+                                        <div class="inline-progress-text">12/50 (24%)</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="kum-timeline" title="NW kum. Zielerfüllung pro Monat">
+                                        <div class="kum-dot bg-warn"></div>
+                                        <div class="kum-dot bg-danger"></div>
+                                        <div class="kum-dot bg-danger"></div>
+                                        <div class="kum-dot bg-danger current"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                        <div class="kum-dot" style="background:#e9ecef;"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legende -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body py-2">
+                    <strong>Farblegende:</strong>
+                    <span class="badge bg-ok ms-2">100%+</span> Ziel erreicht
+                    <span class="badge bg-warn ms-2">75–99%</span> Auf Kurs
+                    <span class="badge bg-danger ms-2">&lt;75%</span> Unter Ziel
+                    <span class="badge ms-2" style="background:#e9ecef; color:#999;">&#9675;</span> Zukunft
+                    <span class="ms-3"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;outline:2px solid #0d6efd;background:#e67e22;"></span> = Aktueller Monat</span>
+                    <span class="ms-3">|</span>
+                    <span class="ms-3"><strong>NW:</strong> Kumuliertes Ziel (wie Zielprämie)</span>
+                    <span class="ms-2"><strong>GW:</strong> Normales Monatsziel</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
