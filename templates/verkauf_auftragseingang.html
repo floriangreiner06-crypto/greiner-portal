@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Auftragseingang - Greiner DRIVE{% endblock %}
 {% block content %}
+<style>
+.mini-timeline { display:flex; gap:3px; align-items:flex-end; height:40px; }
+.mini-timeline .month-bar { flex:1; border-radius:2px 2px 0 0; min-width:0; transition:all 0.2s; }
+.mini-timeline .month-bar.current { outline:2px solid #0d6efd; outline-offset:1px; }
+.mini-timeline .month-bar.future { background:#e9ecef !important; opacity:0.5; }
+.mini-timeline-labels { display:flex; gap:3px; }
+.mini-timeline-labels span { flex:1; text-align:center; font-size:0.6rem; color:#6c757d; }
+.mini-timeline-labels span.current { font-weight:700; color:#0d6efd; }
+.inline-progress { height:18px; border-radius:3px; background:#e9ecef; position:relative; min-width:80px; }
+.inline-progress-bar { height:100%; border-radius:3px; }
+.inline-progress-text { position:absolute; top:0;left:0;right:0;bottom:0; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:600; color:#333; }
+.inline-kum { font-size:0.62rem; color:#888; text-align:center; margin-top:1px; }
+</style>
 <div class="container-fluid mt-4">
     <div class="row mb-4">
         <div class="col-12">
@@ -126,7 +139,14 @@
             </div>
         </div>
     </div>
-    
+
+    <!-- Zeitstrahl Hero-Card -->
+    <div class="row mb-4" id="zeitstrahlHeroRow" style="display:none;">
+        <div class="col-12">
+            <div id="zeitstrahlHeroContainer"></div>
+        </div>
+    </div>
+
     <!-- Zusammenfassung -->
     <div class="row mb-4">
         <div class="col-md-12">
@@ -198,6 +218,8 @@ let currentPeriod = 'month';
 let currentDay = '';
 let lastTotalAE = 0; // Für Prognose-Berechnung
 let monatszieleData = null; // Zielerfüllung: Monatsziele (nur bei Monatsansicht)
+let zeitstrahlData = null; // Zeitstrahl: Zieldaten pro Verkäufer
+let lastDetailData = null; // Letzte Detail-Daten für Hero-Card
 
 document.addEventListener('DOMContentLoaded', function() {
     // Aktuelles Datum setzen
@@ -342,6 +364,17 @@ async function loadData() {
         monatszieleData = null;
     }
 
+    // Zeitstrahl-Daten laden
+    try {
+        const zsMonat = currentPeriod === 'month' ? currentMonth : new Date().getMonth() + 1;
+        const zsJahr = currentPeriod === 'fiscal' ? (new Date().getMonth() >= 8 ? new Date().getFullYear() : new Date().getFullYear() - 1) : currentYear;
+        let zsUrl = `/api/verkauf/auftragseingang/zeitstrahl?jahr=${currentPeriod === 'month' ? currentYear : zsJahr}&monat=${zsMonat}`;
+        if (currentLocation) zsUrl += `&location=${currentLocation}`;
+        const zsRes = await fetch(zsUrl);
+        const zsJson = await zsRes.json();
+        zeitstrahlData = zsJson.success ? zsJson.verkaufer : null;
+    } catch(e) { zeitstrahlData = null; }
+
     await loadSummary();
     await loadDetails();
 
@@ -368,6 +401,9 @@ async function loadData() {
     } else {
         zielRow.style.display = 'none';
     }
+
+    // Zeitstrahl Hero-Card rendern
+    renderZeitstrahlHeroCard();
 }
 
 // Werktage-Berechnung (Mo-Fr)
@@ -653,6 +689,8 @@ async function loadDetails() {
             return;
         }
 
+        lastDetailData = data;
+
         if (!data.verkaufer || data.verkaufer.length === 0) {
             container.innerHTML = '<div class="alert alert-info">Keine Daten für diesen Zeitraum</div>';
             return;
@@ -663,10 +701,17 @@ async function loadDetails() {
             monatszieleData.ziele.forEach(z => { zieleByNr[z.mitarbeiter_nr] = z; });
         }
         const hasZiele = Object.keys(zieleByNr).length > 0;
+        const hasZeitstrahl = zeitstrahlData && zeitstrahlData.length > 0;
 
         let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
         html += '<thead class="table-dark"><tr><th>Verkäufer</th><th class="text-center">Neu</th><th class="text-center">Test/Vorführ</th><th class="text-center">Gebraucht</th><th class="text-center">Gesamt</th>';
-        if (hasZiele) html += '<th class="text-center">Ziel NW</th><th class="text-center">Ziel GW</th><th class="text-center">Erfüllung</th>';
+        if (hasZeitstrahl && (currentPeriod === 'month')) {
+            html += '<th style="min-width:150px;">Ziel NW</th><th style="min-width:140px;">Ziel GW</th>';
+        } else if (hasZeitstrahl && (currentPeriod === 'year' || currentPeriod === 'fiscal')) {
+            html += '<th style="min-width:160px;">NW Jahresziel</th><th style="min-width:160px;">GW Jahresziel</th>';
+        } else if (hasZiele) {
+            html += '<th class="text-center">Ziel NW</th><th class="text-center">Ziel GW</th><th class="text-center">Erfüllung</th>';
+        }
         html += '<th>Modelle</th></tr></thead><tbody>';
 
         data.verkaufer.forEach(vk => {
@@ -674,7 +719,37 @@ async function loadDetails() {
             const istGw = vk.summe_gebraucht || 0;
             const ziel = zieleByNr[vk.verkaufer_nummer];
             let zielCells = '';
-            if (hasZiele) {
+            if (hasZeitstrahl) {
+                const zsVk = zeitstrahlData.find(z => String(z.mitarbeiter_nr) === String(vk.verkaufer_nummer));
+                if (zsVk) {
+                    if (currentPeriod === 'month') {
+                        const pctNw = zsVk.monats_ziel_nw > 0 ? Math.round((istNw / zsVk.monats_ziel_nw) * 100) : 0;
+                        const pctGw = zsVk.monats_ziel_gw > 0 ? Math.round((istGw / zsVk.monats_ziel_gw) * 100) : 0;
+                        const kumPct = zsVk.kum_ziel_nw > 0 ? Math.round((zsVk.kum_ist_nw / zsVk.kum_ziel_nw) * 100) : 0;
+                        const kumCheck = kumPct >= 100 ? ' <span style="color:#198754;">&#10003;</span>' : '';
+                        zielCells = `<td>
+                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctNw,100)}%;background:${zeitstrahlColor(pctNw)};"></div><div class="inline-progress-text">${istNw}/${zsVk.monats_ziel_nw} (${pctNw}%)</div></div>
+                            <div class="inline-kum">kum. ${zsVk.kum_ist_nw}/${zsVk.kum_ziel_nw} (${kumPct}%)${kumCheck}</div>
+                        </td><td>
+                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctGw,100)}%;background:${zeitstrahlColor(pctGw)};"></div><div class="inline-progress-text">${istGw}/${zsVk.monats_ziel_gw} (${pctGw}%)</div></div>
+                        </td>`;
+                    } else {
+                        // year/fiscal
+                        const pctNw = zsVk.jahres_ziel_nw > 0 ? Math.round((istNw / zsVk.jahres_ziel_nw) * 100) : 0;
+                        const pctGw = zsVk.jahres_ziel_gw > 0 ? Math.round((istGw / zsVk.jahres_ziel_gw) * 100) : 0;
+                        const kumPct = zsVk.kum_ziel_nw > 0 ? Math.round((zsVk.kum_ist_nw / zsVk.kum_ziel_nw) * 100) : 0;
+                        const kumCheck = kumPct >= 100 ? ' <span style="color:#198754;">&#10003;</span>' : '';
+                        zielCells = `<td>
+                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctNw,100)}%;background:${zeitstrahlColor(pctNw)};"></div><div class="inline-progress-text">${istNw}/${zsVk.jahres_ziel_nw} (${pctNw}%)</div></div>
+                            <div class="inline-kum">kum. ${zsVk.kum_ist_nw}/${zsVk.kum_ziel_nw} (${kumPct}%)${kumCheck}</div>
+                        </td><td>
+                            <div class="inline-progress"><div class="inline-progress-bar" style="width:${Math.min(pctGw,100)}%;background:${zeitstrahlColor(pctGw)};"></div><div class="inline-progress-text">${istGw}/${zsVk.jahres_ziel_gw} (${pctGw}%)</div></div>
+                        </td>`;
+                    }
+                } else {
+                    zielCells = '<td>-</td><td>-</td>';
+                }
+            } else if (hasZiele) {
                 if (ziel) {
                     const zn = ziel.ziel_nw || 0;
                     const zg = ziel.ziel_gw || 0;
@@ -690,7 +765,7 @@ async function loadDetails() {
                 '<td class="text-center"><span class="badge bg-warning text-dark">' + (vk.summe_test_vorfuehr || 0) + '</span></td>' +
                 '<td class="text-center"><span class="badge bg-secondary">' + (vk.summe_gebraucht || 0) + '</span></td>' +
                 '<td class="text-center"><strong>' + (vk.summe_gesamt || 0) + '</strong></td>' +
-                (hasZiele ? zielCells : '') +
+                (hasZeitstrahl || hasZiele ? zielCells : '') +
                 '<td>' + formatModelle(vk) + '</td></tr>';
         });
 
@@ -782,6 +857,14 @@ async function loadZielauswertung(period, year, location, verkaufer, verkauferNa
                                     <div class="progress mt-1" style="height:4px;">
                                         <div class="progress-bar ${pctNw >= 100 ? 'bg-success' : 'bg-primary'}" style="width:${Math.min(pctNw, 100)}%;"></div>
                                     </div>
+                                    ${verkaufer && zeitstrahlData ? (() => {
+                                        const zsVk = zeitstrahlData.find(z => String(z.mitarbeiter_nr) === String(verkaufer));
+                                        if (zsVk && zsVk.kum_ziel_nw > 0) {
+                                            const kp = Math.round((zsVk.kum_ist_nw / zsVk.kum_ziel_nw) * 100);
+                                            return '<div style="font-size:0.65rem;color:#6c757d;margin-top:4px;padding-top:4px;border-top:1px dashed #dee2e6;"><i class="bi bi-bar-chart-steps"></i> kum. ' + zsVk.kum_ist_nw + '/' + zsVk.kum_ziel_nw + ' (' + kp + '%)</div>';
+                                        }
+                                        return '';
+                                    })() : ''}
                                 </div>
                             </div>
                             <div class="col">
@@ -928,6 +1011,118 @@ function formatCurrency(value) {
         style: 'currency',
         currency: 'EUR'
     }).format(value);
+}
+
+function zeitstrahlColor(pct) {
+    if (pct >= 100) return '#198754';
+    if (pct >= 75) return '#e67e22';
+    return '#dc3545';
+}
+
+function renderZeitstrahlHeroCard() {
+    const heroRow = document.getElementById('zeitstrahlHeroRow');
+    const container = document.getElementById('zeitstrahlHeroContainer');
+    if (!zeitstrahlData || !currentVerkaufer) {
+        heroRow.style.display = 'none';
+        return;
+    }
+    const zsVk = zeitstrahlData.find(z => String(z.mitarbeiter_nr) === String(currentVerkaufer));
+    if (!zsVk) { heroRow.style.display = 'none'; return; }
+
+    const monatNamen = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+    const vkName = zsVk.name || '';
+
+    if (currentPeriod === 'month') {
+        // Get monthly IST from lastDetailData
+        let monatIstNw = 0, monatIstGw = 0;
+        if (lastDetailData && lastDetailData.verkaufer) {
+            const vk = lastDetailData.verkaufer.find(v => String(v.verkaufer_nummer) === String(currentVerkaufer));
+            if (vk) {
+                monatIstNw = (vk.summe_neu || 0) + (vk.summe_test_vorfuehr || 0);
+                monatIstGw = vk.summe_gebraucht || 0;
+            }
+        }
+
+        const mzNw = zsVk.monats_ziel_nw;
+        const mzGw = zsVk.monats_ziel_gw;
+        const pctNw = mzNw > 0 ? Math.round((monatIstNw / mzNw) * 100) : 0;
+        const pctGw = mzGw > 0 ? Math.round((monatIstGw / mzGw) * 100) : 0;
+        const kumZiel = zsVk.kum_ziel_nw;
+        const kumIst = zsVk.kum_ist_nw;
+        const kumPct = kumZiel > 0 ? Math.round((kumIst / kumZiel) * 100) : 0;
+        const mName = monatNamen[parseInt(currentMonth) - 1] || '';
+        const mShort = mName.substring(0, 3);
+
+        container.innerHTML = `
+        <div class="card shadow-sm" style="border-left:4px solid #0d6efd;">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <h5 class="mb-1"><i class="bi bi-person-circle text-primary"></i> Dein Monatsfortschritt</h5>
+                        <p class="text-muted mb-0" style="font-size:0.85rem;">${mName} ${currentYear} — ${vkName}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <div style="background:#f8f9fa;border-radius:8px;padding:12px 16px;text-align:center;">
+                            <div style="font-size:0.75rem;color:#6c757d;text-transform:uppercase;">Neuwagen</div>
+                            <div style="font-size:1.8rem;font-weight:700;color:${zeitstrahlColor(pctNw)};">${monatIstNw} <small style="font-size:0.9rem;color:#6c757d;">/ ${mzNw}</small></div>
+                            <div class="progress mt-1" style="height:8px;"><div class="progress-bar" style="width:${Math.min(pctNw,100)}%;background:${zeitstrahlColor(pctNw)};"></div></div>
+                            <div style="font-size:0.8rem;color:#6c757d;" class="mt-1">${pctNw}% Zielerfüllung</div>
+                            <div style="font-size:0.72rem;color:#6c757d;margin-top:6px;padding-top:6px;border-top:1px dashed #dee2e6;">
+                                <i class="bi bi-bar-chart-steps"></i> Kum. Jan–${mShort}: <span style="font-weight:700;color:${zeitstrahlColor(kumPct)};">${kumIst}</span> / ${kumZiel} (${kumPct}%)
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div style="background:#f8f9fa;border-radius:8px;padding:12px 16px;text-align:center;">
+                            <div style="font-size:0.75rem;color:#6c757d;text-transform:uppercase;">Gebrauchtwagen</div>
+                            <div style="font-size:1.8rem;font-weight:700;color:${zeitstrahlColor(pctGw)};">${monatIstGw} <small style="font-size:0.9rem;color:#6c757d;">/ ${mzGw}</small></div>
+                            <div class="progress mt-1" style="height:8px;"><div class="progress-bar" style="width:${Math.min(pctGw,100)}%;background:${zeitstrahlColor(pctGw)};"></div></div>
+                            <div style="font-size:0.8rem;color:#6c757d;" class="mt-1">${pctGw}% Zielerfüllung</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3 pt-2 border-top" id="zeitstrahlMiniTimeline"></div>
+            </div>
+        </div>`;
+        heroRow.style.display = '';
+        loadZeitstrahlMiniTimeline(currentYear, currentVerkaufer);
+    } else {
+        // Year/fiscal view: hero card is handled by loadZielauswertung
+        heroRow.style.display = 'none';
+    }
+}
+
+async function loadZeitstrahlMiniTimeline(jahr, verkaufer) {
+    const container = document.getElementById('zeitstrahlMiniTimeline');
+    if (!container) return;
+    try {
+        const modus = currentPeriod === 'fiscal' ? 'geschaeftsjahr' : 'kalenderjahr';
+        let url = `/api/verkauf/auftragseingang/jahresuebersicht?jahr=${jahr}&modus=${modus}&verkaufer=${verkaufer}`;
+        if (currentLocation) url += `&location=${currentLocation}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.success || !data.monate) { container.innerHTML = ''; return; }
+
+        const now = new Date();
+        const aktMonat = now.getMonth() + 1;
+        const aktJahr = now.getFullYear();
+        const labels = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+        let barsHtml = '', labelsHtml = '';
+        data.monate.forEach(m => {
+            const kumPct = m.kum_ziel_nw > 0 ? Math.round((m.kum_ist_nw / m.kum_ziel_nw) * 100) : 0;
+            const isCurrent = m.monat === aktMonat && m.jahr === aktJahr;
+            const isFuture = m.ist_zukunft;
+            const height = isFuture ? 15 : Math.max(15, Math.min(90, kumPct));
+            const color = isFuture ? '' : `background:${zeitstrahlColor(kumPct)};`;
+            const cls = isFuture ? 'future' : (isCurrent ? 'current' : '');
+            barsHtml += `<div class="month-bar ${cls}" style="height:${height}%;${color}" title="${labels[m.monat-1]}: ${m.kum_ist_nw}/${m.kum_ziel_nw} kum (${kumPct}%)"></div>`;
+            labelsHtml += `<span class="${isCurrent ? 'current' : ''}">${labels[m.monat-1]}</span>`;
+        });
+        container.innerHTML = `
+            <small class="text-muted"><i class="bi bi-calendar3"></i> Jahresverlauf NW — kumulierte Zielerfüllung</small>
+            <div class="mini-timeline mt-1">${barsHtml}</div>
+            <div class="mini-timeline-labels">${labelsHtml}</div>`;
+    } catch(e) { container.innerHTML = ''; }
 }
 </script>
 {% endblock %}
