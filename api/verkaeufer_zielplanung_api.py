@@ -947,8 +947,8 @@ def get_monatsziele_konzern_dict(
         ziel_nw_konzern = 0
         ziel_gw_konzern = 0
         for v in gespeichert:
-            zn = int((v.get("ziel_nw") or 0) * nw_pct / 100)
-            zg = int((v.get("ziel_gw") or 0) * gw_pct / 100)
+            zn = math.floor((v.get("ziel_nw") or 0) * nw_pct / 100 + 0.5)
+            zg = math.floor((v.get("ziel_gw") or 0) * gw_pct / 100 + 0.5)
             ziele.append({
                 "mitarbeiter_nr": v["mitarbeiter_nr"],
                 "name": names.get(v["mitarbeiter_nr"], "") or f"Verkäufer #{v['mitarbeiter_nr']}",
@@ -977,8 +977,8 @@ def get_monatsziele_konzern_dict(
     ziel_nw_konzern = 0
     ziel_gw_konzern = 0
     for v in verteilung.get("verkaeufer", []):
-        zn = int((v.get("ziel_nw") or 0) * nw_pct / 100)
-        zg = int((v.get("ziel_gw") or 0) * gw_pct / 100)
+        zn = math.floor((v.get("ziel_nw") or 0) * nw_pct / 100 + 0.5)
+        zg = math.floor((v.get("ziel_gw") or 0) * gw_pct / 100 + 0.5)
         ziele.append({
             "mitarbeiter_nr": v["mitarbeiter_nr"],
             "name": v.get("name") or "",
