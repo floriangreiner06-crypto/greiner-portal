@@ -1511,12 +1511,12 @@
             var ef = document.getElementById('endlaufBereich');
             ef.style.display = 'block';
             document.getElementById('belegnummerVorschau').textContent = 'VK' + (l.verkaufer_id || '') + '-' + (l.abrechnungsmonat || '');
-            document.getElementById('efSumI').value = l.summe_kat_i || 0;
-            document.getElementById('efSumII').value = l.summe_kat_ii || 0;
-            document.getElementById('efSumIII').value = l.summe_kat_iii || 0;
-            document.getElementById('efSumIV').value = l.summe_kat_iv || 0;
-            document.getElementById('efSumV').value = l.summe_kat_v || 0;
-            document.getElementById('efSumGesamt').value = l.summe_gesamt || 0;
+            document.getElementById('efSumI').value = (l.summe_kat_i || 0).toFixed(2);
+            document.getElementById('efSumII').value = (l.summe_kat_ii || 0).toFixed(2);
+            document.getElementById('efSumIII').value = (l.summe_kat_iii || 0).toFixed(2);
+            document.getElementById('efSumIV').value = (l.summe_kat_iv || 0).toFixed(2);
+            document.getElementById('efSumV').value = (l.summe_kat_v || 0).toFixed(2);
+            document.getElementById('efSumGesamt').value = (l.summe_gesamt || 0).toFixed(2);
             document.getElementById('btnEndlauf').onclick = function() {
                 if (!confirm('Endlauf wirklich erstellen? Der Lauf wird danach gesperrt.')) return;
                 this.disabled = true;

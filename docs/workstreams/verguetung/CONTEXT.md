@@ -67,7 +67,7 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - Sehen nur eigene Provision über "Meine Provision"
 - Können bei ZUR_PRUEFUNG freigeben oder Einspruch einlegen
 
-## Aktueller Stand (erledigt am 2026-03-31)
+## Aktueller Stand (erledigt am 2026-04-02)
 - Provisionsabrechnung Phase 1+2 komplett
 - Detail-Seite Redesign: Accordion, Edit-Modal, Einkäufer-Umzuweisung, Vorbesitzer bei Kat IV
 - Zusatzleistungen (Kat. V) CRUD mit Modal, Bank-Dropdown (7 Banken), Anteil-% (Default 50%, manuell änderbar)
@@ -92,7 +92,12 @@ und Jahresprämie (Migration aus HR). Einheitliche Berechnung, Konfiguration und
 - **PDF Stk.-Dopplung behoben (2026-04-01):** `summary_row` in `provision_pdf.py` hängt "Stk." nur noch bei Zahlen an, nicht bei Text wie "erfüllt / +3 Stk.".
 - **Dashboard Monatspersistenz (2026-04-01):** Gewählter Monat wird als URL-Parameter (`?monat=YYYY-MM`) persistiert. Nach Aktionen (Vorlauf erstellen, aktualisieren, löschen) bleibt der Monat erhalten statt auf den aktuellen Monat zurückzuspringen. Detail-Seite übergibt Monat beim Zurücknavigieren ans Dashboard.
 
-- **PDF Jahresübersicht: Stückzahlen aus Auftragseingang (2026-04-01):** Stückzahlen in der Jahresübersicht (NW, TW/VFW, GW) kommen jetzt aus dem Auftragseingang (`sales.out_sales_contract_date`) statt aus `provision_positionen`. Aufteilung rein nach `dealer_vehicle_type` (N=NW, T/V=TW, D/G=GW), keine EZ-Regel. Dedup wie Standard (N→T/V, V/T→G/D). Provisionssumme bleibt aus `provision_laeufe`.
+- **PDF Jahresübersicht: nur ENDLAUF (2026-04-02):** Stückzahlen (NW, TW/VFW, GW) und Provisionssumme in der Jahresübersicht zählen nur Läufe mit `status = 'ENDLAUF'`. Vorläufe werden nicht mitgezählt — erst nach Endlauf-Erstellung fließen Fahrzeuge und Provision in die Jahresübersicht ein.
+- **Bemessungsgrundlage §25a-Fix (2026-04-02):** Bei Differenzbesteuerung (§25a) speichert Locosoft teilweise den Brutto als `invoices.total_net`. Fix: Wenn `rechnungsbetrag_netto == out_sale_price` (Brutto = "Netto"), wird `netto_vk_preis` (VK - Margin-MwSt) als Bemessungsgrundlage verwendet. Sonst `rechnungsbetrag_netto`. Betrifft alle Kategorien. Vorlauf-Aktualisierung schreibt jetzt auch `rg_netto` mit (vorher nur `bemessungsgrundlage`).
+- **Zielprämie: nur Monatsziel als Gate (2026-04-02):** Kumulierte 2-Gate-Regel entfernt. Gate prüft nur noch `monats_ist >= monats_ziel`. Kumulierte Daten (Kum. Ziel/IST) werden weiterhin angezeigt, sind aber kein Gate mehr. Wenn Monatsziel erreicht: Zielerreichung (200€) + Übererfüllung (je 100€/Stk.).
+- **Zielprämie live in Detail-API (2026-04-02):** `summe_stueckpraemie` und `summe_gesamt` in der Lauf-Detail-API werden live aus `kum_daten` berechnet, nicht nur aus DB gelesen. Summentabelle zeigt immer den aktuellen Wert, auch ohne Vorlauf-Aktualisierung.
+- **Endlauf-Summen Rundung (2026-04-02):** Alle Summenfelder im Endlauf-Bereich (Kat. I–V + Gesamt) werden auf 2 Dezimalstellen kaufmännisch gerundet (`toFixed(2)`).
+- **P1-Memo deaktiviert (bestätigt 2026-04-02):** `memo_p1_kategorie` in `provision_config` ist leer → P1-Handling komplett deaktiviert. N-Fahrzeuge mit P1 bleiben Kat. I, T/V bleiben Kat. II, G/D bleiben Kat. III. Keine Umkategorisierung.
 - **HTML-Preview Route (2026-04-01, WIP):** `/provision/pdf-preview/<lauf_id>` zeigt Provisionsabrechnung als HTML (Deckblatt + Detail + Jahresübersicht). Template: `templates/provision/provision_pdf_preview.html`. **FEHLER:** Route wirft aktuell einen Fehler — muss noch debuggt werden.
 
 ## Offene Punkte / Nächste Schritte

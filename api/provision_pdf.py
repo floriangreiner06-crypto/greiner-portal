@@ -95,12 +95,14 @@ def _lauf_daten(lauf_id: int) -> Optional[dict]:
             FROM provision_positionen pp
             JOIN provision_laeufe pl ON pp.lauf_id = pl.id
             WHERE pl.verkaufer_id = %s AND pl.abrechnungsmonat LIKE %s
+              AND pl.status = 'ENDLAUF'
         """, (vkb, f'{jahr}-%'))
         row_j = cur.fetchone()
         cur.execute("""
             SELECT COALESCE(SUM(summe_gesamt), 0) AS provision_jahr
             FROM provision_laeufe
             WHERE verkaufer_id = %s AND abrechnungsmonat LIKE %s
+              AND status = 'ENDLAUF'
         """, (vkb, f'{jahr}-%'))
         row_p = cur.fetchone()
         jahresuebersicht = {

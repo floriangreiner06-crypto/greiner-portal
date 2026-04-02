@@ -330,6 +330,12 @@ def lauf_detail(lauf_id):
             kum_daten = get_kumulierte_zielpraemie_daten(vkb_id, data['lauf']['abrechnungsmonat'], cfg_i)
     data['lauf']['kum_daten'] = kum_daten
     data['lauf']['zielpraemie_ausgeschlossen'] = ausgeschlossen
+    # Zielprämie live aktualisieren: DB-Wert kann veraltet sein, kum_daten ist immer aktuell
+    if kum_daten and kum_daten.get('stueckpraemie_gesamt') is not None:
+        old_stueck = float(data['lauf'].get('summe_stueckpraemie') or 0)
+        new_stueck = float(kum_daten['stueckpraemie_gesamt'])
+        data['lauf']['summe_stueckpraemie'] = new_stueck
+        data['lauf']['summe_gesamt'] = float(data['lauf'].get('summe_gesamt') or 0) - old_stueck + new_stueck
     return jsonify(data)
 
 

@@ -151,7 +151,8 @@ def get_sales_for_provision(vkb: int, monat: str) -> List[Dict[str, Any]]:
                         ELSE NULL END AS einkaeufer_name,
                    COALESCE(e2.provision_aktiv, true) AS einkaeufer_provision_aktiv,
                    s.memo,
-                   s.rechnungsbetrag_netto
+                   s.rechnungsbetrag_netto,
+                   s.out_sale_price
             FROM sales s
             LEFT JOIN loco_customers_suppliers c ON c.customer_number::text = NULLIF(TRIM(s.buyer_customer_no::text), '')
             LEFT JOIN employees e2 ON e2.locosoft_id = s.in_buy_salesman_number
@@ -304,7 +305,7 @@ def get_kumulierte_zielpraemie_daten(vkb: int, monat: str, config: Dict[str, Any
             monats_ziel = ziel_m
             monats_ist = ist_m
 
-    gate = kum_ziel > 0 and kum_ist >= kum_ziel and monats_ist >= monats_ziel
+    gate = monats_ziel > 0 and monats_ist >= monats_ziel
     ziel_eur = float(config.get('zielerreichung_betrag') or 0) if gate else 0.0
     monats_ueber = max(0, monats_ist - monats_ziel) if gate else 0
     ueber_eur_pro_stueck = float(config.get('stueck_praemie') or 0)
@@ -438,10 +439,16 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
                     kat = 'III_gebrauchtwagen'
             except (TypeError, ValueError):
                 pass
-        # Provisionsbasis: Rechnungsnetto (I rg_netto, II/VFW) = Rechnungsbetrag netto (invoices.total_net).
-        # Für GW (III): Fahrzeugnetto (netto_vk_preis), da Rechnung Zusätze enthalten kann (z. B. Garantie).
-        netto_invoice = _get_float(r, 'rechnungsbetrag_netto') if r.get('rechnungsbetrag_netto') is not None else _get_float(r, 'netto_vk_preis')
-        netto_vehicle = _get_float(r, 'netto_vk_preis') if r.get('netto_vk_preis') is not None else netto_invoice
+        # Provisionsbasis: Rechnungsnetto (invoices.total_net), aber bei §25a kann total_net = Brutto sein.
+        # Wenn rechnungsbetrag_netto == out_sale_price → Locosoft hat Brutto gespeichert → netto_vk_preis verwenden.
+        rg_netto = _get_float(r, 'rechnungsbetrag_netto')
+        vk_netto = _get_float(r, 'netto_vk_preis')
+        brutto = _get_float(r, 'out_sale_price')
+        if rg_netto and brutto and abs(rg_netto - brutto) < 0.01:
+            # rechnungsbetrag_netto = Brutto (§25a ohne echtes Netto) → netto_vk_preis verwenden
+            netto_invoice = vk_netto if vk_netto else rg_netto
+        else:
+            netto_invoice = rg_netto if rg_netto else vk_netto
         db = _get_float(r, 'deckungsbeitrag')
         vin = (r.get('vin') or '').strip()
         rg_nr = r.get('out_invoice_number')
@@ -467,11 +474,11 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
         p1_target = (cfg_i.get('memo_p1_kategorie') or '').strip()
         if kat == 'I_neuwagen' and memo_p1 and p1_target in ('II_testwagen', 'III_gebrauchtwagen'):
             if p1_target == 'III_gebrauchtwagen':
-                prov = calc_rg_netto_clamp(netto_vehicle, cfg_iii)
+                prov = calc_rg_netto_clamp(netto_invoice, cfg_iii)
                 summe_iii += prov
                 positionen_iii.append({
                     'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
-                    'rg_netto': netto_vehicle, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+                    'rg_netto': netto_invoice, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
                 })
             else:
                 prov = calc_rg_netto_clamp(netto_invoice, cfg_ii)
@@ -504,11 +511,11 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
                 'rg_netto': netto_invoice, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
             })
         elif kat == 'III_gebrauchtwagen':
-            prov = calc_rg_netto_clamp(netto_vehicle, cfg_iii)
+            prov = calc_rg_netto_clamp(netto_invoice, cfg_iii)
             summe_iii += prov
             positionen_iii.append({
                 'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
-                'rg_netto': netto_vehicle, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+                'rg_netto': netto_invoice, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
             })
             # DB2 Prov aus Bestand: zusätzlich für Einkäufer (antauschender VB), gleiches Geschäft
             if is_einkaeufer_this_vkb:
@@ -526,11 +533,11 @@ def berechne_live_provision(vkb: int, monat: str) -> Dict[str, Any]:
                 'deckungsbeitrag': db, 'bemessungsgrundlage': be2, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
             })
         else:
-            prov = calc_rg_netto_clamp(netto_vehicle, cfg_iii)
+            prov = calc_rg_netto_clamp(netto_invoice, cfg_iii)
             summe_iii += prov
             positionen_iii.append({
                 'vin': vin, 'rg_nr': rg_nr, 'modell': desc, 'rg_datum': rg_datum,
-                'rg_netto': netto_vehicle, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
+                'rg_netto': netto_invoice, 'provision': prov, 'fahrzeugart': typ or '', 'kaeufer_name': kaeufer, 'einkaeufer_name': einkaeufer,
             })
             if is_einkaeufer_this_vkb:
                 prov_iv, be2_iv = calc_gw_bestand(db, cfg_iv)
@@ -863,10 +870,10 @@ def aktualisiere_vorlauf(lauf_id: int) -> Dict[str, Any]:
                     # Nicht manuell geändert → Werte aktualisieren
                     cur.execute("""
                         UPDATE provision_positionen SET
-                            bemessungsgrundlage = %s, provisionssatz = %s,
+                            rg_netto = %s, bemessungsgrundlage = %s, provisionssatz = %s,
                             provision_berechnet = %s, provision_final = %s
                         WHERE id = %s
-                    """, (bem, satz, provision, provision, ex['id']))
+                    """, (rg_netto, bem, satz, provision, provision, ex['id']))
                     updated += 1
                 # Manuell geändert → nicht anfassen
             else:
