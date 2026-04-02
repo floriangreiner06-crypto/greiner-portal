@@ -564,6 +564,79 @@ def get_auftragseingang_summary():
         return jsonify(result), 500
 
 
+@verkauf_api.route('/auftragseingang/jahresuebersicht', methods=['GET'])
+@login_required
+def get_auftragseingang_jahresuebersicht():
+    """
+    GET /api/verkauf/auftragseingang/jahresuebersicht?jahr=2026&verkaufer=123&location=1
+    Liefert pro Monat: Ist NW/GW, Ziel NW/GW, kumuliert.
+    """
+    jahr = request.args.get('jahr', datetime.now().year, type=int)
+    location = request.args.get('location', type=int)
+    verkaufer = request.args.get('verkaufer', type=int)
+    modus = request.args.get('modus', 'kalenderjahr')
+    if _filter_mode_force_own('auftragseingang'):
+        verkaufer = _get_current_user_salesman_number()
+
+    try:
+        from api.verkaeufer_zielplanung_api import get_monatsziele_konzern_dict
+
+        if modus == 'geschaeftsjahr':
+            monatsbereiche = [
+                (jahr, 9), (jahr, 10), (jahr, 11), (jahr, 12),
+                (jahr + 1, 1), (jahr + 1, 2), (jahr + 1, 3), (jahr + 1, 4),
+                (jahr + 1, 5), (jahr + 1, 6), (jahr + 1, 7), (jahr + 1, 8),
+            ]
+        else:
+            monatsbereiche = [(jahr, m) for m in range(1, 13)]
+
+        aktueller_monat = datetime.now().month
+        aktuelles_jahr = datetime.now().year
+        monate = []
+        kum_ist_nw = kum_ist_gw = kum_ziel_nw = kum_ziel_gw = 0
+
+        for m_jahr, m_monat in monatsbereiche:
+            ist_data = VerkaufData.get_auftragseingang_summary(
+                month=m_monat, year=m_jahr, location=location, verkaufer=verkaufer)
+            ist_nw = ist_gw = 0
+            if ist_data.get('success'):
+                for marke in ist_data.get('summary', []):
+                    ist_nw += (marke.get('neu') or 0) + (marke.get('test_vorfuehr') or 0)
+                    ist_gw += marke.get('gebraucht') or 0
+
+            ziel_nw = ziel_gw = 0
+            ziele_data = get_monatsziele_konzern_dict(m_jahr, m_monat)
+            if ziele_data.get('success'):
+                if verkaufer and ziele_data.get('ziele'):
+                    vk_ziel = next((z for z in ziele_data['ziele'] if z['mitarbeiter_nr'] == verkaufer), None)
+                    if vk_ziel:
+                        ziel_nw = vk_ziel.get('ziel_nw') or 0
+                        ziel_gw = vk_ziel.get('ziel_gw') or 0
+                else:
+                    ziel_nw = ziele_data.get('ziel_nw_konzern') or 0
+                    ziel_gw = ziele_data.get('ziel_gw_konzern') or 0
+
+            kum_ist_nw += ist_nw
+            kum_ist_gw += ist_gw
+            kum_ziel_nw += ziel_nw
+            kum_ziel_gw += ziel_gw
+            ist_zukunft = (m_jahr > aktuelles_jahr) or (m_jahr == aktuelles_jahr and m_monat > aktueller_monat)
+
+            monate.append({
+                'jahr': m_jahr, 'monat': m_monat,
+                'ist_nw': ist_nw, 'ist_gw': ist_gw,
+                'ziel_nw': ziel_nw, 'ziel_gw': ziel_gw,
+                'kum_ist_nw': kum_ist_nw, 'kum_ist_gw': kum_ist_gw,
+                'kum_ziel_nw': kum_ziel_nw, 'kum_ziel_gw': kum_ziel_gw,
+                'ist_zukunft': ist_zukunft,
+            })
+
+        return jsonify({'success': True, 'jahr': jahr, 'modus': modus, 'verkaufer': verkaufer, 'monate': monate})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @verkauf_api.route('/auftragseingang/detail', methods=['GET'])
 @login_required
 def get_auftragseingang_detail():
@@ -1146,6 +1219,7 @@ def get_verkaufer_performance():
 
 
 @verkauf_api.route('/nw-pipeline', methods=['GET'])
+@login_required
 def get_nw_pipeline():
     """
     GET /api/verkauf/nw-pipeline?standort=1

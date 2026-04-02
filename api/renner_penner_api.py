@@ -580,9 +580,9 @@ def get_leichen():
             AND (ps.stock_level * ps.usage_value) >= %s
             -- Garantie/Gewährleistung ausschließen:
             AND pm.parts_type NOT IN (1, 60, 65)
-            AND UPPER(pm.description) NOT LIKE '%KAUTION%'
-            AND UPPER(pm.description) NOT LIKE '%RUECKLAUFTEIL%'
-            AND UPPER(pm.description) NOT LIKE '%ALTT%WERT%'
+            AND UPPER(pm.description) NOT LIKE '%%KAUTION%%'
+            AND UPPER(pm.description) NOT LIKE '%%RUECKLAUFTEIL%%'
+            AND UPPER(pm.description) NOT LIKE '%%ALTT%%WERT%%'
         """
         params = [min_wert]
 

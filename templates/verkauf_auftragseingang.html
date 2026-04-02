@@ -146,6 +146,13 @@
         </div>
     </div>
     
+    <!-- Zielauswertung (Jahres-/GJ-Ansicht) -->
+    <div class="row mb-4" id="zielauswertungRow" style="display:none;">
+        <div class="col-md-12">
+            <div id="zielauswertungContainer"></div>
+        </div>
+    </div>
+
     <!-- Verkäufer-Details -->
     <div class="row">
         <div class="col-md-12">
@@ -174,6 +181,7 @@
 const filterMode = {{ (filter_mode or 'all_filterable')|tojson }};
 const restrictToOwnSalesman = {{ 'true' if restrict_to_own_salesman else 'false' }};
 const forcedSalesmanNumber = {{ (salesman_number or 'null')|tojson }};
+const forcedSalesmanName = {{ (salesman_name or '')|tojson }};
 
 const now = new Date();
 let currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
@@ -340,6 +348,25 @@ async function loadData() {
     // Prognose berechnen (nur bei Monatsansicht)
     if (currentPeriod === 'month') {
         updatePrognose();
+    }
+
+    // Zielauswertung bei Jahres-/GJ-Ansicht
+    const zielRow = document.getElementById('zielauswertungRow');
+    if (currentPeriod === 'year' || currentPeriod === 'fiscal') {
+        zielRow.style.display = 'block';
+        let vkName = '';
+        if (currentVerkaufer) {
+            if (forcedSalesmanName && String(forcedSalesmanNumber) === currentVerkaufer) {
+                vkName = forcedSalesmanName;
+            } else {
+                const selEl = document.getElementById('verkauferSelect');
+                if (selEl && selEl.tagName === 'SELECT' && selEl.selectedIndex > 0)
+                    vkName = selEl.options[selEl.selectedIndex].text;
+            }
+        }
+        loadZielauswertung(currentPeriod, currentYear, currentLocation, currentVerkaufer, vkName);
+    } else {
+        zielRow.style.display = 'none';
     }
 }
 
@@ -510,8 +537,12 @@ async function loadSummary() {
         `;
         
         if (currentPeriod === 'month' && monatszieleData && monatszieleData.ziel_nw_konzern != null && monatszieleData.ziel_gw_konzern != null) {
-            const zNw = monatszieleData.ziel_nw_konzern;
-            const zGw = monatszieleData.ziel_gw_konzern;
+            let zNw = monatszieleData.ziel_nw_konzern;
+            let zGw = monatszieleData.ziel_gw_konzern;
+            if (currentVerkaufer && monatszieleData.ziele) {
+                const vkZiel = monatszieleData.ziele.find(z => String(z.mitarbeiter_nr) === String(currentVerkaufer));
+                if (vkZiel) { zNw = vkZiel.ziel_nw || 0; zGw = vkZiel.ziel_gw || 0; }
+            }
             const pctNw = zNw > 0 ? Math.round((istNW / zNw) * 100) : '-';
             const pctGw = zGw > 0 ? Math.round((istGW / zGw) * 100) : '-';
             html += '<div class="row mt-2"><div class="col-12"><p class="mb-0 small text-muted">Zielerfüllung (Zielplanung): <strong>NW</strong> ' + istNW + ' / ' + zNw + ' (' + pctNw + '%) &nbsp;|&nbsp; <strong>GW</strong> ' + istGW + ' / ' + zGw + ' (' + pctGw + '%)</p></div></div>';
@@ -671,27 +702,224 @@ async function loadDetails() {
     }
 }
 
+const MONATSNAMEN = ['', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+let _zielRequestId = 0;
+
+async function loadZielauswertung(period, year, location, verkaufer, verkauferName) {
+    const requestId = ++_zielRequestId;
+    const container = document.getElementById('zielauswertungContainer');
+    container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
+
+    try {
+        const modus = period === 'fiscal' ? 'geschaeftsjahr' : 'kalenderjahr';
+        let url = `/api/verkauf/auftragseingang/jahresuebersicht?jahr=${year}&modus=${modus}`;
+        if (location) url += `&location=${encodeURIComponent(location)}`;
+        if (verkaufer) url += `&verkaufer=${encodeURIComponent(verkaufer)}`;
+
+        const res = await fetch(url);
+        if (requestId !== _zielRequestId) return;
+        const data = await res.json();
+        if (!data.success) { container.innerHTML = ''; return; }
+
+        const monate = data.monate;
+        const hatZiele = monate.some(m => m.ziel_nw > 0 || m.ziel_gw > 0);
+        if (!hatZiele) { container.innerHTML = ''; document.getElementById('zielauswertungRow').style.display = 'none'; return; }
+
+        const vergangene = monate.filter(m => !m.ist_zukunft);
+        const letzter = vergangene.length > 0 ? vergangene[vergangene.length - 1] : null;
+        const totalIstNw = letzter ? letzter.kum_ist_nw : 0;
+        const totalIstGw = letzter ? letzter.kum_ist_gw : 0;
+        const totalZielNw = monate.reduce((s, m) => s + m.ziel_nw, 0);
+        const totalZielGw = monate.reduce((s, m) => s + m.ziel_gw, 0);
+        const totalIst = totalIstNw + totalIstGw;
+        const totalZiel = totalZielNw + totalZielGw;
+        const pctGes = totalZiel > 0 ? Math.round((totalIst / totalZiel) * 100) : 0;
+        const pctNw = totalZielNw > 0 ? Math.round((totalIstNw / totalZielNw) * 100) : 0;
+        const pctGw = totalZielGw > 0 ? Math.round((totalIstGw / totalZielGw) * 100) : 0;
+        const avgNw = vergangene.length > 0 ? (totalIstNw / vergangene.length) : 0;
+        const avgGw = vergangene.length > 0 ? (totalIstGw / vergangene.length) : 0;
+        const prognoseNw = Math.round(avgNw * monate.length);
+        const prognoseGw = Math.round(avgGw * monate.length);
+        const vn = verkauferName || '';
+        const titel = vn ? `${vn} — Jahresfortschritt ${year}` : `Jahresfortschritt ${year}`;
+        const trendIcon = vergangene.length >= 2 ? (() => {
+            const prev = vergangene[vergangene.length - 2];
+            const curr = vergangene[vergangene.length - 1];
+            const prevTotal = prev.ist_nw + prev.ist_gw;
+            const currTotal = curr.ist_nw + curr.ist_gw;
+            return currTotal > prevTotal ? '↗' : currTotal < prevTotal ? '↘' : '→';
+        })() : '→';
+
+        // Farbe basierend auf Erfüllung
+        function pctColor(pct) { return pct >= 100 ? '#10b981' : pct >= 75 ? '#f59e0b' : '#ef4444'; }
+        function pctBg(pct) { return pct >= 100 ? 'rgba(16,185,129,0.1)' : pct >= 75 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)'; }
+
+        let html = '';
+
+        // ═══ HERO CARD (Bootstrap-konsistent) ═══
+        html += `
+        <div class="card mb-3">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-bullseye"></i> ${titel}</h5>
+                <span class="badge bg-light text-primary fs-6">${pctGes}%</span>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-5">
+                        <div class="mb-2">
+                            <span class="text-muted small">Gesamtfortschritt</span>
+                            <span class="float-end fw-bold">${totalIst} / ${totalZiel}</span>
+                        </div>
+                        <div class="progress mb-3" style="height:10px;">
+                            <div class="progress-bar ${pctGes >= 100 ? 'bg-success' : pctGes >= 75 ? 'bg-warning' : 'bg-primary'}" style="width:${Math.min(pctGes, 100)}%;"></div>
+                        </div>
+                        <div class="row text-center g-2">
+                            <div class="col">
+                                <div class="border rounded p-2">
+                                    <div class="text-muted small">NW</div>
+                                    <div class="fw-bold fs-5">${totalIstNw}</div>
+                                    <div class="text-muted small">/ ${totalZielNw}</div>
+                                    <div class="progress mt-1" style="height:4px;">
+                                        <div class="progress-bar ${pctNw >= 100 ? 'bg-success' : 'bg-primary'}" style="width:${Math.min(pctNw, 100)}%;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="border rounded p-2">
+                                    <div class="text-muted small">GW</div>
+                                    <div class="fw-bold fs-5">${totalIstGw}</div>
+                                    <div class="text-muted small">/ ${totalZielGw}</div>
+                                    <div class="progress mt-1" style="height:4px;">
+                                        <div class="progress-bar ${pctGw >= 100 ? 'bg-success' : 'bg-warning'}" style="width:${Math.min(pctGw, 100)}%;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="border rounded p-2">
+                                    <div class="text-muted small">Trend</div>
+                                    <div class="fw-bold fs-5">${trendIcon}</div>
+                                    <div class="text-muted small">ø ${(avgNw + avgGw).toFixed(0)}/Mo → ${prognoseNw + prognoseGw}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">`;
+
+        // ═══ KOMPAKT-TABELLE MIT MINI-FORTSCHRITTSBALKEN ═══
+        const lblNw = vn ? `${vn.split(' ')[0]} NW` : 'Ist NW';
+        const lblGw = vn ? `${vn.split(' ')[0]} GW` : 'Ist GW';
+
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0" style="font-size:0.75rem;">';
+        html += '<thead><tr style="background:#f8fafc;"><th style="width:100px;"></th>';
+        monate.forEach(m => {
+            const op = m.ist_zukunft ? 'opacity:0.4;' : '';
+            html += `<th class="text-center" style="${op}font-size:0.7rem;">${MONATSNAMEN[m.monat]}</th>`;
+        });
+        html += '<th class="text-center" style="background:#1e293b;color:white;font-size:0.7rem;">Gesamt</th></tr></thead><tbody>';
+
+        // NW Zeile mit Mini-Balken
+        html += `<tr><td><strong>${lblNw}</strong></td>`;
+        monate.forEach(m => {
+            if (m.ist_zukunft && m.ist_nw === 0) { html += '<td class="text-center text-muted">-</td>'; return; }
+            const pct = m.ziel_nw > 0 ? Math.min(Math.round((m.ist_nw / m.ziel_nw) * 100), 100) : 0;
+            const col = m.ziel_nw > 0 && m.ist_nw >= m.ziel_nw ? '#10b981' : '#3b82f6';
+            html += `<td class="text-center" style="vertical-align:middle;">
+                <div style="font-weight:700;${m.ziel_nw > 0 && m.ist_nw >= m.ziel_nw ? 'color:#10b981;' : ''}">${m.ist_nw}</div>
+                ${m.ziel_nw > 0 ? `<div style="height:3px;background:#e2e8f0;border-radius:2px;margin-top:2px;"><div style="height:100%;width:${pct}%;background:${col};border-radius:2px;"></div></div>
+                <div style="font-size:0.6rem;color:#94a3b8;">/${m.ziel_nw}</div>` : ''}
+            </td>`;
+        });
+        html += `<td class="text-center" style="background:#1e293b;color:white;vertical-align:middle;"><strong>${totalIstNw}</strong><div style="font-size:0.6rem;opacity:0.7;">/ ${totalZielNw}</div></td></tr>`;
+
+        // GW Zeile mit Mini-Balken
+        html += `<tr><td><strong>${lblGw}</strong></td>`;
+        monate.forEach(m => {
+            if (m.ist_zukunft && m.ist_gw === 0) { html += '<td class="text-center text-muted">-</td>'; return; }
+            const pct = m.ziel_gw > 0 ? Math.min(Math.round((m.ist_gw / m.ziel_gw) * 100), 100) : 0;
+            const col = m.ziel_gw > 0 && m.ist_gw >= m.ziel_gw ? '#10b981' : '#f59e0b';
+            html += `<td class="text-center" style="vertical-align:middle;">
+                <div style="font-weight:700;${m.ziel_gw > 0 && m.ist_gw >= m.ziel_gw ? 'color:#10b981;' : ''}">${m.ist_gw}</div>
+                ${m.ziel_gw > 0 ? `<div style="height:3px;background:#e2e8f0;border-radius:2px;margin-top:2px;"><div style="height:100%;width:${pct}%;background:${col};border-radius:2px;"></div></div>
+                <div style="font-size:0.6rem;color:#94a3b8;">/${m.ziel_gw}</div>` : ''}
+            </td>`;
+        });
+        html += `<td class="text-center" style="background:#1e293b;color:white;vertical-align:middle;"><strong>${totalIstGw}</strong><div style="font-size:0.6rem;opacity:0.7;">/ ${totalZielGw}</div></td></tr>`;
+
+        // Kumuliert-Zeile
+        html += '<tr style="background:#eff6ff;"><td><strong style="color:#1e40af;">Kumuliert</strong></td>';
+        monate.forEach(m => {
+            if (m.ist_zukunft) { html += '<td class="text-center text-muted">-</td>'; return; }
+            const kumIst = m.kum_ist_nw + m.kum_ist_gw;
+            const kumZiel = m.kum_ziel_nw + m.kum_ziel_gw;
+            const kumPct = kumZiel > 0 ? Math.round((kumIst / kumZiel) * 100) : 0;
+            html += `<td class="text-center" style="vertical-align:middle;">
+                <div style="font-weight:700;color:${pctColor(kumPct)};">${kumPct}%</div>
+                <div style="font-size:0.6rem;color:#64748b;">${kumIst}/${kumZiel}</div>
+            </td>`;
+        });
+        html += `<td class="text-center" style="background:#1e293b;color:white;vertical-align:middle;">
+            <strong style="color:${pctGes >= 100 ? '#6ee7b7' : pctGes >= 75 ? '#fbbf24' : '#fca5a5'};">${pctGes}%</strong>
+            <div style="font-size:0.6rem;opacity:0.7;">${totalIst}/${totalZiel}</div>
+        </td></tr>`;
+
+        html += '</tbody></table></div>';
+        // Card schließen (col-md-7 + card-body + card)
+        html += '</div></div></div></div>';
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="alert alert-danger">Fehler: ${error.message}</div>`;
+    }
+}
+
+// Basismodell extrahieren: "TUCSON FL (MY26) 1.6 T-GDI..." → "TUCSON FL"
+// "Frontera Edition, Electric Extended Range 83kW..." → "Frontera"
+function getBasismodell(modellName) {
+    if (!modellName) return 'Unbekannt';
+    // Komma-Trennung: "Corsa Edition, 1.2 Direct..." → "Corsa Edition"
+    let name = modellName.split(',')[0].trim();
+    // Klammer-Trennung: "TUCSON FL (MY26)" → "TUCSON FL"
+    name = name.split('(')[0].trim();
+    // Motorisierung entfernen: "Corsa Edition 1.2" → "Corsa Edition"
+    name = name.replace(/\s+\d+[\.,]\d+.*$/, '').trim();
+    // Nur erstes/zweites Wort behalten falls noch lang
+    const words = name.split(/\s+/);
+    if (words.length > 3) name = words.slice(0, 2).join(' ');
+    return name;
+}
+
+function gruppiereModelle(modellListe) {
+    const gruppen = {};
+    modellListe.forEach(m => {
+        const basis = getBasismodell(m.modell);
+        gruppen[basis] = (gruppen[basis] || 0) + (m.anzahl || 1);
+    });
+    return Object.entries(gruppen).sort((a, b) => b[1] - a[1]);
+}
+
 function formatModelle(vk) {
     let html = '';
-    
+
     if (vk.neu.length > 0) {
-        html += '<div class="mb-2"><strong class="text-success">Neuwagen:</strong><ul class="mb-0">';
-        vk.neu.forEach(m => html += `<li>${m.modell} (${m.anzahl}x)</li>`);
-        html += '</ul></div>';
+        const gruppen = gruppiereModelle(vk.neu);
+        html += '<div class="mb-1"><strong class="text-success">Neuwagen:</strong> ';
+        html += gruppen.map(([name, anz]) => `${name} (${anz}x)`).join(', ');
+        html += '</div>';
     }
-    
+
     if (vk.test_vorfuehr.length > 0) {
-        html += '<div class="mb-2"><strong class="text-warning">Test/Vorführ:</strong><ul class="mb-0">';
-        vk.test_vorfuehr.forEach(m => html += `<li>${m.modell} (${m.anzahl}x)</li>`);
-        html += '</ul></div>';
+        const gruppen = gruppiereModelle(vk.test_vorfuehr);
+        html += '<div class="mb-1"><strong class="text-warning">Test/Vorführ:</strong> ';
+        html += gruppen.map(([name, anz]) => `${name} (${anz}x)`).join(', ');
+        html += '</div>';
     }
-    
+
     if (vk.gebraucht.length > 0) {
-        html += '<div class="mb-2"><strong class="text-secondary">Gebraucht:</strong><ul class="mb-0">';
-        vk.gebraucht.forEach(m => html += `<li>${m.modell} (${m.anzahl}x)</li>`);
-        html += '</ul></div>';
+        const gruppen = gruppiereModelle(vk.gebraucht);
+        html += '<div class="mb-1"><strong class="text-secondary">Gebraucht:</strong> ';
+        html += gruppen.map(([name, anz]) => `${name} (${anz}x)`).join(', ');
+        html += '</div>';
     }
-    
+
     return html || '<em class="text-muted">Keine Daten</em>';
 }
 

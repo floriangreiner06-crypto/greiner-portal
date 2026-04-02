@@ -53,6 +53,21 @@ Infrastruktur umfasst Celery/RedBeat, Redis, Deployment, Locosoft-Mirror, Postgr
 - Offen: Locosoft Export-Performance verbessern (aktuell 44 Min Full-Export)
 - Offen: Werkstatt Soll-Kapazitaet aus Locosoft (employees_worktimes + times analysiert, Datenqualitaet beachten)
 
+### Komplett-Audit (2026-04-02)
+Vollstaendiger Audit aller Endpunkte, Sicherheit, SSOT, Code-Qualitaet. Report: `docs/AUDIT_REPORT_2026-04-02.md`.
+**Sofort gefixt:**
+- Bankenspiegel: `@login_required` auf alle 10 Routes (Finanzdaten waren ohne Auth abrufbar)
+- 4 weitere Endpunkte mit fehlendem `@login_required` (verkauf/profitabilitaet, auslieferung/detail, nw-pipeline, serviceberater/offene-auftraege-counts, mobis order/verify)
+- 3 kaputte Endpunkte (500er): `api/lager/leichen` (psycopg2 %), `api/werkstatt/problemfaelle` (gemischte Platzhalter), `api/werkstatt/schlechteste-auftraege` (f-string in SQL)
+- Auth Audit Log: `success`-Spalte im INSERT ergaenzt (jeder Login erzeugte stillen Fehler)
+- Dev-DB Sync: sales + locosoft_mirror + BWA manuell aktualisiert
+**Offen (aus Audit):**
+- celery_app/tasks.py: ~80 hardcoded `/opt/greiner-portal/`-Pfade dynamisch machen
+- 6 verschiedene Standort-Mappings → auf standort_utils.py konsolidieren
+- preisvergleich_service.py: falsche DB-Credentials, SSOT-Bypass
+- config/.env aus Git entfernen + Secrets rotieren
+- CSRF-Schutz, Security-Headers, SESSION_COOKIE_SECURE
+
 ## Locosoft PostgreSQL Server (srvlocodb, 10.80.80.8)
 
 - **Docker-Container:** `locodb` (PG 16.2, Image nikoksr/postgres:latest)

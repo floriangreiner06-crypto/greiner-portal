@@ -623,7 +623,7 @@ def get_schlechteste_auftraege():
                     JOIN loco_labours l ON a.rechnungs_nr = l.invoice_number
                         AND a.rechnungs_typ = l.invoice_type
                     LEFT JOIN loco_employees e ON l.mechanic_no = e.employee_number
-                        AND e.is_latest_record = {'true' if get_db_type() == 'postgresql' else '1'}
+                        AND e.is_latest_record = true
                     WHERE a.rechnungs_datum >= ? AND a.rechnungs_datum <= ?
                     AND a.summe_stempelzeit_min >= ?
                     AND l.mechanic_no IS NOT NULL
@@ -933,8 +933,8 @@ def get_problemfaelle():
                         ELSE 'Unbekannt'
                     END as betrieb_name
                 FROM werkstatt_auftraege_abgerechnet w
-                WHERE w.rechnungs_datum BETWEEN ? AND ?
-                  AND w.summe_stempelzeit_min >= ?
+                WHERE w.rechnungs_datum BETWEEN %s AND %s
+                  AND w.summe_stempelzeit_min >= %s
                   AND w.summe_aw > 0
                   AND w.storniert = 0
             """

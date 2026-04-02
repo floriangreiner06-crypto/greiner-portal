@@ -556,10 +556,11 @@ class AuthManager:
             user_id = user_row[0] if user_row else None
 
             # Event loggen
+            success = 'failed' not in action.lower()
             cursor.execute(convert_placeholders('''
-                INSERT INTO auth_audit_log (user_id, action, ip_address, timestamp, details_json)
-                VALUES (?, ?, ?, ?, ?)
-            '''), (user_id, action, ip_address, datetime.now().isoformat(), details))
+                INSERT INTO auth_audit_log (user_id, action, success, ip_address, timestamp, details_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+            '''), (user_id, action, success, ip_address, datetime.now().isoformat(), details))
 
             conn.commit()
             conn.close()

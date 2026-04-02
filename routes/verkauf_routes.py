@@ -84,6 +84,7 @@ def auftragseingang_detail():
 
 
 @verkauf_bp.route('/auslieferung/detail')
+@login_required
 def auslieferung_detail():
     """Auslieferungen Detail-Ansicht. Filter-Modus aus Rechteverwaltung."""
     ctx = _verkauf_verkaeufer_context('auslieferungen')
@@ -191,6 +192,7 @@ def landau_90_tage_test():
 
 
 @verkauf_bp.route('/profitabilitaet')
+@login_required
 def profitabilitaet():
     """Profitabilitäts-Dashboard (TAG 219) – DB pro Fahrzeug, Standkosten, Netto-Profitabilität"""
     standort, konsolidiert = parse_standort_params(request)

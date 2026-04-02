@@ -22,7 +22,7 @@ Version: 2.0 - KOMPLETT
 """
 
 from flask import Blueprint, render_template, redirect, url_for
-from flask_login import current_user
+from flask_login import login_required, current_user
 from datetime import datetime
 
 # Blueprint erstellen
@@ -36,6 +36,7 @@ bankenspiegel_bp = Blueprint('bankenspiegel', __name__, url_prefix='/bankenspieg
 
 @bankenspiegel_bp.route('/')
 @bankenspiegel_bp.route('')  # Auch ohne trailing slash
+@login_required
 def index():
     """
     🛡️ BULLETPROOF REDIRECT FIX
@@ -71,6 +72,7 @@ def index():
 # ============================================================================
 
 @bankenspiegel_bp.route('/dashboard')
+@login_required
 def dashboard():
     """
     Hauptseite - Bankenspiegel Dashboard
@@ -92,6 +94,7 @@ def dashboard():
 
 
 @bankenspiegel_bp.route('/konten')
+@login_required
 def konten():
     """
     Kontenübersicht
@@ -118,6 +121,7 @@ def konten():
 
 
 @bankenspiegel_bp.route('/transaktionen')
+@login_required
 def transaktionen():
     """
     Transaktionen: eine Seite mit Tabs „Übersicht“ | „Kategorisieren“ (Option A).
@@ -134,6 +138,7 @@ def transaktionen():
 
 
 @bankenspiegel_bp.route('/kategorisierung')
+@login_required
 def kategorisierung():
     """
     Redirect auf Transaktionen-Seite mit Modus Kategorisieren.
@@ -146,6 +151,7 @@ def kategorisierung():
 # ============================================================================
 
 @bankenspiegel_bp.route('/einkaufsfinanzierung')
+@login_required
 def einkaufsfinanzierung():
     """
     Redirect zu Fahrzeugfinanzierungen (konsolidiert)
@@ -154,6 +160,7 @@ def einkaufsfinanzierung():
 
 
 @bankenspiegel_bp.route('/zinsen-analyse')
+@login_required
 def zinsen_analyse():
     """
     Redirect zu Fahrzeugfinanzierungen (konsolidiert)
@@ -162,6 +169,7 @@ def zinsen_analyse():
 
 
 @bankenspiegel_bp.route('/fahrzeugfinanzierungen')
+@login_required
 def fahrzeugfinanzierungen():
     """
     Fahrzeugfinanzierungen Dashboard (Konsolidiert mit Zinsen-Analyse)
@@ -357,6 +365,7 @@ STATUS: 🟢 PRODUCTION-READY | 🛡️ BULLETPROOF | ✅ KOMPLETT
 
 
 @bankenspiegel_bp.route('/konto/<int:konto_id>')
+@login_required
 def konto_detail(konto_id):
     """
     Konto-Detail mit historischen Daten
@@ -375,6 +384,7 @@ def konto_detail(konto_id):
 
 
 @bankenspiegel_bp.route('/zeitverlauf')
+@login_required
 def zeitverlauf():
     """
     Zeitverlauf-Ansicht (Bankenspiegel)

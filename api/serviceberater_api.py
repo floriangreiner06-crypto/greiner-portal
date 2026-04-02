@@ -16,6 +16,7 @@ Datenquellen:
 """
 
 from flask import Blueprint, request, jsonify
+from flask_login import login_required
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from typing import Dict, Any
@@ -1630,6 +1631,7 @@ def get_offene_auftraege_sb():
 
 
 @serviceberater_api.route('/offene-auftraege-counts', methods=['GET'])
+@login_required
 def get_offene_auftraege_counts():
     """
     GET /api/serviceberater/offene-auftraege-counts?bringtermin_nur_vergangen=true

@@ -10,6 +10,7 @@ Daher können wir über Locosoft SOAP auf Teile-Daten zugreifen.
 import logging
 from typing import List, Dict, Optional
 from flask import Blueprint, jsonify
+from flask_login import login_required
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,7 @@ def verify_hyundai_original_part(part_number: str) -> Dict:
 
 
 @bp.route('/order/<int:order_number>', methods=['GET'])
+@login_required
 def get_parts_for_order(order_number: int):
     """
     GET /api/mobis/teilebezug/order/<order_number>
@@ -248,6 +250,7 @@ def get_parts_for_order(order_number: int):
 
 
 @bp.route('/verify/<part_number>', methods=['GET'])
+@login_required
 def verify_part(part_number: str):
     """
     GET /api/mobis/teilebezug/verify/<part_number>
