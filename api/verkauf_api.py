@@ -637,6 +637,128 @@ def get_auftragseingang_jahresuebersicht():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@verkauf_api.route('/auftragseingang/zeitstrahl', methods=['GET'])
+@login_required
+def get_auftragseingang_zeitstrahl():
+    """
+    GET /api/verkauf/auftragseingang/zeitstrahl?jahr=2026&monat=4&location=
+    Per-Verkäufer Zielfortschritt für die Zeitstrahl-Visualisierung.
+    Liefert Monats- und kumulative Ziele + IST-Werte (NW/GW) pro Verkäufer.
+    """
+    try:
+        import traceback
+        import calendar
+        from api.verkaeufer_zielplanung_api import (
+            get_monatsziele_konzern_dict,
+            get_nw_ziel_verkaeufer_monat,
+        )
+
+        jahr = request.args.get('jahr', datetime.now().year, type=int)
+        monat = request.args.get('monat', datetime.now().month, type=int)
+        location = request.args.get('location', type=int)
+
+        # --- 1. Monatsziele (NW + GW) pro Verkäufer ---
+        mz = get_monatsziele_konzern_dict(jahr, monat)
+        if not mz.get('success'):
+            return jsonify({'success': False, 'error': mz.get('error', 'Monatsziele nicht verfügbar')}), 400
+
+        ziele_list = mz.get('ziele', [])
+        # Map: mitarbeiter_nr -> {name, ziel_nw, ziel_gw}
+        ziel_map = {}
+        for z in ziele_list:
+            ziel_map[z['mitarbeiter_nr']] = {
+                'name': z.get('name', ''),
+                'monats_ziel_nw': z.get('ziel_nw', 0),
+                'monats_ziel_gw': z.get('ziel_gw', 0),
+            }
+
+        # --- 2. Kumulative NW-Ziele (Summe Monate 1..monat) ---
+        kum_ziel_nw_map = {}
+        for nr in ziel_map:
+            kum = 0
+            for m in range(1, monat + 1):
+                kum += get_nw_ziel_verkaeufer_monat(nr, jahr, m)
+            kum_ziel_nw_map[nr] = kum
+
+        # --- 3. Kumulative IST-Werte (Jan 1 bis Monatsende) ---
+        von_str = f"{jahr}-01-01"
+        letzter_tag = calendar.monthrange(jahr, monat)[1]
+        bis_str = f"{jahr}-{monat:02d}-{letzter_tag:02d}"
+
+        ist_result = VerkaufData.get_auftragseingang_detail(
+            von=von_str, bis=bis_str, location=location,
+        )
+        # IST-Map: mitarbeiter_nr -> {kum_ist_nw, kum_ist_gw}
+        ist_map = {}
+        if ist_result.get('success'):
+            for v in ist_result.get('verkaufer', []):
+                nr = v.get('verkaufer_nummer')
+                if nr is None:
+                    continue
+                ist_nw = (v.get('summe_neu') or 0) + (v.get('summe_test_vorfuehr') or 0)
+                ist_gw = v.get('summe_gebraucht') or 0
+                ist_map[int(nr)] = {
+                    'kum_ist_nw': ist_nw,
+                    'kum_ist_gw': ist_gw,
+                    'name': v.get('verkaufer_name', ''),
+                }
+
+        # --- 4. Jahresziele (aus verkaeufer_ziele) ---
+        jahres_map = {}
+        try:
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT mitarbeiter_nr, ziel_nw, ziel_gw FROM verkaeufer_ziele WHERE kalenderjahr = %s",
+                    (jahr,),
+                )
+                for row in cur.fetchall():
+                    jahres_map[int(row['mitarbeiter_nr'])] = {
+                        'jahres_ziel_nw': int(row['ziel_nw'] or 0),
+                        'jahres_ziel_gw': int(row['ziel_gw'] or 0),
+                    }
+        except Exception:
+            traceback.print_exc()
+
+        # --- 5. Zusammenführen ---
+        # Alle bekannten Verkäufer: aus Zielen + IST
+        alle_nrs = set(ziel_map.keys()) | set(ist_map.keys())
+
+        # Filter: nur eigener Verkäufer bei eingeschränkter Rolle
+        force_own = _filter_mode_force_own('auftragseingang')
+        own_nr = _get_current_user_salesman_number() if force_own else None
+
+        ergebnis = []
+        for nr in sorted(alle_nrs):
+            if force_own and own_nr and nr != own_nr:
+                continue
+            z = ziel_map.get(nr, {})
+            ist = ist_map.get(nr, {})
+            jz = jahres_map.get(nr, {})
+            name = z.get('name', '') or ist.get('name', f'Verkäufer #{nr}')
+            ergebnis.append({
+                'mitarbeiter_nr': nr,
+                'name': name,
+                'monats_ziel_nw': z.get('monats_ziel_nw', 0),
+                'monats_ziel_gw': z.get('monats_ziel_gw', 0),
+                'kum_ziel_nw': kum_ziel_nw_map.get(nr, 0),
+                'kum_ist_nw': ist.get('kum_ist_nw', 0),
+                'kum_ist_gw': ist.get('kum_ist_gw', 0),
+                'jahres_ziel_nw': jz.get('jahres_ziel_nw', 0),
+                'jahres_ziel_gw': jz.get('jahres_ziel_gw', 0),
+            })
+
+        return jsonify({
+            'success': True,
+            'jahr': jahr,
+            'monat': monat,
+            'verkaufer': ergebnis,
+        })
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @verkauf_api.route('/auftragseingang/detail', methods=['GET'])
 @login_required
 def get_auftragseingang_detail():
